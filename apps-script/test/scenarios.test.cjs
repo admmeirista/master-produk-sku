@@ -247,3 +247,11 @@ test('ekspor ke tab spreadsheet (alternatif unduhan)', () => {
   assert.ok(sheets.get(r.sheetName));
   fail(call(viewer, 'export.toSheet', { kind: 'beecloud', markExported: true }), 'FORBIDDEN');
 });
+
+test('doPost: API JSON untuk frontend GitHub Pages', () => {
+  const post = (o) => JSON.parse(ctx.doPost({ postData: { contents: JSON.stringify(o) } }).getContent());
+  assert.equal(post({ action: 'product.list', payload: {} }).error.code, 'UNAUTHENTICATED');
+  assert.equal(post({ token: viewer, action: 'dashboard.get', payload: {} }).ok, true);
+  assert.equal(post({ token: viewer, action: 'user.list' }).error.code, 'FORBIDDEN');
+  assert.equal(JSON.parse(ctx.doPost({ postData: { contents: 'bukan json' } }).getContent()).error.code, 'BAD_REQUEST');
+});

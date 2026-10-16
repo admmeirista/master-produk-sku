@@ -12,6 +12,22 @@ function doGet() {
     .setFaviconUrl('https://ssl.gstatic.com/docs/spreadsheets/favicon3.ico');
 }
 
+/**
+ * API JSON untuk frontend di luar Apps Script (mis. GitHub Pages).
+ * Body (text/plain agar tidak memicu CORS preflight): {"token": "...", "action": "...", "payload": {...}}
+ * Hak akses tetap dicek di api() — semua aksi selain login wajib token sesi yang valid.
+ */
+function doPost(e) {
+  let out;
+  try {
+    const body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
+    out = api(body.token || null, String(body.action || ''), body.payload === undefined ? null : body.payload);
+  } catch (err) {
+    out = { ok: false, error: { message: 'Permintaan tidak valid', code: 'BAD_REQUEST', details: [] } };
+  }
+  return ContentService.createTextOutput(JSON.stringify(out)).setMimeType(ContentService.MimeType.JSON);
+}
+
 function include(name) {
   return HtmlService.createHtmlOutputFromFile(name).getContent();
 }

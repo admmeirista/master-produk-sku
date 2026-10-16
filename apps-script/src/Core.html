@@ -5,15 +5,31 @@
 const S = { token: null, user: null, perms: [], pending: 0 };
 try { S.token = localStorage.getItem('rpm_token'); } catch (e) {}
 
+function handleResult_(action, r, resolve, reject) {
+  if (r && r.ok) return resolve(r.data);
+  const err = Object.assign(new Error((r && r.error && r.error.message) || 'Terjadi kesalahan'), (r && r.error) || {});
+  if (err.code === 'UNAUTHENTICATED' && action !== 'auth.login') { setToken(null); S.user = null; renderLogin(err.message); }
+  reject(err);
+}
+
 function call(action, payload) {
+  // Di luar Apps Script (GitHub Pages): panggil Web App lewat fetch ke URL /exec
+  if (window.RPM_API_URL) {
+    return new Promise((resolve, reject) => {
+      fetch(window.RPM_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ token: S.token, action, payload: payload === undefined ? null : payload }),
+        redirect: 'follow',
+      })
+        .then((res) => res.json())
+        .then((r) => handleResult_(action, r, resolve, reject))
+        .catch((e) => reject(new Error('Koneksi ke server gagal: ' + (e && e.message ? e.message : e))));
+    });
+  }
   return new Promise((resolve, reject) => {
     google.script.run
-      .withSuccessHandler((r) => {
-        if (r && r.ok) return resolve(r.data);
-        const err = Object.assign(new Error((r && r.error && r.error.message) || 'Terjadi kesalahan'), (r && r.error) || {});
-        if (err.code === 'UNAUTHENTICATED' && action !== 'auth.login') { setToken(null); S.user = null; renderLogin(err.message); }
-        reject(err);
-      })
+      .withSuccessHandler((r) => handleResult_(action, r, resolve, reject))
       .withFailureHandler((e) => reject(new Error('Koneksi ke server gagal: ' + (e && e.message ? e.message : e))))
       .api(S.token, action, payload === undefined ? null : payload);
   });

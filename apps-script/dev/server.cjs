@@ -75,6 +75,25 @@ function page() {
 
 http
   .createServer((req, res) => {
+    // Meniru Web App /exec (doPost) untuk menguji versi GitHub Pages: GET /pages
+    if (req.url === '/exec' && req.method === 'POST') {
+      let body = '';
+      req.on('data', (c) => (body += c));
+      req.on('end', () => {
+        const out = ctx.doPost({ postData: { contents: body } });
+        res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*' });
+        res.end(out.getContent());
+      });
+      return;
+    }
+    if (req.url === '/pages' || req.url.startsWith('/pages?') || req.url.startsWith('/pages#')) {
+      const { execFileSync } = require('node:child_process');
+      const dir = path.join(require('node:os').tmpdir(), 'rpm-pages-preview');
+      execFileSync(process.execPath, [path.join(__dirname, '../tools/build-pages.cjs'), dir], { env: { ...process.env, APPS_SCRIPT_URL: 'http://localhost:' + PORT + '/exec' } });
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      res.end(fs.readFileSync(path.join(dir, 'index.html')));
+      return;
+    }
     if (req.method === 'POST' && req.url === '/rpc') {
       let body = '';
       req.on('data', (c) => (body += c));

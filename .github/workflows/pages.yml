@@ -1,0 +1,46 @@
+# Membangun & mempublikasikan tampilan aplikasi ke GitHub Pages (https://<user>.github.io/<repo>/).
+# Server & database tetap di Google Apps Script + Google Sheets.
+# Butuh repository VARIABLE (bukan secret): APPS_SCRIPT_URL = URL Web App, format https://script.google.com/macros/s/<ID>/exec
+name: GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths: ['apps-script/src/**', 'apps-script/tools/build-pages.cjs', '.github/workflows/pages.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Bangun halaman
+        env:
+          APPS_SCRIPT_URL: ${{ vars.APPS_SCRIPT_URL }}
+        run: node apps-script/tools/build-pages.cjs _site
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

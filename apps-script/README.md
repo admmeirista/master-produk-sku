@@ -115,3 +115,19 @@ Workflow [`.github/workflows/deploy-apps-script.yml`](../.github/workflows/deplo
    * `DEPLOYMENT_ID` (opsional) = ID deployment Aplikasi web (Terapkan › Kelola deployment), agar URL web app langsung memakai versi terbaru.
 
 Gunakan repository **Private**: `CLASPRC_JSON` memberi akses ke akun Google, dan kode berisi ID file database.
+
+## Tampilan di GitHub Pages (github.io)
+
+Tampilan yang sama juga bisa dibuka di `https://admmeirista.github.io/master-produk-sku/`. Halaman itu statis;
+datanya tetap diambil dari Web App Apps Script lewat `doPost` (API JSON), jadi Web App harus sudah di-deploy.
+
+1. Deploy Web App dengan *Siapa yang memiliki akses*: **Siapa saja** (anonim) — wajib agar github.io bisa memanggilnya.
+   Data tetap terlindungi oleh login aplikasi (token sesi dicek di server untuk setiap aksi).
+2. Salin URL Web App (`https://script.google.com/macros/s/<ID>/exec`).
+3. GitHub › **Settings › Secrets and variables › Actions › tab Variables › New repository variable**:
+   `APPS_SCRIPT_URL` = URL tersebut.
+4. GitHub › **Settings › Pages › Build and deployment › Source: GitHub Actions**.
+5. **Actions › GitHub Pages › Run workflow**. Halaman muncul di `https://admmeirista.github.io/master-produk-sku/`.
+
+GitHub Pages untuk repository **private** hanya tersedia pada paket GitHub berbayar (Pro/Team/Enterprise).
+Pada akun gratis, repository harus **Public** agar Pages aktif.

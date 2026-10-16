@@ -116,6 +116,7 @@ function createGas({ ownerEmail = 'owner@toko.local' } = {}) {
     },
     ScriptApp: { getProjectTriggers: () => [], newTrigger: () => ({}) },
     HtmlService: {},
+    ContentService: { MimeType: { JSON: 'application/json' }, createTextOutput: (s) => ({ content: s, setMimeType() { return this; }, getContent() { return this.content; } }) },
   };
   vm.createContext(ctx);
   const order = ['Config', 'Lib', 'Db', 'Auth', 'Barcodes', 'Products', 'Duplicates', 'Workflow', 'Mappings', 'Imports', 'Admin', 'Api'];
