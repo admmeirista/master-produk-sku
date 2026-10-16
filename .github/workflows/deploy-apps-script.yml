@@ -1,0 +1,43 @@
+# Uji lalu kirim kode apps-script/src ke Google Apps Script setiap ada push ke branch main.
+# Secrets yang dibutuhkan (Settings > Secrets and variables > Actions):
+#   CLASPRC_JSON      isi file ~/.clasprc.json hasil "npx @google/clasp login" (akun pemilik proyek Apps Script)
+#   SCRIPT_ID         ID proyek Apps Script (Setelan proyek > ID Skrip)
+#   DEPLOYMENT_ID     (opsional) ID deployment Aplikasi web, agar URL web app ikut diperbarui
+name: Deploy Apps Script
+
+on:
+  push:
+    branches: [main]
+    paths: ['apps-script/**', '.github/workflows/deploy-apps-script.yml']
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      DEPLOYMENT_ID: ${{ secrets.DEPLOYMENT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Uji skenario (emulator)
+        run: npm test
+      - name: Siapkan kredensial clasp
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+          SCRIPT_ID: ${{ secrets.SCRIPT_ID }}
+        run: |
+          test -n "$CLASPRC_JSON" || { echo "Secret CLASPRC_JSON belum diisi"; exit 1; }
+          test -n "$SCRIPT_ID" || { echo "Secret SCRIPT_ID belum diisi"; exit 1; }
+          echo "$CLASPRC_JSON" > ~/.clasprc.json
+          printf '{"scriptId":"%s","rootDir":"src"}' "$SCRIPT_ID" > apps-script/.clasp.json
+      - name: Push kode ke Apps Script
+        working-directory: apps-script
+        run: npx --yes @google/clasp@2.4.2 push --force
+      - name: Perbarui deployment Aplikasi web
+        if: env.DEPLOYMENT_ID != ''
+        working-directory: apps-script
+        run: npx --yes @google/clasp@2.4.2 deploy -i "$DEPLOYMENT_ID" -d "GitHub ${GITHUB_SHA::7}"

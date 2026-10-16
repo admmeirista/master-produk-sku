@@ -1,0 +1,795 @@
+{
+ "source": "Template_Master_Produk_SKU_BeeCloud Fix.xlsx / sheet Referensi Kode",
+ "brands": [
+  {
+   "name": "Acnes Creamy",
+   "code": "ACN"
+  },
+  {
+   "name": "Azarine",
+   "code": "AZR"
+  },
+  {
+   "name": "BDL Skin Care",
+   "code": "BDL"
+  },
+  {
+   "name": "Bfree Kids",
+   "code": "BFR"
+  },
+  {
+   "name": "Caladine",
+   "code": "CLD"
+  },
+  {
+   "name": "Cap Lang",
+   "code": "CAP"
+  },
+  {
+   "name": "Casablanca Body",
+   "code": "CAS"
+  },
+  {
+   "name": "Citra",
+   "code": "CTR"
+  },
+  {
+   "name": "Cussons",
+   "code": "CUS"
+  },
+  {
+   "name": "Dazzle Me",
+   "code": "DZM"
+  },
+  {
+   "name": "Dr-Pure",
+   "code": "DRP"
+  },
+  {
+   "name": "Ellips",
+   "code": "ELP"
+  },
+  {
+   "name": "Emeron",
+   "code": "EMR"
+  },
+  {
+   "name": "Emina",
+   "code": "EMI"
+  },
+  {
+   "name": "Esenses",
+   "code": "ESE"
+  },
+  {
+   "name": "Eskulin",
+   "code": "ESK"
+  },
+  {
+   "name": "Fair",
+   "code": "FAI"
+  },
+  {
+   "name": "Fanbo",
+   "code": "FAN"
+  },
+  {
+   "name": "Free Gift",
+   "code": "FRG"
+  },
+  {
+   "name": "Fresh",
+   "code": "FRH"
+  },
+  {
+   "name": "Freshcare Minyak",
+   "code": "FCM"
+  },
+  {
+   "name": "Fres & Natural",
+   "code": "FNA"
+  },
+  {
+   "name": "Garnier",
+   "code": "GNR"
+  },
+  {
+   "name": "Gatsby",
+   "code": "GTB"
+  },
+  {
+   "name": "Giv",
+   "code": "GIV"
+  },
+  {
+   "name": "Glad2Glow",
+   "code": "GLA"
+  },
+  {
+   "name": "Glow & Lovely",
+   "code": "GLO"
+  },
+  {
+   "name": "Hada Labo",
+   "code": "HAD"
+  },
+  {
+   "name": "Hanasui",
+   "code": "HNS"
+  },
+  {
+   "name": "Herborist",
+   "code": "HRB"
+  },
+  {
+   "name": "Herocyn",
+   "code": "HER"
+  },
+  {
+   "name": "Home Snow",
+   "code": "HOM"
+  },
+  {
+   "name": "Hued",
+   "code": "HUE"
+  },
+  {
+   "name": "Implora",
+   "code": "IMP"
+  },
+  {
+   "name": "Inez",
+   "code": "INZ"
+  },
+  {
+   "name": "Johnny Andrean",
+   "code": "JNA"
+  },
+  {
+   "name": "Johnsons Baby",
+   "code": "JOH"
+  },
+  {
+   "name": "Junies",
+   "code": "JUN"
+  },
+  {
+   "name": "Kelly",
+   "code": "KEL"
+  },
+  {
+   "name": "Kodomo",
+   "code": "KOD"
+  },
+  {
+   "name": "Kojie San",
+   "code": "KOJ"
+  },
+  {
+   "name": "Kryolan Supracolor",
+   "code": "KRY"
+  },
+  {
+   "name": "Kuas",
+   "code": "KUA"
+  },
+  {
+   "name": "La Tulipe",
+   "code": "LAT"
+  },
+  {
+   "name": "Lavojoy",
+   "code": "LAV"
+  },
+  {
+   "name": "Laurent",
+   "code": "LAU"
+  },
+  {
+   "name": "Lindor Colorfix",
+   "code": "LIN"
+  },
+  {
+   "name": "Listerine Cool",
+   "code": "LIS"
+  },
+  {
+   "name": "Lock",
+   "code": "LOC"
+  },
+  {
+   "name": "Lovillea Anti",
+   "code": "LOV"
+  },
+  {
+   "name": "Lucido-L",
+   "code": "LUC"
+  },
+  {
+   "name": "Lux",
+   "code": "LUX"
+  },
+  {
+   "name": "Madame Gie",
+   "code": "MDG"
+  },
+  {
+   "name": "Maira Dress",
+   "code": "MAI"
+  },
+  {
+   "name": "Makarizo",
+   "code": "MKZ"
+  },
+  {
+   "name": "Mandom",
+   "code": "MDM"
+  },
+  {
+   "name": "Marcks",
+   "code": "MCK"
+  },
+  {
+   "name": "Marina",
+   "code": "MRN"
+  },
+  {
+   "name": "Meco",
+   "code": "MCO"
+  },
+  {
+   "name": "Metal Fortis",
+   "code": "MET"
+  },
+  {
+   "name": "Michido",
+   "code": "MCD"
+  },
+  {
+   "name": "Mineral Botanica",
+   "code": "MNB"
+  },
+  {
+   "name": "Minyak Kayu",
+   "code": "MYK"
+  },
+  {
+   "name": "Mirabella",
+   "code": "MIR"
+  },
+  {
+   "name": "Miranda",
+   "code": "MRD"
+  },
+  {
+   "name": "Mustika Ratu",
+   "code": "MTR"
+  },
+  {
+   "name": "My Baby",
+   "code": "MYB"
+  },
+  {
+   "name": "N",
+   "code": "NXX"
+  },
+  {
+   "name": "Natur",
+   "code": "NTR"
+  },
+  {
+   "name": "Nichii",
+   "code": "NCH"
+  },
+  {
+   "name": "Nivea",
+   "code": "NIV"
+  },
+  {
+   "name": "Nuface",
+   "code": "NUF"
+  },
+  {
+   "name": "OMG",
+   "code": "OMG"
+  },
+  {
+   "name": "Orsini Ultra",
+   "code": "ORS"
+  },
+  {
+   "name": "Others",
+   "code": "OTH"
+  },
+  {
+   "name": "Ovale",
+   "code": "OVL"
+  },
+  {
+   "name": "Paket",
+   "code": "PAK"
+  },
+  {
+   "name": "Parfum",
+   "code": "PRF"
+  },
+  {
+   "name": "Pasta Gigi",
+   "code": "PAS"
+  },
+  {
+   "name": "Peditox",
+   "code": "PED"
+  },
+  {
+   "name": "Pelentik Bulu",
+   "code": "PEL"
+  },
+  {
+   "name": "Pi",
+   "code": "PIE"
+  },
+  {
+   "name": "Pixy",
+   "code": "PXY"
+  },
+  {
+   "name": "Pond's",
+   "code": "PON"
+  },
+  {
+   "name": "Posh",
+   "code": "POS"
+  },
+  {
+   "name": "Pucelle",
+   "code": "PCL"
+  },
+  {
+   "name": "Purbasari",
+   "code": "PRB"
+  },
+  {
+   "name": "QL",
+   "code": "QLM"
+  },
+  {
+   "name": "Qlsabun Lulur",
+   "code": "QLS"
+  },
+  {
+   "name": "RDL Papaya",
+   "code": "RDL"
+  },
+  {
+   "name": "Resik-V",
+   "code": "RES"
+  },
+  {
+   "name": "Rexona",
+   "code": "RXN"
+  },
+  {
+   "name": "Rivera",
+   "code": "RIV"
+  },
+  {
+   "name": "Sariayu",
+   "code": "SRY"
+  },
+  {
+   "name": "Sca",
+   "code": "SCA"
+  },
+  {
+   "name": "Scora",
+   "code": "SCO"
+  },
+  {
+   "name": "Seger Baby",
+   "code": "SGB"
+  },
+  {
+   "name": "Seger Snow",
+   "code": "SGS"
+  },
+  {
+   "name": "Selection",
+   "code": "SEL"
+  },
+  {
+   "name": "Shantos Romeo",
+   "code": "SHR"
+  },
+  {
+   "name": "Shelley Sisters",
+   "code": "SHE"
+  },
+  {
+   "name": "Shinzui",
+   "code": "SHZ"
+  },
+  {
+   "name": "Shofie Edition",
+   "code": "SHO"
+  },
+  {
+   "name": "Sikat Gigi",
+   "code": "SIK"
+  },
+  {
+   "name": "Skin Care",
+   "code": "SKI"
+  },
+  {
+   "name": "Skintific",
+   "code": "SKF"
+  },
+  {
+   "name": "Skiva",
+   "code": "SKV"
+  },
+  {
+   "name": "Spalding Deo",
+   "code": "SPA"
+  },
+  {
+   "name": "Sumber Ayu",
+   "code": "SUM"
+  },
+  {
+   "name": "Suria Snow",
+   "code": "SSN"
+  },
+  {
+   "name": "Tancho",
+   "code": "TCH"
+  },
+  {
+   "name": "Valenno",
+   "code": "VAL"
+  },
+  {
+   "name": "Vaseline",
+   "code": "VSL"
+  },
+  {
+   "name": "Vitalis",
+   "code": "VTL"
+  },
+  {
+   "name": "Viva",
+   "code": "VIV"
+  },
+  {
+   "name": "Wardah",
+   "code": "WRD"
+  },
+  {
+   "name": "Xi Xiu",
+   "code": "XIX"
+  },
+  {
+   "name": "Yarong Beuatician",
+   "code": "YAR"
+  },
+  {
+   "name": "Y.O.U",
+   "code": "YOU"
+  },
+  {
+   "name": "Zinc",
+   "code": "ZNC"
+  },
+  {
+   "name": "Zwitsal",
+   "code": "ZWS"
+  }
+ ],
+ "categories": [
+  {
+   "name": "Acne Treatment",
+   "code": "ACT"
+  },
+  {
+   "name": "Baby Bath / Body Wash",
+   "code": "BBW"
+  },
+  {
+   "name": "Baby Cream",
+   "code": "BBC"
+  },
+  {
+   "name": "Baby Hair Care",
+   "code": "BHC"
+  },
+  {
+   "name": "Baby Oil",
+   "code": "BBO"
+  },
+  {
+   "name": "Baby Powder",
+   "code": "BBP"
+  },
+  {
+   "name": "Baby Wipes",
+   "code": "BWP"
+  },
+  {
+   "name": "BB / CC Cream",
+   "code": "BCC"
+  },
+  {
+   "name": "Blush",
+   "code": "BLH"
+  },
+  {
+   "name": "Body Care Package",
+   "code": "BCP"
+  },
+  {
+   "name": "Body Lotion",
+   "code": "BDL"
+  },
+  {
+   "name": "Body Scrub",
+   "code": "BSC"
+  },
+  {
+   "name": "Body Serum",
+   "code": "BSR"
+  },
+  {
+   "name": "Body Wash",
+   "code": "BWS"
+  },
+  {
+   "name": "Compact Powder",
+   "code": "CPW"
+  },
+  {
+   "name": "Concealer",
+   "code": "CNR"
+  },
+  {
+   "name": "Conditioner",
+   "code": "CND"
+  },
+  {
+   "name": "Contour",
+   "code": "CNT"
+  },
+  {
+   "name": "Cotton / Cotton Bud",
+   "code": "CTB"
+  },
+  {
+   "name": "Cushion",
+   "code": "CSH"
+  },
+  {
+   "name": "Deodorant",
+   "code": "DOD"
+  },
+  {
+   "name": "Eyebrow",
+   "code": "EYB"
+  },
+  {
+   "name": "Eyeliner",
+   "code": "EYL"
+  },
+  {
+   "name": "Eyeshadow",
+   "code": "ESH"
+  },
+  {
+   "name": "Face Essence",
+   "code": "ESS"
+  },
+  {
+   "name": "Face Mask",
+   "code": "FMK"
+  },
+  {
+   "name": "Face Serum",
+   "code": "FSR"
+  },
+  {
+   "name": "Face Treatment Gel",
+   "code": "FTG"
+  },
+  {
+   "name": "Facial Cleanser",
+   "code": "FCL"
+  },
+  {
+   "name": "Feminine Care",
+   "code": "FMC"
+  },
+  {
+   "name": "Foundation / Alas Bedak",
+   "code": "FND"
+  },
+  {
+   "name": "Fragrance",
+   "code": "FRG"
+  },
+  {
+   "name": "Hair Cream",
+   "code": "HCR"
+  },
+  {
+   "name": "Hair Dye",
+   "code": "HDY"
+  },
+  {
+   "name": "Hair Gel",
+   "code": "HGE"
+  },
+  {
+   "name": "Hair Oil",
+   "code": "HOI"
+  },
+  {
+   "name": "Hair Pomade",
+   "code": "HPO"
+  },
+  {
+   "name": "Hair Styling",
+   "code": "HST"
+  },
+  {
+   "name": "Hair Tonic",
+   "code": "HTN"
+  },
+  {
+   "name": "Hair Treatment / Mask",
+   "code": "HTR"
+  },
+  {
+   "name": "Hair Vitamin",
+   "code": "HVT"
+  },
+  {
+   "name": "Hair Wax / Clay",
+   "code": "HWX"
+  },
+  {
+   "name": "Hand / Foot Care",
+   "code": "HFC"
+  },
+  {
+   "name": "Hand Sanitizer",
+   "code": "HDS"
+  },
+  {
+   "name": "Highlighter",
+   "code": "HLT"
+  },
+  {
+   "name": "Lip Balm",
+   "code": "LPB"
+  },
+  {
+   "name": "Lip Cream",
+   "code": "LPC"
+  },
+  {
+   "name": "Lip Gloss",
+   "code": "LPG"
+  },
+  {
+   "name": "Lipstick",
+   "code": "LPS"
+  },
+  {
+   "name": "Lip Tint",
+   "code": "LPT"
+  },
+  {
+   "name": "Lip Treatment / Serum",
+   "code": "LPR"
+  },
+  {
+   "name": "Loose Powder",
+   "code": "LSP"
+  },
+  {
+   "name": "Makeup Brush / Tools",
+   "code": "MBT"
+  },
+  {
+   "name": "Makeup Remover",
+   "code": "MUR"
+  },
+  {
+   "name": "Makeup Sponge",
+   "code": "SPG"
+  },
+  {
+   "name": "Mascara",
+   "code": "MSC"
+  },
+  {
+   "name": "Massage / Body Oil",
+   "code": "MGO"
+  },
+  {
+   "name": "Micellar Water",
+   "code": "MCW"
+  },
+  {
+   "name": "Milk Cleanser",
+   "code": "MLC"
+  },
+  {
+   "name": "Moisturizer / Face Cream",
+   "code": "MST"
+  },
+  {
+   "name": "Oral Care",
+   "code": "ORC"
+  },
+  {
+   "name": "Peeling / Exfoliant",
+   "code": "PEX"
+  },
+  {
+   "name": "Powder Refill",
+   "code": "PWR"
+  },
+  {
+   "name": "Primer",
+   "code": "PRM"
+  },
+  {
+   "name": "Shampoo",
+   "code": "SHP"
+  },
+  {
+   "name": "Sleeping Mask",
+   "code": "SLM"
+  },
+  {
+   "name": "Soap / Bar Soap",
+   "code": "SOP"
+  },
+  {
+   "name": "Sunscreen",
+   "code": "SUN"
+  },
+  {
+   "name": "Tissue / Wipes",
+   "code": "TSW"
+  },
+  {
+   "name": "Toner",
+   "code": "TON"
+  },
+  {
+   "name": "Skincare Package",
+   "code": "SCP"
+  },
+  {
+   "name": "Others",
+   "code": "OTH"
+  },
+  {
+   "name": "Facial Lotion",
+   "code": "FLT"
+  },
+  {
+   "name": "Facial Foam",
+   "code": "FLF"
+  },
+  {
+   "name": "Cologne",
+   "code": "CLG"
+  },
+  {
+   "name": "Parfum",
+   "code": "PFM"
+  }
+ ]
+}

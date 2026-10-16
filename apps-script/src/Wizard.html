@@ -1,0 +1,377 @@
+<script>
+/* ============================================================================
+ * Wizard registrasi produk (6 langkah). State disimpan di objek W; input diikat lewat data-atribut
+ * sehingga mengetik tidak me-render ulang (fokus tidak hilang). Render ulang hanya saat struktur berubah.
+ * ==========================================================================*/
+const STEPS = ['Identifikasi', 'Varian', 'Barcode', 'Kemasan & SKU', 'Harga', 'Validasi & Ajukan'];
+const ATTR = { shade: 'Shade', color: 'Warna', size: 'Ukuran', volume: 'Volume / Isi', scent: 'Aroma', formula: 'Formulasi', type: 'Tipe', other: 'Lainnya' };
+const UNITS = ['PCS', 'PACK', 'BOX', 'SET', 'LUSIN'];
+let W = null, REF = { brands: [], cats: [] };
+
+const newSku = (q, bundle) => ({ key: uid(), skuType: bundle ? 'bundle' : q === 1 ? 'single' : 'multipack', packQty: bundle ? 1 : q, salesUnit: bundle ? 'SET' : q === 1 ? 'PCS' : 'PACK', purchasePrice: '', sellingPrice: '', skuCodeOverride: '', components: [] });
+const newVariant = (bundle) => ({ key: uid(), variantCode: '', name: '', attrs: {}, barcodeMode: bundle ? 'internal' : 'gtin', barcodeCode: '', skus: [newSku(1, bundle)] });
+const emptyW = () => ({ id: null, version: null, step: 0, formKey: uid(), brandId: '', categoryId: '', productCode: '', name: '', productType: 'standard', description: '', baseUnit: 'PCS', hasVariants: false, attrTypes: ['shade'], variants: [newVariant(false)], errors: {}, issues: [] });
+
+function fromDetail(d) {
+  const types = [];
+  d.variants.forEach((v) => (v.attributes || []).forEach((a) => types.indexOf(a.type) < 0 && types.push(a.type)));
+  return Object.assign(emptyW(), {
+    id: d.id, version: d.version, brandId: d.brand_id, categoryId: d.category_id, productCode: d.product_code, name: d.name, productType: d.product_type, description: d.description || '', baseUnit: d.base_unit, hasVariants: d.has_variants, attrTypes: types.length ? types : ['shade'],
+    variants: d.variants.map((v) => ({ key: v.id, variantCode: v.variant_code || '', name: v.name || '', attrs: Object.fromEntries((v.attributes || []).map((a) => [a.type, a.value])), barcodeMode: v.barcode ? v.barcode.type : 'none', barcodeCode: v.barcode ? v.barcode.code : '',
+      skus: v.skus.map((s) => ({ key: s.id, skuType: s.sku_type, packQty: s.pack_qty, salesUnit: s.sales_unit, purchasePrice: s.purchase_price === null ? '' : String(s.purchase_price), sellingPrice: s.selling_price === null ? '' : String(s.selling_price), skuCodeOverride: s.sku_source === 'manual' ? s.sku_code : '', components: s.components.map((c) => ({ skuId: c.skuId, label: c.skuCode + ' — ' + c.name, quantity: c.quantity, purchasePrice: c.purchasePrice })) })) })),
+  });
+}
+
+function toPayload() {
+  const num = (s) => (String(s).trim() === '' ? null : Number(String(s).replace(/\./g, '').replace(',', '.')));
+  return {
+    brandId: W.brandId, categoryId: W.categoryId, productCode: W.productCode, name: W.name, productType: W.productType, description: W.description, baseUnit: W.baseUnit, hasVariants: W.hasVariants, version: W.version,
+    variants: W.variants.map((v) => ({
+      variantCode: W.hasVariants ? v.variantCode : '', name: W.hasVariants ? v.name : '',
+      attributes: W.hasVariants ? W.attrTypes.filter((t) => (v.attrs[t] || '').trim()).map((t) => ({ type: t, value: v.attrs[t] })) : [],
+      barcode: { mode: v.barcodeMode, code: v.barcodeCode || null },
+      skus: v.skus.map((s) => ({ skuType: s.skuType, packQty: s.packQty, salesUnit: s.salesUnit, purchasePrice: num(s.purchasePrice), sellingPrice: num(s.sellingPrice), skuCodeOverride: s.skuCodeOverride || null, components: s.skuType === 'bundle' ? s.components.map((c) => ({ skuId: c.skuId, quantity: c.quantity })) : undefined })),
+    })),
+  };
+}
+
+function suggestCode(name, brandName) {
+  let n = name;
+  if (brandName) n = n.replace(new RegExp('^' + brandName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s+', 'i'), '');
+  const size = (/(\d+)\s*(ml|gr|g|gram)/i.exec(n) || [])[1] || '';
+  const letters = n.replace(/(\d+)\s*(ml|gr|g|gram)/gi, '').split(/\s+/).filter((w) => /^[a-z]/i.test(w)).map((w) => w[0]).join('').toUpperCase().slice(0, 4);
+  return normCode(letters + size).slice(0, 16);
+}
+function suggestVariantCode(value, taken) {
+  const words = value.trim().split(/\s+/);
+  let base = /^\d/.test(value) ? (normCode(value).replace(/[A-Z]+$/, '') || normCode(value)) : words.map((w) => w[0]).join('');
+  base = normCode(base).slice(0, 6) || 'V';
+  let code = base, i = 2;
+  while (taken.has(code)) code = base + i++;
+  return code;
+}
+const vLabel = (v, i) => (W.hasVariants ? v.name || W.attrTypes.map((t) => v.attrs[t]).filter(Boolean).join(' / ') || 'Varian ' + (i + 1) : W.name || 'Produk');
+
+// --------------------------------------------------------------------------- validasi klien
+function validateStep(s) {
+  const e = {};
+  if (s === 0) {
+    if (!W.brandId) e.brandId = 'Brand wajib dipilih';
+    if (!W.categoryId) e.categoryId = 'Kategori wajib dipilih';
+    if (!/^[A-Z0-9]{2,16}$/.test(W.productCode)) e.productCode = 'Kode produk 2–16 huruf/angka tanpa spasi';
+    if (W.name.trim().length < 3) e.name = 'Nama produk minimal 3 karakter';
+  }
+  if (s === 1 && W.hasVariants) {
+    const codes = {}, sigs = {};
+    W.variants.forEach((v, i) => {
+      if (!v.variantCode) e['v' + i + 'code'] = 'Wajib'; else if (codes[v.variantCode]) e['v' + i + 'code'] = 'Kode ganda';
+      codes[v.variantCode] = 1;
+      const sig = W.attrTypes.map((t) => t + '=' + String(v.attrs[t] || '').toLowerCase().replace(/\s+/g, ' ').trim()).filter((x) => !/=$/.test(x)).join('|');
+      if (!sig) e['v' + i + 'attr'] = 'Isi nilai atribut'; else if (sigs[sig]) e['v' + i + 'attr'] = 'Kombinasi atribut sama dengan varian lain';
+      sigs[sig] = 1;
+    });
+  }
+  if (s === 2) {
+    const seen = {};
+    W.variants.forEach((v, i) => {
+      if (v.barcodeMode === 'gtin' && !/^\d{8}$|^\d{12,14}$/.test(v.barcodeCode)) e['v' + i + 'bc'] = 'GTIN harus 8/12/13/14 digit';
+      if (v.barcodeCode && seen[v.barcodeCode]) e['v' + i + 'bc'] = 'Barcode sama dengan varian lain';
+      seen[v.barcodeCode] = 1;
+    });
+  }
+  if (s === 3) W.variants.forEach((v, i) => {
+    if (!v.skus.length) e['v' + i + 'skus'] = 'Minimal satu kemasan';
+    v.skus.forEach((k) => k.skuType === 'bundle' && !k.components.length && (e['v' + i + 'skus'] = 'Tambahkan komponen bundle'));
+  });
+  return e;
+}
+
+function gotoStep(t) {
+  if (t > W.step) for (let s = W.step; s < t; s++) { const e = validateStep(s); if (Object.keys(e).length) { W.errors = e; W.step = s; drawWizard(); toast('error', 'Periksa kembali isian', Object.values(e)[0]); return; } }
+  W.errors = {}; W.step = t; drawWizard(); window.scrollTo(0, 0);
+}
+
+// --------------------------------------------------------------------------- render
+route('registrasi', async (main, args) => {
+  const [brands, cats] = await Promise.all([call('ref.list', { kind: 'brand' }), call('ref.list', { kind: 'category' })]);
+  REF = { brands: brands.filter((b) => b.status !== 'rejected'), cats: cats.filter((c) => c.status !== 'rejected') };
+  if (args[0]) {
+    const d = await call('product.get', { id: args[0] });
+    if (d.status !== 'draft') { toast('info', 'Produk bukan Draft', 'Perubahan dilakukan lewat Ajukan perubahan.'); return go('produk/' + d.id); }
+    W = fromDetail(d);
+  } else if (!W || W.id) W = emptyW();
+  drawWizard();
+});
+
+function drawWizard() {
+  const main = $('#main');
+  const err = (k) => (W.errors[k] ? `<div class="err">${esc(W.errors[k])}</div>` : '');
+  const brand = REF.brands.find((b) => b.id === W.brandId), cat = REF.cats.find((c) => c.id === W.categoryId);
+  main.innerHTML = head(W.id ? 'Edit Draft' : 'Registrasi Produk Baru', 'Isi bertahap. Draft dapat disimpan kapan saja.', `<button class="btn sec" id="wsave">Simpan Draft</button>`) +
+    `<div class="steps">${STEPS.map((s, i) => `<a data-step="${i}" class="${i === W.step ? 'on' : i < W.step ? 'done' : ''}"><span class="n">${i < W.step ? '✓' : i + 1}</span>${s}</a>`).join('')}</div>
+    <div class="wiz"><div id="wbody"></div><aside>${card('Pratinjau identitas', `<div class="small grid" style="gap:6px">
+      <div class="row between"><span class="muted">Brand</span><b>${brand ? esc(brand.name + ' (' + brand.code + ')') : '—'}</b></div>
+      <div class="row between"><span class="muted">Kategori</span><b>${cat ? esc(cat.name + ' (' + cat.code + ')') : '—'}</b></div>
+      <div class="row between"><span class="muted">Kode produk</span><b class="mono">${esc(W.productCode || '—')}</b></div>
+      <div class="row between"><span class="muted">Tipe</span><b>${W.productType === 'bundle' ? 'Bundle campuran' : 'Produk standar'}</b></div>
+      <div class="row between"><span class="muted">Varian / SKU</span><b>${W.variants.length} / ${W.variants.reduce((a, v) => a + v.skus.length, 0)}</b></div>
+      <div style="border-top:1px solid #f1f2f4;padding-top:6px"><b>${esc(W.name || 'Nama produk…')}</b></div>
+      ${W.variants.slice(0, 8).map((v, i) => `<div class="row between tiny muted"><span>${esc(vLabel(v, i))}</span><span class="mono">${esc(v.barcodeCode || (v.barcodeMode === 'none' ? 'tanpa barcode' : '…'))}</span></div>`).join('')}</div>`)}
+      <div class="mt">${alertBox('info', 'Identitas yang dibedakan', '<div class="tiny">• ID internal (PRD-xxxxxx) — tidak pernah berubah<br>• SKU bisnis — untuk BeeCloud & Shopee<br>• GTIN produsen / barcode internal — disimpan terpisah</div>')}</div></aside></div>`;
+  const body = $('#wbody');
+  body.innerHTML = [stepIdentity, stepVariants, stepBarcode, stepPacking, stepPrice, stepReview][W.step](err) +
+    `<div class="row between mt"><button class="btn sec" id="wprev" ${W.step === 0 ? 'disabled' : ''}>Sebelumnya</button>${W.step < 5 ? `<button class="btn" id="wnext">Lanjut: ${STEPS[W.step + 1]}</button>` : `<span class="row"><button class="btn sec" id="wsave2">Simpan Draft</button><button class="btn" id="wsubmit">Simpan & Ajukan Review</button></span>`}</div>`;
+  $$('[data-step]').forEach((a) => (a.onclick = () => gotoStep(Number(a.dataset.step))));
+  $('#wsave').onclick = () => save();
+  if ($('#wsave2')) $('#wsave2').onclick = () => save();
+  if ($('#wprev')) $('#wprev').onclick = () => gotoStep(W.step - 1);
+  if ($('#wnext')) $('#wnext').onclick = () => gotoStep(W.step + 1);
+  if ($('#wsubmit')) $('#wsubmit').onclick = () => submit(false);
+  bindInputs(body);
+  initCombos(body);
+  [null, null, mountBarcodeChecks, mountSkuPreview, null, mountReview][W.step] && [null, null, mountBarcodeChecks, mountSkuPreview, null, mountReview][W.step]();
+  if (W.step === 0) dupCheck();
+  if (W.step === 4) $$('tr[data-cost]').forEach(drawMargin);
+}
+
+/** data-w="field" (produk), data-v="idx" data-wf="field" (varian), data-s="sidx" (sku), data-attr="type" */
+function bindInputs(root) {
+  $$('[data-w]', root).forEach((el) => (el.oninput = el.onchange = () => {
+    let v = el.type === 'checkbox' ? el.checked : el.value;
+    if (el.dataset.w === 'productCode') { v = normCode(v); el.value = v; }
+    W[el.dataset.w] = v;
+    if (el.dataset.w === 'name' || el.dataset.w === 'productCode') dupCheck();
+  }));
+  $$('[data-v]', root).forEach((el) => (el.oninput = el.onchange = () => {
+    const v = W.variants[Number(el.dataset.v)];
+    let val = el.value;
+    if (el.dataset.attr) v.attrs[el.dataset.attr] = val;
+    else if (el.dataset.s !== undefined) {
+      const s = v.skus[Number(el.dataset.s)];
+      if (el.dataset.wf === 'skuCodeOverride') { val = val.toUpperCase(); el.value = val; }
+      if (/Price$/.test(el.dataset.wf)) { val = val.replace(/[^\d]/g, ''); el.value = val; drawMargin(el.closest('tr')); }
+      s[el.dataset.wf] = val;
+      if (el.dataset.wf === 'skuCodeOverride') refreshSkuPreview();
+    } else {
+      if (el.dataset.wf === 'variantCode') { val = normCode(val); el.value = val; }
+      if (el.dataset.wf === 'barcodeCode') { val = val.replace(/\D/g, '').slice(0, 14); el.value = val; checkBarcode(Number(el.dataset.v)); }
+      v[el.dataset.wf] = val;
+    }
+  }));
+}
+
+function stepIdentity(err) {
+  const opt = (r) => ({ value: r.id, label: r.name, hint: r.code, badge: r.status === 'pending' ? B('usulan', 'b-amber') : r.status === 'inactive' ? B('nonaktif') : '' });
+  const live = (r) => r.status !== 'inactive';
+  return card('Langkah 1 — Identifikasi produk', `<div class="grid g2">
+    <label class="f"><span class="req">Brand</span>${combo('wbrand', REF.brands.filter(live).map(opt), W.brandId, 'Pilih brand…', (v) => { W.brandId = v; drawWizard(); })}${err('brandId')}<a class="small" id="newbrand">+ Usulkan brand baru</a></label>
+    <label class="f"><span class="req">Kategori</span>${combo('wcat', REF.cats.filter(live).map(opt), W.categoryId, 'Pilih kategori…', (v) => { W.categoryId = v; drawWizard(); })}${err('categoryId')}<a class="small" id="newcat">+ Usulkan kategori baru</a></label>
+    <label class="f" style="grid-column:1/-1"><span class="req">Nama produk master</span><input data-w="name" value="${esc(W.name)}" class="${W.errors.name ? 'bad' : ''}" placeholder="Tanpa jumlah kemasan. Contoh: Viva Air Mawar 100ml">${err('name')}</label>
+    <label class="f"><span class="req">Kode produk</span><div class="row" style="flex-wrap:nowrap"><input data-w="productCode" class="mono ${W.errors.productCode ? 'bad' : ''}" maxlength="16" value="${esc(W.productCode)}" placeholder="GH180"><button class="btn sec" id="sugg" title="Sarankan dari nama">✨</button></div><div class="hint">Unik per brand, dipakai di SKU.</div>${err('productCode')}</label>
+    <label class="f"><span class="req">Tipe produk</span><select id="wtype"><option value="standard" ${W.productType === 'standard' ? 'selected' : ''}>Produk standar (satuan / multipack)</option><option value="bundle" ${W.productType === 'bundle' ? 'selected' : ''}>Bundle campuran (BOM)</option></select></label>
+    <label class="f"><span>Satuan dasar</span><select data-w="baseUnit">${UNITS.map((u) => `<option ${W.baseUnit === u ? 'selected' : ''}>${u}</option>`).join('')}</select></label>
+    <label class="f"><span>Deskripsi (opsional)</span><input data-w="description" value="${esc(W.description)}"></label>
+  </div><div id="dupbox" class="mt"></div>`);
+}
+
+const dupCheck = debounce(async () => {
+  const box = $('#dupbox');
+  if (!box || !W.brandId || W.name.trim().length < 3) return;
+  try {
+    const d = await call('duplicates.check', { productId: W.id, brandId: W.brandId, name: W.name, productCode: W.productCode });
+    if ($('#dupbox')) $('#dupbox').innerHTML = d.length ? alertBox(d.some((x) => x.severity === 'block') ? 'error' : 'warn', 'Kemungkinan duplikat ditemukan', '') + '<div class="mt">' + duplicateList(d) + '</div>' : '';
+  } catch (e) {}
+}, 600);
+
+function stepVariants(err) {
+  if (!W.hasVariants) return card('Langkah 2 — Varian fisik', `<label class="row"><input type="checkbox" id="hasv" style="width:auto"> <b>Produk ini memiliki varian (shade, ukuran, aroma, dll.)</b></label><p class="small muted">Tanpa varian: satu varian default. Varian baru di kemudian hari ditambahkan lewat change request.</p>`);
+  return card('Langkah 2 — Varian fisik', `<label class="row"><input type="checkbox" id="hasv" checked style="width:auto"> <b>Produk ini memiliki varian</b></label>
+    <div class="mt small">Jenis atribut: ${Object.keys(ATTR).map((t) => `<button class="chip ${W.attrTypes.indexOf(t) >= 0 ? 'on' : ''}" data-at="${t}">${ATTR[t]}</button>`).join(' ')}</div>
+    <div class="box mt"><label class="f"><span>Tambah banyak varian sekaligus — satu ${ATTR[W.attrTypes[0]].toLowerCase()} per baris</span><textarea id="bulk" rows="3" placeholder="Natural Ochre&#10;Silky Yellow&#10;Soft Peach"></textarea></label><button class="btn sec sm mt" id="bulkadd">Buat varian</button><div class="tiny muted">Konfigurasi kemasan varian pertama disalin otomatis.</div></div>
+    <div class="tw mt"><table><thead><tr><th>Kode</th><th>Nama varian</th>${W.attrTypes.map((t) => `<th>${ATTR[t]}</th>`).join('')}<th></th></tr></thead><tbody>
+    ${W.variants.map((v, i) => `<tr><td><input data-v="${i}" data-wf="variantCode" class="mono ${W.errors['v' + i + 'code'] ? 'bad' : ''}" style="width:90px" maxlength="12" value="${esc(v.variantCode)}">${err('v' + i + 'code')}</td><td><input data-v="${i}" data-wf="name" value="${esc(v.name)}" placeholder="otomatis dari atribut"></td>
+      ${W.attrTypes.map((t) => `<td><input data-v="${i}" data-attr="${t}" class="${W.errors['v' + i + 'attr'] ? 'bad' : ''}" value="${esc(v.attrs[t] || '')}"></td>`).join('')}
+      <td style="white-space:nowrap"><button class="btn ghost sm" data-dup="${i}" title="Duplikasi">⧉</button><button class="btn ghost sm" data-del="${i}" ${W.variants.length === 1 ? 'disabled' : ''} title="Hapus">✕</button>${err('v' + i + 'attr')}</td></tr>`).join('')}
+    </tbody></table></div><button class="btn sec sm mt" id="addv">+ Tambah satu varian</button>`);
+}
+
+function stepBarcode(err) {
+  return card('Langkah 3 — Registrasi barcode', alertBox('info', null, '<b>GTIN produsen</b>: barcode resmi pada kemasan; check digit divalidasi otomatis — angka valid belum tentu GTIN resmi, cocokkan dengan kemasan fisik. <b>Barcode internal</b>: prefix 200, dialokasikan sistem, tidak pernah dipakai ulang.') +
+    W.variants.map((v, i) => `<div class="box mt"><b class="small">${esc(vLabel(v, i))}</b> ${v.variantCode ? `<span class="mono tiny muted">(${esc(v.variantCode)})</span>` : ''}
+      <div class="grid mt" style="grid-template-columns:220px 1fr auto"><select data-bcmode="${i}"><option value="gtin" ${v.barcodeMode === 'gtin' ? 'selected' : ''}>GTIN produsen (resmi)</option><option value="internal" ${v.barcodeMode === 'internal' ? 'selected' : ''}>Barcode internal toko</option><option value="none" ${v.barcodeMode === 'none' ? 'selected' : ''}>Belum ada (isi nanti)</option></select>
+      ${v.barcodeMode === 'none' ? '<div class="warnt">Draft boleh tanpa barcode, tetapi wajib diisi sebelum diajukan.</div><span></span>' : `<div><div class="row" style="flex-wrap:nowrap"><input data-v="${i}" data-wf="barcodeCode" class="mono ${W.errors['v' + i + 'bc'] ? 'bad' : ''}" inputmode="numeric" value="${esc(v.barcodeCode)}" ${v.barcodeMode === 'internal' ? 'readonly placeholder="Klik Alokasikan"' : 'placeholder="Scan / ketik 13 digit"'}>${v.barcodeMode === 'internal' ? `<button class="btn sec" data-alloc="${i}" ${v.barcodeCode ? 'disabled' : ''}>Alokasikan</button>` : ''}</div>${err('v' + i + 'bc')}<div id="bcr${i}"></div></div><div id="bci${i}"></div>`}</div></div>`).join(''));
+}
+
+function mountBarcodeChecks() {
+  W.variants.forEach((v, i) => v.barcodeCode && checkBarcode(i));
+  $$('[data-bcmode]').forEach((s) => (s.onchange = () => { const v = W.variants[Number(s.dataset.bcmode)]; v.barcodeMode = s.value; v.barcodeCode = ''; drawWizard(); }));
+  $$('[data-alloc]').forEach((b) => (b.onclick = async () => {
+    const i = Number(b.dataset.alloc); const v = W.variants[i]; b.disabled = true;
+    try { const r = await call('barcode.allocate', { count: 1, requestKey: W.formKey + '-' + v.key, notes: 'Registrasi: ' + vLabel(v, i) }); v.barcodeCode = r[0].code; toast('success', 'Kode internal ' + r[0].code + ' dialokasikan'); drawWizard(); }
+    catch (e) { toast('error', e.message); b.disabled = false; }
+  }));
+}
+
+const BC_TIMERS = {};
+function checkBarcode(i) {
+  clearTimeout(BC_TIMERS[i]);
+  BC_TIMERS[i] = setTimeout(async () => {
+    const v = W.variants[i]; const box = $('#bcr' + i); if (!box) return;
+    if ((v.barcodeCode || '').length < 8) { box.innerHTML = ''; $('#bci' + i).innerHTML = ''; return; }
+    const r = await call('barcode.validate', { code: v.barcodeCode, mode: v.barcodeMode, productId: W.id });
+    if (!$('#bcr' + i)) return;
+    $('#bcr' + i).innerHTML = (r.ok ? `<div class="okt">✔ Format ${esc(r.symbology)} valid, check digit benar</div>` : `<div class="err">✖ ${esc(r.message)}</div>`) + (r.warnings || []).map((w) => `<div class="warnt">${esc(w)}</div>`).join('') + (r.owner ? `<div class="err"><b>Sudah dipakai: ${esc(r.owner.label)}</b></div>` : '');
+    $('#bci' + i).innerHTML = r.ok ? barcodeSvg(v.barcodeCode, 30) : '';
+  }, 400);
+}
+
+function stepPacking(err) {
+  const bundle = W.productType === 'bundle';
+  return card('Langkah 4 — Kemasan & SKU', `<p class="small">${bundle ? 'Bundle campuran: tentukan komponen (BOM). Komponen harus SKU aktif.' : 'Pilih isi kemasan yang dijual. Multipack terhubung ke varian yang sama — data produk tidak digandakan.'} Template: <span class="mono soft" id="tpl">…</span></p>` +
+    W.variants.map((v, i) => `<div class="box mt"><div class="row between"><b class="small">${esc(vLabel(v, i))}</b>${bundle ? '' : `<span class="row">${[1, 2, 3, 6, 10, 12, 24].map((q) => `<button class="chip ${v.skus.some((s) => s.packQty === q) ? 'on' : ''}" data-q="${q}" data-qv="${i}">${q === 1 ? 'Satuan' : q + ' pcs'}</button>`).join('')}<input data-cq="${i}" placeholder="isi…" style="width:64px;padding:3px 6px"><button class="chip" data-cqa="${i}">+</button>${W.variants.length > 1 ? `<button class="btn ghost sm" data-all="${i}">Terapkan ke semua varian</button>` : ''}</span>`}</div>${err('v' + i + 'skus')}
+      ${v.skus.map((s, si) => `<div class="soft mt"><div class="grid" style="grid-template-columns:120px 110px 1fr;align-items:center"><b class="small">${s.skuType === 'bundle' ? 'Bundle (1 set)' : s.packQty === 1 ? 'Satuan (1)' : 'Paket isi ' + s.packQty}</b>
+        <select data-unit="${i}:${si}">${UNITS.map((u) => `<option ${s.salesUnit === u ? 'selected' : ''}>${u}</option>`).join('')}</select>
+        <input data-v="${i}" data-s="${si}" data-wf="skuCodeOverride" class="mono small" placeholder="Override SKU (opsional — hanya untuk SKU lama)" value="${esc(s.skuCodeOverride)}"></div>
+        <div class="mono small mt" id="skp-${s.key}"><span class="muted">SKU: …</span></div>
+        ${s.skuType === 'bundle' ? bundleBox(i, si, s) : ''}</div>`).join('')}</div>`).join(''));
+}
+
+function bundleBox(i, si, s) {
+  const cost = s.components.reduce((a, c) => a + (c.purchasePrice || 0) * c.quantity, 0);
+  return `<div class="mt" style="border-top:1px solid #e5e7eb;padding-top:8px"><b class="tiny">Komponen bundle (BOM)</b>
+    ${s.components.map((c, ci) => `<div class="row small mt"><span class="grow">${esc(c.label)}</span><span class="tiny muted">${fmtRp(c.purchasePrice)}</span><input type="number" min="1" value="${c.quantity}" data-cqty="${i}:${si}:${ci}" style="width:70px"><button class="btn ghost sm" data-cdel="${i}:${si}:${ci}">✕</button></div>`).join('')}
+    <div class="mt" id="cpick-${s.key}"></div><div class="tiny mt">Estimasi biaya komponen: <b>${fmtRp(cost)}</b>${s.components.some((c) => c.purchasePrice === null) ? ' <span class="warnt" style="display:inline">(ada komponen tanpa harga beli)</span>' : ''}</div></div>`;
+}
+
+async function mountSkuPreview() {
+  $$('[data-q]').forEach((b) => (b.onclick = () => { const v = W.variants[Number(b.dataset.qv)]; const q = Number(b.dataset.q); v.skus = v.skus.some((s) => s.packQty === q) ? v.skus.filter((s) => s.packQty !== q) : v.skus.concat([newSku(q)]).sort((a, c) => a.packQty - c.packQty); drawWizard(); }));
+  $$('[data-cqa]').forEach((b) => (b.onclick = () => { const i = Number(b.dataset.cqa); const q = Number($(`[data-cq="${i}"]`).value); const v = W.variants[i]; if (q >= 1 && q <= 1000 && !v.skus.some((s) => s.packQty === q)) { v.skus = v.skus.concat([newSku(q)]).sort((a, c) => a.packQty - c.packQty); drawWizard(); } }));
+  $$('[data-all]').forEach((b) => (b.onclick = () => { const src = W.variants[Number(b.dataset.all)]; W.variants.forEach((v) => v !== src && (v.skus = src.skus.map((s) => Object.assign({}, s, { key: uid(), skuCodeOverride: '' })))); drawWizard(); }));
+  $$('[data-unit]').forEach((s) => (s.onchange = () => { const [i, si] = s.dataset.unit.split(':').map(Number); W.variants[i].skus[si].salesUnit = s.value; }));
+  $$('[data-cqty]').forEach((x) => (x.onchange = () => { const [i, si, ci] = x.dataset.cqty.split(':').map(Number); W.variants[i].skus[si].components[ci].quantity = Math.max(1, Number(x.value) || 1); drawWizard(); }));
+  $$('[data-cdel]').forEach((x) => (x.onclick = () => { const [i, si, ci] = x.dataset.cdel.split(':').map(Number); W.variants[i].skus[si].components.splice(ci, 1); drawWizard(); }));
+  const bundles = [].concat(...W.variants.map((v) => v.skus.filter((s) => s.skuType === 'bundle')));
+  if (bundles.length) {
+    const opts = (await call('sku.list', { status: 'active', limit: 3000 })).filter((s) => s.sku_type !== 'bundle');
+    bundles.forEach((s) => {
+      const box = $('#cpick-' + s.key); if (!box) return;
+      box.innerHTML = combo('cp' + s.key, opts.filter((o) => !s.components.some((c) => c.skuId === o.id)).map((o) => ({ value: o.id, label: o.sku_code, hint: o.display_name, raw: o })), '', 'Tambah komponen: cari SKU aktif…', (v, o) => { s.components.push({ skuId: v, label: o.raw.sku_code + ' — ' + o.raw.display_name, quantity: 1, purchasePrice: o.raw.purchase_price }); drawWizard(); });
+      initCombos(box);
+    });
+  }
+  refreshSkuPreview();
+}
+
+const refreshSkuPreview = debounce(async () => {
+  if (!W.brandId || !W.categoryId) return;
+  const items = [].concat(...W.variants.map((v) => v.skus.map((s) => ({ key: s.key, variantCode: W.hasVariants ? v.variantCode : '', barcode: v.barcodeCode || null, qty: s.packQty, override: s.skuCodeOverride || null }))));
+  const r = await call('sku.preview', { brandId: W.brandId, categoryId: W.categoryId, productCode: W.productCode, items, productId: W.id });
+  if ($('#tpl')) $('#tpl').textContent = r.template;
+  r.items.forEach((it) => {
+    const el = $('#skp-' + it.key); if (!el) return;
+    el.innerHTML = `<span class="muted" style="font-family:inherit">SKU:</span> <b style="color:${it.conflict ? '#e11d48' : it.ok ? '#111827' : '#9ca3af'}">${esc(it.sku || '— lengkapi barcode untuk membentuk SKU —')}</b>` +
+      (it.conflict ? `<div class="err">${esc(it.conflict)}</div>` : '') + (!it.ok && it.missing.length ? `<div class="warnt">Belum ada: ${esc(it.missing.join(', '))}</div>` : '') + (it.errors || []).map((e) => `<div class="err">${esc(e)}</div>`).join('');
+  });
+}, 300);
+
+function stepPrice() {
+  return card('Langkah 5 — Harga beli & jual', `<p class="small muted">Harga disimpan sebagai histori. Harga jual paket boleh berbeda (diskon grosir).</p>
+    <div class="tw"><table><thead><tr><th>Varian / kemasan</th><th>Harga beli (Rp)</th><th>Harga jual (Rp)</th><th>Margin</th></tr></thead><tbody>
+    ${W.variants.map((v, i) => v.skus.map((s, si) => `<tr data-cost="${s.skuType === 'bundle' ? s.components.reduce((a, c) => a + (c.purchasePrice || 0) * c.quantity, 0) : ''}"><td>${W.hasVariants ? esc(v.name || v.variantCode) + ' · ' : ''}${s.skuType === 'bundle' ? 'Bundle' : s.packQty === 1 ? 'Satuan' : 'Isi ' + s.packQty}</td>
+      <td><input data-v="${i}" data-s="${si}" data-wf="purchasePrice" inputmode="numeric" value="${esc(s.purchasePrice)}" style="width:140px" ${s.skuType === 'bundle' ? 'placeholder="otomatis dari BOM"' : ''}></td>
+      <td><input data-v="${i}" data-s="${si}" data-wf="sellingPrice" inputmode="numeric" value="${esc(s.sellingPrice)}" style="width:140px"></td><td class="small" data-margin></td></tr>`).join('')).join('')}
+    </tbody></table></div>`, `<button class="btn sec sm" id="fillpack">Isi harga beli paket = satuan × isi</button>`);
+}
+function drawMargin(tr) {
+  if (!tr) return;
+  const ins = $$('input', tr);
+  const buy = Number(ins[0].value) || Number(tr.dataset.cost) || 0, sell = Number(ins[1].value) || 0;
+  const m = buy > 0 && sell > 0 ? ((sell - buy) / sell) * 100 : null;
+  tr.querySelector('[data-margin]').innerHTML = m === null ? '—' : `<span class="${m < 0 ? 'err' : ''}" style="display:inline">${m.toFixed(1)}%${m < 0 ? ' (rugi)' : ''}</span>`;
+}
+
+function stepReview() {
+  const skuCount = W.variants.reduce((a, v) => a + v.skus.length, 0);
+  return card('Langkah 6 — Ringkasan & validasi', `<div class="grid g2 small"><div><span class="muted">Produk:</span> <b>${esc(W.name)}</b></div><div><span class="muted">Varian / SKU:</span> ${W.variants.length} / ${skuCount}</div>
+    <div><span class="muted">Barcode:</span> ${W.variants.filter((v) => v.barcodeMode === 'gtin' && v.barcodeCode).length} GTIN · ${W.variants.filter((v) => v.barcodeMode === 'internal' && v.barcodeCode).length} internal · ${W.variants.filter((v) => !v.barcodeCode).length} kosong</div></div>
+    <div id="rvissues" class="mt">${W.id ? spinner('Memeriksa kelengkapan…') : alertBox('info', null, 'Simpan draft terlebih dahulu untuk menjalankan validasi kelengkapan di server.')}</div><div id="rvdup" class="mt"></div>
+    <div class="mt">${alertBox('info', 'Alur persetujuan', 'Draft → Menunggu Review → Disetujui → Aktif. Reviewer tidak dapat menyetujui registrasi yang ia buat sendiri (maker-checker).')}</div>`);
+}
+async function mountReview() {
+  if (W.id) {
+    const issues = W.issues.length ? W.issues : await call('product.completeness', { id: W.id });
+    if ($('#rvissues')) $('#rvissues').innerHTML = issues.length ? alertBox('warn', issues.length + ' hal perlu dilengkapi sebelum diajukan', '<ul style="margin:4px 0 0 16px;padding:0">' + issues.map((i) => `<li>${esc(i.message)}</li>`).join('') + '</ul>') : alertBox('success', 'Data lengkap', 'Siap diajukan untuk review.');
+  }
+  if (W.brandId) {
+    const d = await call('duplicates.check', { productId: W.id, brandId: W.brandId, name: W.name, productCode: W.productCode, barcodes: W.variants.map((v) => v.barcodeCode).filter(Boolean) });
+    if ($('#rvdup') && d.length) $('#rvdup').innerHTML = card('Pemeriksaan duplikasi', duplicateList(d));
+  }
+}
+
+// --------------------------------------------------------------------------- aksi
+document.addEventListener('click', (e) => {
+  if (!W || !$('#wbody')) return;
+  const t = e.target.closest('button, a, input[type=checkbox]');
+  if (!t) return;
+  if (t.id === 'sugg') { const b = REF.brands.find((x) => x.id === W.brandId); W.productCode = suggestCode(W.name, b && b.name); drawWizard(); }
+  if (t.id === 'newbrand' || t.id === 'newcat') { const kind = t.id === 'newbrand' ? 'brand' : 'category'; refModal(kind, null, async (r) => { const list = await call('ref.list', { kind }); if (kind === 'brand') { REF.brands = list.filter((x) => x.status !== 'rejected'); W.brandId = r.id; } else { REF.cats = list.filter((x) => x.status !== 'rejected'); W.categoryId = r.id; } drawWizard(); }); }
+  if (t.id === 'hasv') { W.hasVariants = t.checked; if (!t.checked) W.variants = [W.variants[0]]; drawWizard(); }
+  if (t.dataset.at) { const at = t.dataset.at; const has = W.attrTypes.indexOf(at) >= 0; if (has && W.attrTypes.length === 1) return; W.attrTypes = has ? W.attrTypes.filter((x) => x !== at) : W.attrTypes.concat([at]); drawWizard(); }
+  if (t.id === 'bulkadd') {
+    const values = $('#bulk').value.split(/\n|;/).map((s) => s.trim()).filter(Boolean); if (!values.length) return;
+    const taken = new Set(W.variants.map((v) => v.variantCode).filter(Boolean));
+    const keep = W.variants.filter((v) => W.attrTypes.some((x) => (v.attrs[x] || '').trim()));
+    const tmpl = keep[0] || W.variants[0];
+    const created = values.map((val) => { const code = suggestVariantCode(val, taken); taken.add(code); const v = newVariant(W.productType === 'bundle'); v.variantCode = code; v.name = val; v.attrs = { [W.attrTypes[0]]: val }; v.skus = tmpl.skus.map((s) => Object.assign({}, s, { key: uid(), skuCodeOverride: '' })); return v; });
+    W.variants = keep.concat(created); drawWizard();
+  }
+  if (t.id === 'addv') { W.variants.push(newVariant(W.productType === 'bundle')); drawWizard(); }
+  if (t.dataset.dup !== undefined) { const i = Number(t.dataset.dup); const v = W.variants[i]; W.variants.splice(i + 1, 0, Object.assign({}, v, { key: uid(), variantCode: '', barcodeCode: '', attrs: Object.assign({}, v.attrs), skus: v.skus.map((s) => Object.assign({}, s, { key: uid() })) })); drawWizard(); }
+  if (t.dataset.del !== undefined && W.variants.length > 1) { W.variants.splice(Number(t.dataset.del), 1); drawWizard(); }
+  if (t.id === 'fillpack') { W.variants.forEach((v) => { const unit = Number((v.skus.find((s) => s.skuType === 'single') || {}).purchasePrice || 0); if (unit) v.skus.forEach((s) => s.skuType === 'multipack' && !s.purchasePrice && (s.purchasePrice = String(unit * s.packQty))); }); drawWizard(); }
+});
+document.addEventListener('change', (e) => {
+  if (e.target.id === 'wtype' && W) { const t = e.target.value; W.productType = t; W.baseUnit = t === 'bundle' ? 'SET' : 'PCS'; W.variants.forEach((v) => { v.skus = [newSku(1, t === 'bundle')]; if (t === 'bundle' && v.barcodeMode === 'gtin' && !v.barcodeCode) v.barcodeMode = 'internal'; }); drawWizard(); }
+});
+
+function applyServerErrors(e) {
+  const map = {};
+  (e.details || []).forEach((d) => {
+    if (!d.path) return;
+    const m = /^variants\.(\d+)\.(\w+)/.exec(d.path);
+    if (m) map['v' + m[1] + (m[2] === 'barcode' ? 'bc' : m[2] === 'variantCode' ? 'code' : m[2] === 'attributes' ? 'attr' : 'skus')] = d.message;
+    else map[d.path] = d.message;
+  });
+  W.errors = map;
+  const first = ((e.details || []).find((d) => d.path) || {}).path || '';
+  W.step = /^(brandId|categoryId|productCode|name)/.test(first) ? 0 : /barcode/.test(first) ? 2 : /Price/.test(first) ? 4 : /skus/.test(first) ? 3 : /variants/.test(first) ? 1 : W.step;
+  drawWizard();
+  toast('error', e.message, (e.details || [])[0] && e.details[0].message);
+}
+
+async function save() {
+  for (let s = 0; s < 4; s++) { const e = validateStep(s); if (Object.keys(e).length) { W.errors = e; W.step = s; drawWizard(); toast('error', 'Periksa kembali isian', Object.values(e)[0]); return null; } }
+  try {
+    const r = await call('product.save', { id: W.id, input: toPayload() });
+    const step = W.step;
+    W = fromDetail(r); W.step = step;
+    toast('success', 'Draft tersimpan', r.productNo);
+    if (location.hash !== '#/registrasi/' + r.id) history.replaceState(null, '', '#/registrasi/' + r.id);
+    drawWizard();
+    return r;
+  } catch (e) { applyServerErrors(e); return null; }
+}
+
+async function submit(ack) {
+  const saved = await save(); if (!saved) return;
+  try {
+    await call('product.workflow', { id: saved.id, action: 'submit', acknowledgeWarnings: !!ack });
+    toast('success', 'Registrasi diajukan', 'Menunggu review oleh Reviewer');
+    W = null; refreshPending(); go('produk/' + saved.id);
+  } catch (e) {
+    if (e.code === 'DUPLICATE_WARNING') return duplicateWarnModal(e.details.map((d) => d.data), () => submit(true));
+    if (e.code === 'VALIDATION_FAILED') { W.issues = e.details; W.step = 5; drawWizard(); toast('error', e.message); return; }
+    applyServerErrors(e);
+  }
+}
+</script>

@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <base target="_top" />
+    <meta charset="utf-8" />
+    <?!= include('Styles'); ?>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.6/JsBarcode.all.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  </head>
+  <body>
+    <div id="root"><div class="spin">Memuat aplikasi…</div></div>
+    <div class="toasts" id="toasts"></div>
+    <div id="modal-root"></div>
+    <?!= include('Core'); ?>
+    <?!= include('Pages'); ?>
+    <?!= include('Wizard'); ?>
+  </body>
+</html>
