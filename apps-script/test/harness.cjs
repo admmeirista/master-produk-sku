@@ -108,11 +108,12 @@ function createGas({ ownerEmail = 'owner@toko.local' } = {}) {
     copy: (name) => ({ getUrl: () => 'https://docs.google.com/copy/' + encodeURIComponent(name) }),
   };
   const cache = new Map();
+  const state = { lockBusy: false }; // simulasi user lain sedang memegang lock
   const toSigned = (buf) => [...buf].map((b) => (b > 127 ? b - 256 : b));
   const ctx = {
     console: { log() {}, error: (...a) => console.error(...a) },
     SpreadsheetApp: { getActive: () => ss, openById: () => ss, flush() {}, ProtectionType: { SHEET: 'SHEET' } },
-    LockService: { getScriptLock: () => ({ tryLock: () => true, waitLock() {}, releaseLock() {} }) },
+    LockService: { getScriptLock: () => ({ tryLock: () => !state.lockBusy, waitLock() {}, releaseLock() {} }) },
     CacheService: { getScriptCache: () => ({ get: (k) => cache.get(k) ?? null, put: (k, v) => cache.set(k, v), remove: (k) => cache.delete(k) }) },
     Session: { getEffectiveUser: () => ({ getEmail: () => ownerEmail }), getActiveUser: () => ({ getEmail: () => '' }) },
     Utilities: {
@@ -135,7 +136,7 @@ function createGas({ ownerEmail = 'owner@toko.local' } = {}) {
   vm.runInContext(src.replace("'__DB_SPREADSHEET_ID__'", "'test-db'").replace(/const DB_SPREADSHEET_ID = '[^']*';/, "const DB_SPREADSHEET_ID = 'test-db';"), ctx, { filename: 'apps-script-bundle.js' });
   /** Gagalkan penulisan ke tab tertentu setelah n tulisan berhasil (null = matikan). */
   const failWrites = (tab, n) => (n === null ? delete faults[tab] : (faults[tab] = n));
-  return { ctx, ss, sheets, cache, failWrites };
+  return { ctx, ss, sheets, cache, failWrites, state };
 }
 
 module.exports = { createGas };

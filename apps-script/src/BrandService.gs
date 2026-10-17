@@ -31,7 +31,11 @@ function brandSetStatus_(user, input) {
 /** Brand aktif untuk dipakai di registrasi produk. */
 function activeBrand_(id) {
   const b = db_('MASTER_BRANDS').byId(id);
-  if (!b) throw new AppError('Brand tidak ditemukan', [{ path: 'brandId', message: 'Pilih brand dari daftar' }], 'VALIDATION_FAILED');
+  if (!b || b.Status === STATUS.DELETED) throw new AppError('Brand tidak ditemukan', [{ path: 'brandId', message: 'Pilih brand dari daftar' }], 'VALIDATION_FAILED');
   if (b.Status !== STATUS.ACTIVE) throw new AppError(`Brand ${b.BrandName} sedang nonaktif`, [{ path: 'brandId', message: 'Brand nonaktif' }], 'VALIDATION_FAILED');
   return b;
+}
+
+function brandDelete_(user, input) {
+  return masterDelete_(user, 'brand', input.id);
 }

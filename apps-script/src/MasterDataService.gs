@@ -4,6 +4,7 @@
  *    (tidak berubah ketika nama diperbaiki, tidak pernah dipakai ulang walau datanya dinonaktifkan).
  *  - Duplikasi nama dicek dengan normalisasi (huruf besar/kecil, spasi, tanda baca, aksen) → diblokir.
  *    Nama yang MIRIP (fuzzy) → peringatan yang harus dikonfirmasi.
+ *  - Hapus hanya untuk data yang belum dipakai produk; baris disimpan berstatus DELETED agar kodenya tidak dipakai ulang.
  *  - Pembuatan kode berjalan di dalam script lock (withLock_) sehingga dua user yang menyimpan bersamaan
  *    tidak mungkin mendapat kode yang sama.
  */
@@ -32,7 +33,7 @@ function masterList_(kind, f) {
     .forEach((p) => (counts[p[k.id]] = (counts[p[k.id]] || 0) + 1));
   return db_(k.table)
     .rows()
-    .filter((r) => !f.activeOnly || r.Status === STATUS.ACTIVE)
+    .filter((r) => r.Status !== STATUS.DELETED && (!f.activeOnly || r.Status === STATUS.ACTIVE))
     .map((r) => masterView_(k, r, counts))
     .sort((a, b) => a.name.localeCompare(b.name, 'id'));
 }
@@ -48,7 +49,7 @@ function masterCleanName_(k, name) {
 /** Duplikasi persis (blokir) & nama mirip (peringatan). */
 function masterNameCheck_(k, name, exceptId) {
   const key = masterNameKey(name);
-  const others = db_(k.table).filter((r) => r[k.id] !== exceptId);
+  const others = db_(k.table).filter((r) => r[k.id] !== exceptId && r.Status !== STATUS.DELETED);
   const exact = others.find((r) => r.NameKey === key);
   const similar = exact
     ? []
@@ -150,9 +151,22 @@ function masterSetStatus_(user, kind, id, status) {
   if ([STATUS.ACTIVE, STATUS.INACTIVE].indexOf(status) < 0) throw new AppError('Status tidak valid');
   const rec = db_(k.table).byId(id);
   if (!rec) throw new AppError(k.label + ' tidak ditemukan', [], 'NOT_FOUND');
+  if (rec.Status === STATUS.DELETED) throw new AppError(k.label + ' sudah dihapus', [], 'NOT_FOUND');
   if (rec.Status === status) return masterView_(k, rec, {});
   const before = rec.Status;
   db_(k.table).update(rec, { Status: status, UpdatedBy: user.email, UpdatedAt: now_() });
   audit_(user.email, kind + (status === STATUS.ACTIVE ? '.activate' : '.deactivate'), kind, id, { status: before }, { status });
   return masterView_(k, rec, {});
+}
+
+/** Hapus brand/kategori yang BELUM menjadi referensi produk mana pun. Kode tetap dicadangkan (tidak dipakai ulang). */
+function masterDelete_(user, kind, id) {
+  const k = masterCfg_(kind);
+  const rec = db_(k.table).byId(id);
+  if (!rec || rec.Status === STATUS.DELETED) throw new AppError(k.label + ' tidak ditemukan', [], 'NOT_FOUND');
+  const used = db_('MASTER_PRODUCTS').filter((p) => p[k.id] === id).length;
+  if (used) throw new AppError(`${k.label} ${rec[k.name]} dipakai ${used} produk sehingga tidak dapat dihapus. Nonaktifkan saja.`, [], 'IN_USE');
+  db_(k.table).update(rec, { Status: STATUS.DELETED, UpdatedBy: user.email, UpdatedAt: now_() });
+  audit_(user.email, kind + '.delete', kind, id, { name: rec[k.name], code: rec[k.code], status: 'ACTIVE' }, { status: STATUS.DELETED });
+  return true;
 }

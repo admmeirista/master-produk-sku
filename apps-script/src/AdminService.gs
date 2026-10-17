@@ -59,12 +59,6 @@ function cleanUnitList_(list, label) {
 function settingsSave_(user, input) {
   const before = getSettings_();
   const val = {};
-  if (input.sku_template !== undefined) {
-    const t = String(input.sku_template).toUpperCase().trim();
-    const errs = validateSkuTemplate(t);
-    if (errs.length) throw new AppError(errs.join('; '));
-    val.sku_template = t;
-  }
   if (input.fuzzy_threshold !== undefined) {
     const f = Number(input.fuzzy_threshold);
     if (!(f >= 0.5 && f <= 0.99)) throw new AppError('Ambang kemiripan 0.5 – 0.99');
@@ -104,6 +98,7 @@ function settingsSave_(user, input) {
 
 function dashboard_() {
   const P = db_('MASTER_PRODUCTS').rows();
+  const pById = indexBy_(P, 'ProductID');
   const V = db_('PRODUCT_VARIANTS').rows();
   const C = db_('UNIT_CONVERSIONS').rows();
   const liveP = {};
@@ -112,13 +107,14 @@ function dashboard_() {
   const brands = indexBy_(db_('MASTER_BRANDS').rows(), 'BrandID');
   const byBrand = {};
   liveV.forEach((v) => {
-    const p = P.find((x) => x.ProductID === v.ProductID);
+    const p = pById[v.ProductID];
     const b = (brands[p.BrandID] || {}).BrandName || '-';
     byBrand[b] = (byBrand[b] || 0) + 1;
   });
   return {
     counts: {
       brands: db_('MASTER_BRANDS').filter((b) => b.Status === STATUS.ACTIVE).length,
+      legacySkus: db_('EXTERNAL_SKU_MAPPINGS').filter((m) => m.IsActive && m.System === 'legacy').length,
       categories: db_('MASTER_CATEGORIES').filter((b) => b.Status === STATUS.ACTIVE).length,
       products: P.filter((p) => p.Status === STATUS.ACTIVE).length,
       variants: liveV.length,
@@ -127,6 +123,7 @@ function dashboard_() {
       withInternal: liveV.filter((v) => !v.GTIN && v.InternalBarcode).length,
       withoutBarcode: liveV.filter((v) => !v.GTIN && !v.InternalBarcode).length,
       conversions: C.filter((c) => !c.IsBaseUnit && c.Status === STATUS.ACTIVE && liveP[c.ProductID]).length,
+      variantsAll: V.length,
     },
     byBrand: Object.keys(byBrand)
       .map((k) => ({ name: k, n: byBrand[k] }))
@@ -135,12 +132,12 @@ function dashboard_() {
     recentProducts: P.slice()
       .sort((a, b) => String(b.CreatedAt).localeCompare(String(a.CreatedAt)))
       .slice(0, 6)
-      .map((p) => ({ id: p.ProductID, name: p.ProductName, productNo: productNoLabel(p.ProductNo), brandName: (brands[p.BrandID] || {}).BrandName, createdAt: p.CreatedAt, createdBy: p.CreatedBy, variants: V.filter((v) => v.ProductID === p.ProductID).length })),
-    recent: db_('AuditLog')
+      .map((p) => ({ id: p.ProductID, name: p.ProductName, productNo: p.ProductCode, brandName: (brands[p.BrandID] || {}).BrandName, createdAt: p.CreatedAt, createdBy: p.CreatedBy, variants: V.filter((v) => v.ProductID === p.ProductID).length })),
+    recent: db_('AUDIT_LOGS')
       .rows()
       .slice(-10)
       .reverse()
-      .map((a) => ({ action: a.action, actor: a.actor, createdAt: a.created_at, entityType: a.entity_type, entityId: a.entity_id })),
+      .map((a) => ({ action: a.Action, actor: a.Actor, createdAt: a.CreatedAt, entityType: a.EntityType, entityId: a.EntityID })),
   };
 }
 
@@ -148,10 +145,12 @@ function dashboard_() {
 
 function auditList_(f) {
   f = f || {};
-  let rows = db_('AuditLog').rows().slice().reverse();
-  if (f.entityType) rows = rows.filter((a) => a.entity_type === f.entityType);
-  if (f.action) rows = rows.filter((a) => a.action.indexOf(f.action) >= 0);
-  if (f.actor) rows = rows.filter((a) => String(a.actor).indexOf(f.actor) >= 0);
-  if (f.entityId) rows = rows.filter((a) => a.entity_id === f.entityId);
-  return paginate_(rows, f.page, 50);
+  let rows = db_('AUDIT_LOGS').rows().slice().reverse();
+  if (f.entityType) rows = rows.filter((a) => a.EntityType === f.entityType);
+  if (f.action) rows = rows.filter((a) => String(a.Action).indexOf(f.action) >= 0);
+  if (f.actor) rows = rows.filter((a) => String(a.Actor).indexOf(f.actor) >= 0);
+  if (f.entityId) rows = rows.filter((a) => a.EntityID === f.entityId);
+  const page = paginate_(rows, f.page, 50);
+  page.rows = page.rows.map(auditView_);
+  return page;
 }

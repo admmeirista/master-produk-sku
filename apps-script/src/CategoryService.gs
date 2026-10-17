@@ -31,7 +31,11 @@ function categorySetStatus_(user, input) {
 
 function activeCategory_(id) {
   const c = db_('MASTER_CATEGORIES').byId(id);
-  if (!c) throw new AppError('Kategori tidak ditemukan', [{ path: 'categoryId', message: 'Pilih kategori dari daftar' }], 'VALIDATION_FAILED');
+  if (!c || c.Status === STATUS.DELETED) throw new AppError('Kategori tidak ditemukan', [{ path: 'categoryId', message: 'Pilih kategori dari daftar' }], 'VALIDATION_FAILED');
   if (c.Status !== STATUS.ACTIVE) throw new AppError(`Kategori ${c.CategoryName} sedang nonaktif`, [{ path: 'categoryId', message: 'Kategori nonaktif' }], 'VALIDATION_FAILED');
   return c;
+}
+
+function categoryDelete_(user, input) {
+  return masterDelete_(user, 'category', input.id);
 }

@@ -41,6 +41,7 @@ const ROUTES = {
   'brand.createMany': { perm: 'master.write', write: true, fn: (u, p) => brandCreateMany_(u, p) },
   'brand.rename': { perm: 'master.write', write: true, fn: (u, p) => brandRename_(u, p) },
   'brand.setStatus': { perm: 'master.write', write: true, fn: (u, p) => brandSetStatus_(u, p) },
+  'brand.delete': { perm: 'master.write', write: true, fn: (u, p) => brandDelete_(u, p) },
 
   'category.list': { perm: 'product.read', fn: (u, p) => categoryList_(p) },
   'category.preview': { perm: 'product.read', fn: (u, p) => categoryPreview_(p.name) },
@@ -48,6 +49,7 @@ const ROUTES = {
   'category.createMany': { perm: 'master.write', write: true, fn: (u, p) => categoryCreateMany_(u, p) },
   'category.rename': { perm: 'master.write', write: true, fn: (u, p) => categoryRename_(u, p) },
   'category.setStatus': { perm: 'master.write', write: true, fn: (u, p) => categorySetStatus_(u, p) },
+  'category.delete': { perm: 'master.write', write: true, fn: (u, p) => categoryDelete_(u, p) },
 
   'product.list': { perm: 'product.read', fn: (u, p) => productList_(p) },
   'product.search': { perm: 'product.read', fn: (u, p) => productSearch_(p.q) },
@@ -62,6 +64,7 @@ const ROUTES = {
 
   'barcode.allocate': { perm: 'barcode.allocate', write: true, fn: (u, p) => allocateInternal_(u, p.count, p.requestKey, p.notes).map((b) => b.Code) },
   'barcode.validate': { perm: 'product.read', fn: (u, p) => barcodeValidate_(p) },
+  'barcode.lookup': { perm: 'product.read', fn: (u, p) => barcodeLookup_(p.code) },
   'barcode.list': { perm: 'product.read', fn: (u, p) => barcodeList_(p) },
   'barcode.history': { perm: 'product.read', fn: (u, p) => barcodeHistory_(p.code) },
   'barcode.void': { perm: 'barcode.allocate', write: true, fn: (u, p) => barcodeVoid_(u, p.code, p.reason) },
@@ -74,6 +77,10 @@ const ROUTES = {
 
   'export.data': { perm: 'export.run', write: true, fn: (u, p) => exportData_(u, p) },
   'export.toSheet': { perm: 'export.run', write: true, fn: (u, p) => exportToSheet_(u, p) },
+
+  'import.preview': { perm: 'import.run', fn: (u, p) => importRun_(u, p, { dryRun: true }) },
+  'import.commit': { perm: 'import.run', write: true, fn: (u, p) => importRun_(u, p) },
+  'import.history': { perm: 'import.run', fn: () => importHistory_() },
 
   'user.list': { perm: 'user.manage', fn: () => userList_() },
   'user.create': { perm: 'user.manage', write: true, fn: (u, p) => createUser_(p, u) },
@@ -110,7 +117,7 @@ function meInfo_(user) {
     user,
     permissions: ROLE_PERMISSIONS[user.role] || [],
     appName: APP_NAME,
-    config: { skuTemplate: s.sku_template, baseUnits: s.base_units, packUnits: s.pack_units, attributeTypes: s.attribute_types, codeLength: s.master_code_length, roles: ROLES.map((r) => ({ id: r, label: ROLE_LABEL[r] })) },
+    config: { skuPrefix: SKU_PREFIX, productCodePrefix: PRODUCT_CODE_PREFIX, maxCombinations: MAX_COMBINATIONS, maxVariants: MAX_VARIANTS, baseUnits: s.base_units, packUnits: s.pack_units, attributeTypes: s.attribute_types, codeLength: s.master_code_length, roles: ROLES.map((r) => ({ id: r, label: ROLE_LABEL[r] })) },
   };
 }
 
@@ -149,7 +156,7 @@ function setup() {
   const info = [
     ['Database Master Produk & SKU', ''],
     ['Isi dan ubah data HANYA melalui aplikasi web agar validasi dan audit trail tetap berjalan. Jangan mengganti nama tab atau urutan kolom.', ''],
-    ['Hierarki: Brand + Kategori → MASTER_PRODUCTS → PRODUCT_VARIANTS (SKU + GTIN) → UNIT_CONVERSIONS', ''],
+    ['Hierarki: Brand + Kategori → MASTER_PRODUCTS → PRODUCT_VARIANTS (SKU internal) → VARIANT_BARCODES; konversi kemasan di UNIT_CONVERSIONS', ''],
     ['', ''],
     ['Tab', 'Isi'],
   ]
@@ -167,13 +174,12 @@ function setup() {
   const out = withLock_(() => {
     const st = db_('Settings');
     Object.keys(DEFAULT_SETTINGS).forEach((k) => {
-      const rec = st.find((r) => r.key === k);
-      if (!rec) st.insert({ key: k, value: JSON.stringify(DEFAULT_SETTINGS[k]), updated_by: 'setup', updated_at: now_() });
-      else if (k === 'sku_template' && JSON.parse(rec.value) === LEGACY_SKU_TEMPLATE) st.update(rec, { value: JSON.stringify(DEFAULT_SETTINGS.sku_template), updated_by: 'setup', updated_at: now_() });
+      if (!st.find((r) => r.key === k)) st.insert({ key: k, value: JSON.stringify(DEFAULT_SETTINGS[k]), updated_by: 'setup', updated_at: now_() });
     });
-    const seq = db_('Sequences');
-    ['product_no', 'internal_barcode'].forEach((n) => !seq.find((r) => r.name === n) && seq.insert({ name: n, value: '1' }));
+    // migrasi dulu (menyalin penghitung lama), baru penghitung yang belum ada dibuat
     const migration = migrateLegacy_('setup');
+    const seq = db_('SYSTEM_COUNTERS');
+    ['product_no', 'sku_no', 'internal_barcode'].forEach((n) => !seq.find((r) => r.CounterName === n) && seq.insert({ CounterName: n, Value: '1', UpdatedAt: now_() }));
     let admin = null;
     if (!db_('Users').rows().length) {
       const email = (Session.getEffectiveUser().getEmail() || 'admin@toko.local').toLowerCase();
@@ -184,7 +190,7 @@ function setup() {
     return { admin, migration };
   });
   const m = out.migration;
-  console.log(`Migrasi data lama: ${m.brands} brand, ${m.categories} kategori, ${m.products} produk, ${m.variants} varian, ${m.packs} kemasan ber-SKU, ${m.barcodes} barcode, ${m.assignments} histori barcode, ${m.mappings} mapping.`);
+  console.log(`Migrasi data lama: ${m.brands} brand, ${m.categories} kategori, ${m.products} produk, ${m.variants} varian, ${m.packs} kemasan, ${m.attributes} atribut, ${m.barcodes} barcode, ${m.legacySkus} SKU lama, ${m.mappings} mapping, ${m.audit} log audit, ${m.counters} penghitung.`);
   m.skipped.forEach((s) => console.log('  dilewati: ' + s));
   m.notMigrated.forEach((s) => console.log('  tidak dimigrasikan: ' + s));
   if (out.admin) console.log(`AKUN ADMIN DIBUAT — email: ${out.admin.email} | password sementara: ${out.admin.password}  (segera ganti di menu Profil)`);

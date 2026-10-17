@@ -1,12 +1,10 @@
 /**
- * Product Master: registrasi 3 langkah (Identifikasi → Varian → Satuan & Konversi) → Simpan Produk.
+ * Product Master — registrasi Quick Entry (1 varian) & Advanced (multi-varian), edit, direktori.
  *
- * Satu kali "Simpan Produk" menyimpan Product Master, seluruh varian, identitas barcode, dan konversi
- * satuan dalam SATU transaksi (withLock_ + staging + jurnal): tidak pernah tersimpan setengah.
- * Tanpa approval — produk langsung aktif dan muncul di Direktori. Validasi integritas tetap berjalan di server:
- *   kode produk unik per brand, SKU unik global, kombinasi varian tidak ganda, GTIN satu pemilik, konversi valid.
- * Identitas yang sudah tersimpan bersifat permanen: brand, kategori, kode produk, satuan dasar, atribut & SKU
- * varian, serta isi kemasan ber-SKU. Perubahan GTIN yang sudah tersimpan wajib disertai alasan (tercatat di audit).
+ * Satu kali "Simpan Produk" menyimpan Product Master, seluruh varian + atribut, barcode, dan konversi kemasan dalam
+ * SATU transaksi (withLock_ + staging + jurnal): tidak pernah tersimpan setengah. Tanpa approval — produk langsung aktif.
+ * User tidak mengisi kode apa pun: Product Code (PRD000123) dan SKU (SKU000456) dialokasikan otomatis di dalam lock.
+ * Identitas permanen: ProductID, ProductCode, VariantID, SKU. Nama, brand, kategori, atribut boleh dikoreksi (tercatat di audit).
  */
 
 function productRefs_(p) {
@@ -18,21 +16,31 @@ function productRefs_(p) {
 function productDetail_(id) {
   const p = db_('MASTER_PRODUCTS').byId(id);
   if (!p) throw new AppError('Produk tidak ditemukan', [], 'NOT_FOUND');
-  const convs = {};
-  db_('UNIT_CONVERSIONS')
-    .filter((c) => c.ProductID === id)
-    .sort((a, b) => (b.IsBaseUnit ? 1 : 0) - (a.IsBaseUnit ? 1 : 0) || a.SortOrder - b.SortOrder)
-    .forEach((c) => (convs[c.VariantID] = (convs[c.VariantID] || []).concat([c])));
+  const convs = groupBy_(
+    db_('UNIT_CONVERSIONS')
+      .filter((c) => c.ProductID === id && c.Status !== STATUS.DELETED)
+      .sort((a, b) => (b.IsBaseUnit ? 1 : 0) - (a.IsBaseUnit ? 1 : 0) || a.SortOrder - b.SortOrder),
+    'VariantID',
+  );
+  const attrs = attributesByVariant_(id);
+  const ext = {};
+  db_('EXTERNAL_SKU_MAPPINGS')
+    .filter((m) => m.ProductID === id && m.IsActive)
+    .forEach((m) => {
+      const vid = m.VariantID || (db_('UNIT_CONVERSIONS').byId(m.ConversionID) || {}).VariantID;
+      (ext[vid] = ext[vid] || []).push({ system: m.System, sku: m.ExternalSku, conversionId: m.ConversionID || '', status: m.MappingStatus });
+    });
   const variants = db_('PRODUCT_VARIANTS')
     .filter((v) => v.ProductID === id)
     .sort((a, b) => a.SortOrder - b.SortOrder)
-    .map((v) => variantView_(v, convs[v.VariantID]));
+    .map((v) => variantView_(v, convs[v.VariantID], attrs[v.VariantID] || [], ext[v.VariantID]));
   const refs = productRefs_(p);
   return {
     id: p.ProductID,
-    productNo: productNoLabel(p.ProductNo),
-    name: p.ProductName,
     productCode: p.ProductCode,
+    productNo: p.ProductCode,
+    legacyCode: p.LegacyCode || '',
+    name: p.ProductName,
     baseUnit: p.BaseUnit,
     hasVariants: p.HasVariants,
     status: p.Status,
@@ -52,25 +60,34 @@ function productAuditSummary_(d) {
   return {
     name: d.name,
     productCode: d.productCode,
+    brand: d.brand.name,
+    category: d.category.name,
     baseUnit: d.baseUnit,
     status: d.status,
     variants: d.variants.map((v) => ({
       sku: v.sku,
       name: v.name,
+      attributes: v.attributes.map((a) => a.name + '=' + a.value).join(', '),
       status: v.status,
       gtin: v.gtin,
       internal: v.internalBarcode,
-      units: v.conversions.filter((c) => !c.isBaseUnit).map((c) => `${c.unitName}=${c.factor} ${c.containsUnit} (${c.baseUnitEquivalent})${c.sku ? ' ' + c.sku : ''}${c.status !== STATUS.ACTIVE ? ' nonaktif' : ''}`),
+      units: v.conversions.filter((c) => !c.isBaseUnit).map((c) => `${c.unitName}=${c.factor} ${c.containsUnit} (${c.baseUnitEquivalent})${c.sku ? ' ' + c.sku : ''}${c.status !== STATUS.ACTIVE ? ' ' + c.status : ''}`),
     })),
   };
 }
 
-function productList_(f) {
-  f = f || {};
+/**
+ * Indeks direktori (satu baris per produk + teks pencarian). Dibangun dari batch read seluruh tabel terkait,
+ * lalu disimpan di CacheService per versi data — halaman Direktori tidak membaca ulang semua sheet setiap kali dibuka.
+ */
+function productIndex_() {
+  const key = 'dir:' + dataVersion_();
+  const cached = cacheGetBig_(key);
+  if (cached) return cached;
   const brands = indexBy_(db_('MASTER_BRANDS').rows(), 'BrandID');
   const cats = indexBy_(db_('MASTER_CATEGORIES').rows(), 'CategoryID');
   const stats = {};
-  const st = (pid) => (stats[pid] = stats[pid] || { variants: 0, active: 0, withBarcode: 0, skus: 0, text: '' });
+  const st = (pid) => (stats[pid] = stats[pid] || { variants: 0, active: 0, withBarcode: 0, skus: 0, packs: 0, text: '' });
   db_('PRODUCT_VARIANTS')
     .rows()
     .forEach((v) => {
@@ -84,64 +101,78 @@ function productList_(f) {
   db_('UNIT_CONVERSIONS')
     .rows()
     .forEach((c) => {
-      if (!c.SKU) return;
+      if (c.IsBaseUnit || c.Status === STATUS.DELETED) return;
       const s = st(c.ProductID);
-      s.skus++;
+      if (c.Status === STATUS.ACTIVE) s.packs++;
+      if (c.SKU) s.skus++;
       s.text += ' ' + [c.SKU, c.GTIN, c.InternalBarcode].join(' ');
     });
-  const q = cleanText(f.search);
-  const qn = normalizeName(q);
-  const qu = q.toUpperCase();
-  let rows = db_('MASTER_PRODUCTS')
+  db_('VARIANT_BARCODES')
     .rows()
-    .filter((p) => (f.status === 'all' || !f.status ? true : p.Status === f.status))
-    .filter((p) => (!f.brandId || p.BrandID === f.brandId) && (!f.categoryId || p.CategoryID === f.categoryId))
+    .forEach((b) => b.ProductID && (st(b.ProductID).text += ' ' + b.Code));
+  db_('EXTERNAL_SKU_MAPPINGS')
+    .rows()
+    .forEach((m) => m.ProductID && m.IsActive && (st(m.ProductID).text += ' ' + m.ExternalSku));
+  const rows = db_('MASTER_PRODUCTS')
+    .rows()
     .map((p) => {
-      const s = stats[p.ProductID] || { variants: 0, active: 0, withBarcode: 0, skus: 0, text: '' };
+      const s = stats[p.ProductID] || { variants: 0, active: 0, withBarcode: 0, skus: 0, packs: 0, text: '' };
       const b = brands[p.BrandID] || {};
       const c = cats[p.CategoryID] || {};
       return {
         id: p.ProductID,
-        productNo: productNoLabel(p.ProductNo),
+        productCode: p.ProductCode,
+        legacyCode: p.LegacyCode || '',
         productNoNum: p.ProductNo,
         name: p.ProductName,
-        productCode: p.ProductCode,
         baseUnit: p.BaseUnit,
+        hasVariants: p.HasVariants,
         status: p.Status,
         updatedAt: p.UpdatedAt,
+        brandId: p.BrandID,
         brandName: b.BrandName,
         brandCode: b.BrandCode,
+        categoryId: p.CategoryID,
         categoryName: c.CategoryName,
         categoryCode: c.CategoryCode,
         variantCount: s.variants,
         activeVariants: s.active,
         withBarcode: s.withBarcode,
         skuCount: s.skus,
+        packCount: s.packs,
         complete: s.active > 0 && s.withBarcode === s.active,
-        _text: (p.NameKey || '') + ' ' + p.ProductCode + ' ' + s.text.toUpperCase() + ' ' + productNoLabel(p.ProductNo),
+        q: ((p.NameKey || '') + ' ' + (p.ProductCode || '') + ' ' + (p.LegacyCode || '') + ' ' + s.text).toUpperCase(),
       };
-    })
+    });
+  cachePutBig_(key, rows);
+  return rows;
+}
+
+function productList_(f) {
+  f = f || {};
+  const q = cleanText(f.search);
+  const qn = normalizeName(q).toUpperCase();
+  const qu = q.toUpperCase();
+  let rows = productIndex_()
+    .filter((r) => (f.status === 'all' || !f.status ? true : r.status === f.status))
+    .filter((r) => (!f.brandId || r.brandId === f.brandId) && (!f.categoryId || r.categoryId === f.categoryId))
     .filter((r) => (f.completeness === 'incomplete' ? !r.complete : f.completeness === 'complete' ? r.complete : true))
-    .filter((r) => !q || r._text.indexOf(qn) >= 0 || r._text.toUpperCase().indexOf(qu) >= 0);
+    .filter((r) => !q || r.q.indexOf(qn) >= 0 || r.q.indexOf(qu) >= 0);
   const key = { name: 'name', brand: 'brandName', category: 'categoryName', productNo: 'productNoNum', skus: 'skuCount' }[f.sort] || 'updatedAt';
   const dir = f.dir === 'asc' ? 1 : -1;
   rows.sort((a, b) => (a[key] > b[key] ? 1 : a[key] < b[key] ? -1 : 0) * dir);
-  rows.forEach((r) => delete r._text);
-  return paginate_(rows, f.page, Math.min(Number(f.pageSize) || 25, 200));
+  const page = paginate_(rows, f.page, Math.min(Number(f.pageSize) || 25, 200));
+  page.rows = page.rows.map((r) => {
+    const o = Object.assign({}, r);
+    delete o.q;
+    return o;
+  });
+  return page;
 }
 
 /** Pencarian ringkas untuk searchable dropdown produk. */
 function productSearch_(q) {
-  return productList_({ search: q, status: 'all', pageSize: 20, sort: 'name', dir: 'asc' }).rows.map((r) => ({ id: r.id, name: r.name, code: r.productCode, brandName: r.brandName, productNo: r.productNo, status: r.status }));
-}
-
-function productSuggestCode_(brandId, name) {
-  const base = suggestProductCode(name || '');
-  const used = {};
-  db_('MASTER_PRODUCTS')
-    .filter((p) => p.BrandID === brandId)
-    .forEach((p) => (used[p.ProductCode] = 1));
-  return { code: uniquifyCode(base, (c) => !!used[c]) };
+  return productList_({ search: q, status: 'all', pageSize: 20, sort: 'name', dir: 'asc' }).rows.map((r) => ({ id: r.id, name: r.name, code: r.productCode, brandName: r.brandName, status: r.status }));
 }
 
 /** Nama produk identik / mirip pada brand yang sama — PERINGATAN, tidak pernah digabung otomatis. */
@@ -160,21 +191,23 @@ function similarProducts_(name, brandId, exceptId) {
     .slice(0, 5)
     .map((x) => ({
       id: x.p.ProductID,
-      productNo: productNoLabel(x.p.ProductNo),
-      name: x.p.ProductName,
       productCode: x.p.ProductCode,
+      name: x.p.ProductName,
       status: x.p.Status,
       score: x.score,
-      message: x.exact ? `Nama sama dengan "${x.p.ProductName}" (${productNoLabel(x.p.ProductNo)})` : `Nama mirip ${Math.round(x.score * 100)}% dengan "${x.p.ProductName}" (${productNoLabel(x.p.ProductNo)})`,
+      message: x.exact ? `Kemungkinan duplikat: nama sama dengan "${x.p.ProductName}" (${x.p.ProductCode})` : `Kemungkinan duplikat: nama mirip ${Math.round(x.score * 100)}% dengan "${x.p.ProductName}" (${x.p.ProductCode})`,
     }));
 }
 
 function productCheck_(p) {
-  return { similar: similarProducts_(p.name, p.brandId, p.productId), suggestedCode: p.brandId && p.name ? productSuggestCode_(p.brandId, p.name).code : '' };
+  return { similar: similarProducts_(p.name, p.brandId, p.productId) };
 }
 
 /**
  * Simpan produk baru / perubahan produk. opts.dryRun = validasi penuh tanpa menulis (pratinjau ringkasan).
+ * input: { productId?, version?, brandId, categoryId, name, baseUnit, hasVariants, acknowledgeSimilar,
+ *          variants: [{ id?, name, attributes:[{name,value}], status, barcode:{mode,code}, barcodeChangeReason,
+ *                       conversions: [{ id?, unitName, factor, containsUnit, isTradeItem, status, barcode, barcodeChangeReason }] }] }
  */
 function productSave_(user, input, opts) {
   opts = opts || {};
@@ -189,10 +222,6 @@ function productSave_(user, input, opts) {
   if (input.productId && !existing) throw new AppError('Produk tidak ditemukan', [], 'NOT_FOUND');
   if (existing && input.version !== undefined && input.version !== null && Number(input.version) !== existing.Version)
     throw new AppError('Produk ini baru saja diubah oleh pengguna lain. Muat ulang lalu ulangi perubahan Anda.', [], 'STALE_VERSION');
-
-  // ---------------- Langkah 1: identifikasi produk
-  let brand = null;
-  let cat = null;
   const collect = (fn) => {
     try {
       return fn();
@@ -202,67 +231,45 @@ function productSave_(user, input, opts) {
       return null;
     }
   };
+
+  // ---------------- Tahap 1: identifikasi produk
   const name = cleanText(input.name);
   if (name.length < 3) err('name', 'Nama produk minimal 3 karakter');
   if (name.length > 120) err('name', 'Nama produk maksimal 120 karakter');
-  let productCode;
-  let baseUnit;
-  if (existing) {
-    brand = db_('MASTER_BRANDS').byId(existing.BrandID);
-    cat = db_('MASTER_CATEGORIES').byId(existing.CategoryID);
-    productCode = existing.ProductCode;
-    baseUnit = existing.BaseUnit;
-    if (input.brandId && input.brandId !== existing.BrandID) err('brandId', 'Brand tidak dapat diubah setelah produk tersimpan (SKU permanen)');
-    if (input.categoryId && input.categoryId !== existing.CategoryID) err('categoryId', 'Kategori tidak dapat diubah setelah produk tersimpan (SKU permanen)');
-    if (input.productCode && normalizeCode(input.productCode) !== productCode) err('productCode', 'Kode produk tidak dapat diubah setelah produk tersimpan');
-    if (input.baseUnit && normalizeUnit(input.baseUnit) !== baseUnit) err('baseUnit', 'Satuan dasar tidak dapat diubah setelah produk tersimpan');
-  } else {
-    brand = collect(() => activeBrand_(input.brandId));
-    cat = collect(() => activeCategory_(input.categoryId));
-    productCode = normalizeCode(input.productCode);
-    if (!productCode && brand && name) productCode = productSuggestCode_(brand.BrandID, name).code;
-    if (!/^[A-Z0-9]{2,16}$/.test(productCode)) err('productCode', 'Kode produk 2–16 huruf/angka');
-    else if (brand) {
-      const clash = P.find((p) => p.BrandID === brand.BrandID && p.ProductCode === productCode);
-      if (clash) err('productCode', `Kode produk ${productCode} sudah dipakai "${clash.ProductName}" pada brand ${brand.BrandName}`, 'DUPLICATE');
-    }
-    baseUnit = normalizeUnit(input.baseUnit);
-    if (!baseUnit) err('baseUnit', 'Pilih satuan dasar');
-    else if ((S.base_units || []).indexOf(baseUnit) < 0) err('baseUnit', `Satuan dasar ${baseUnit} tidak ada di daftar (tambahkan di Pengaturan)`);
-  }
-
-  // ---------------- Langkah 2: varian
+  const brandId = input.brandId || (existing && existing.BrandID);
+  const categoryId = input.categoryId || (existing && existing.CategoryID);
+  const brand = existing && brandId === existing.BrandID ? db_('MASTER_BRANDS').byId(brandId) : collect(() => activeBrand_(brandId));
+  const cat = existing && categoryId === existing.CategoryID ? db_('MASTER_CATEGORIES').byId(categoryId) : collect(() => activeCategory_(categoryId));
   const dbVariants = existing ? V.filter((v) => v.ProductID === existing.ProductID) : [];
-  const newCount = (input.variants || []).filter((v) => !v.id).length;
-  const hasVariants = existing ? existing.HasVariants || !!input.hasVariants : !!input.hasVariants;
-  if (!dbVariants.length && !newCount) err('variants', 'Minimal satu varian');
-  if (!hasVariants && dbVariants.length + newCount !== 1) err('variants', 'Produk tanpa varian harus memiliki tepat satu varian default');
-  if (newCount + dbVariants.length > 300) err('variants', 'Maksimal 300 varian per produk');
-  const ctx = {
-    err,
-    hasVariants,
-    dbVariants,
-    settings: S,
-    brandCode: brand ? brand.BrandCode : '',
-    categoryCode: cat ? cat.CategoryCode : '',
-    productCode,
-    baseUnit,
-    skuOwner: skuOwnerMap_(existing ? existing.ProductID : null),
-  };
-  // SKU milik produk sendiri tetap dicatat agar varian/kemasan baru tidak memakai SKU yang sama
-  if (existing) {
-    dbVariants.forEach((v) => v.SKU && (ctx.skuOwner[v.SKU.toUpperCase()] = 'varian ' + v.VariantName + ' pada produk ini'));
-    C.filter((c) => c.ProductID === existing.ProductID && c.SKU).forEach((c) => (ctx.skuOwner[c.SKU.toUpperCase()] = 'kemasan ' + c.UnitName + ' pada produk ini'));
+  let baseUnit = normalizeUnit(input.baseUnit) || (existing && existing.BaseUnit);
+  if (!baseUnit) err('baseUnit', 'Pilih satuan dasar');
+  else if (!existing || baseUnit !== existing.BaseUnit) {
+    if ((S.base_units || []).indexOf(baseUnit) < 0) err('baseUnit', `Satuan dasar ${baseUnit} tidak ada di daftar (tambahkan di Pengaturan)`);
+    if (existing && C.filter((c) => c.ProductID === existing.ProductID && !c.IsBaseUnit && c.Status !== STATUS.DELETED).length)
+      err('baseUnit', 'Satuan dasar tidak dapat diganti selama masih ada satuan kemasan. Hapus kemasan dulu.');
   }
-  const vplans = brand && cat ? planVariants_(input, ctx).filter(Boolean) : [];
 
-  // ---------------- Langkah 3: satuan & konversi
+  // ---------------- Tahap 2: varian & barcode
+  const newCount = (input.variants || []).filter((v) => !v.id).length;
+  const hasVariants = !!input.hasVariants || (existing ? existing.HasVariants && input.hasVariants === undefined : false);
+  if (!dbVariants.length && !newCount) err('variants', 'Minimal satu varian');
+  if (!hasVariants && dbVariants.length + newCount !== 1) err('variants', 'Quick Entry hanya untuk produk dengan tepat satu varian. Gunakan mode Advanced untuk banyak varian.');
+  if (newCount + dbVariants.length > MAX_VARIANTS) err('variants', `Maksimal ${MAX_VARIANTS} varian per produk`);
+  const ctx = { err, hasVariants, dbVariants, baseUnit };
+  const vplans = planVariants_(input, ctx).filter(Boolean);
+  if (hasVariants)
+    dbVariants
+      .filter((v) => !vplans.some((x) => x.dbv === v) && v.Status === STATUS.ACTIVE && !v.AttributeKey)
+      .forEach((v) => err('variants', `Varian "${v.VariantName}" belum punya atribut. Lengkapi atributnya di tabel varian.`));
+
+  // ---------------- Pengaturan tambahan: kemasan & konversi (opsional)
   vplans.forEach((vp) => (vp.convs = planConversions_(vp, ctx)));
   if (existing) {
-    const activeLeft = dbVariants.filter((v) => {
-      const vp = vplans.find((x) => x.dbv && x.dbv.VariantID === v.VariantID);
-      return (vp ? vp.status : v.Status) === STATUS.ACTIVE;
-    }).length + vplans.filter((x) => !x.dbv && x.status === STATUS.ACTIVE).length;
+    const activeLeft =
+      dbVariants.filter((v) => {
+        const vp = vplans.find((x) => x.dbv && x.dbv.VariantID === v.VariantID);
+        return (vp ? vp.status : v.Status) === STATUS.ACTIVE;
+      }).length + vplans.filter((x) => !x.dbv && x.status === STATUS.ACTIVE).length;
     if (!activeLeft) err('variants', 'Minimal satu varian harus aktif. Untuk menghentikan produk, nonaktifkan produknya.');
   }
 
@@ -270,38 +277,42 @@ function productSave_(user, input, opts) {
   const formCodes = {};
   vplans.forEach((vp) => {
     const vl = 'varian ' + (vp.i + 1) + ' (' + vp.name + ')';
-    const list = [{ b: vp.iv.barcode, path: vp.path + '.barcode', label: vl }].concat((vp.convs || []).filter((x) => x.isTradeItem && !x.kept).map((x) => ({ b: x.ic.barcode, path: x.path + '.barcode', label: 'kemasan ' + x.unitName + ' ' + vl })));
+    const list = [{ b: vp.iv.barcode, path: vp.path + '.barcode', label: vl }].concat((vp.convs || []).filter((x) => x.isTradeItem && !x.kept && x.status === STATUS.ACTIVE).map((x) => ({ b: x.ic.barcode, path: x.path + '.barcode', label: 'kemasan ' + x.unitName + ' ' + vl })));
     list.forEach((x) => {
       const code = x.b && x.b.mode !== 'none' ? cleanBarcode(x.b.code) : '';
       if (!code) return;
-      if (formCodes[code]) {
-        err(x.path, `Barcode ${code} juga dipakai ${formCodes[code]}. Setiap varian/kemasan wajib punya barcode sendiri.`, 'DUPLICATE');
-      } else formCodes[code] = x.label;
+      if (formCodes[code]) err(x.path, `Barcode ${code} juga dipakai ${formCodes[code]}. Setiap varian/kemasan wajib punya barcode sendiri.`, 'DUPLICATE');
+      else formCodes[code] = x.label;
     });
   });
 
   if (errs.length) throw new AppError('Periksa kembali isian (' + errs.length + ' masalah)', errs, 'VALIDATION_FAILED');
 
   const similar = similarProducts_(name, brand.BrandID, existing ? existing.ProductID : null);
-  if (!existing && similar.length && !input.acknowledgeSimilar && !opts.dryRun)
-    throw new AppError('Ada produk dengan nama sama/mirip pada brand ini. Pastikan bukan duplikat.', similar.map((s) => ({ path: 'name', message: s.message, code: 'SIMILAR', data: s })), 'SIMILAR_EXISTS');
+  const nameChanged = !existing || normalizeName(name) !== existing.NameKey || brand.BrandID !== existing.BrandID;
+  if (nameChanged && similar.length && !input.acknowledgeSimilar && !opts.dryRun)
+    throw new AppError('Kemungkinan produk duplikat pada brand ini. Lihat produk yang ada, atau lanjutkan bila memang berbeda.', similar.map((s) => ({ path: 'name', message: s.message, code: 'SIMILAR', data: s })), 'SIMILAR_EXISTS');
 
   // ---------------- Terapkan (di memori; ditulis sekaligus oleh commitAll_)
   const ts = now_();
   const before = existing ? productAuditSummary_(productDetail_(existing.ProductID)) : null;
+  const skuOwner = skuOwnerMap_();
   let p;
   if (existing) {
     p = existing;
-    P.update(p, { ProductName: name, NameKey: normalizeName(name), HasVariants: hasVariants, UpdatedBy: user.email, UpdatedAt: ts, Version: (p.Version || 1) + 1 });
+    const patch = { ProductName: name, NameKey: normalizeName(name), BrandID: brand.BrandID, CategoryID: cat.CategoryID, BaseUnit: baseUnit, HasVariants: hasVariants, UpdatedBy: user.email, UpdatedAt: ts, Version: (p.Version || 1) + 1 };
+    P.update(p, patch);
+    if (baseUnit !== before.baseUnit) C.filter((c) => c.ProductID === p.ProductID && c.IsBaseUnit).forEach((c) => C.update(c, { UnitName: baseUnit, ContainsUnit: baseUnit, UpdatedAt: ts }));
   } else {
+    const pc = allocateProductCode_();
     p = P.insert({
       ProductID: uuid_(),
-      ProductNo: nextSeq_('product_no'),
+      ProductNo: pc.no,
       BrandID: brand.BrandID,
       CategoryID: cat.CategoryID,
       ProductName: name,
       NameKey: normalizeName(name),
-      ProductCode: productCode,
+      ProductCode: pc.code,
       BaseUnit: baseUnit,
       HasVariants: hasVariants,
       Status: STATUS.ACTIVE,
@@ -310,6 +321,7 @@ function productSave_(user, input, opts) {
       UpdatedBy: user.email,
       UpdatedAt: ts,
       Version: 1,
+      LegacyCode: '',
     });
   }
   const bcErrs = [];
@@ -317,14 +329,16 @@ function productSave_(user, input, opts) {
   vplans.forEach((vp) => {
     let v = vp.dbv;
     if (!v) {
+      const sku = allocateSku_(skuOwner);
+      skuOwner[sku] = p.ProductName;
       v = V.insert({
         VariantID: uuid_(),
         ProductID: p.ProductID,
-        VariantCode: vp.code,
+        VariantCode: '',
         VariantName: vp.name,
         VariantAttributes: vp.attrs,
         AttributeKey: vp.key,
-        SKU: vp.sku,
+        SKU: sku,
         GTIN: '',
         InternalBarcode: '',
         IsDefault: !vp.attrs.length,
@@ -334,9 +348,15 @@ function productSave_(user, input, opts) {
         CreatedAt: ts,
         UpdatedAt: ts,
       });
+      writeAttributes_(v, vp.attrs);
       C.insert({ ConversionID: uuid_(), VariantID: v.VariantID, ProductID: p.ProductID, UnitName: baseUnit, ConversionFactor: 1, ContainsUnit: baseUnit, BaseUnitEquivalent: 1, IsBaseUnit: true, IsTradeItem: false, SKU: '', GTIN: '', InternalBarcode: '', Status: STATUS.ACTIVE, SortOrder: 0, CreatedAt: ts, UpdatedAt: ts });
-    } else if (v.VariantName !== vp.name || v.Status !== vp.status) {
-      V.update(v, { VariantName: vp.name, Status: vp.status, UpdatedAt: ts });
+    } else {
+      const patch = {};
+      if (v.VariantName !== vp.name) patch.VariantName = vp.name;
+      if (v.Status !== vp.status) patch.Status = vp.status;
+      if ((v.AttributeKey || '') !== vp.key) Object.assign(patch, { VariantAttributes: vp.attrs, AttributeKey: vp.key, IsDefault: !vp.attrs.length });
+      if (Object.keys(patch).length) V.update(v, Object.assign(patch, { UpdatedAt: ts }));
+      if (patch.AttributeKey !== undefined) writeAttributes_(v, vp.attrs);
     }
     const vb = applyBarcode_(user, vp.iv.barcode, { productId: p.ProductID, variantId: v.VariantID }, v, vp.iv.barcodeChangeReason, vp.path + '.barcode', 'Varian ' + name + ' ' + vp.name, bcErrs);
     if (vb) V.update(v, { GTIN: vb.gtin, InternalBarcode: vb.internal, UpdatedAt: ts });
@@ -344,16 +364,12 @@ function productSave_(user, input, opts) {
     let corder = 0;
     (vp.convs || []).forEach((x) => {
       let c = x.dbc;
-      const fields = {
-        UnitName: x.unitName,
-        ConversionFactor: x.factor,
-        ContainsUnit: x.containsUnit,
-        BaseUnitEquivalent: x.baseUnitEquivalent,
-        IsTradeItem: x.isTradeItem,
-        SKU: x.sku || '',
-        Status: x.status,
-        SortOrder: ++corder,
-      };
+      let sku = x.sku || '';
+      if (x.needsSku) {
+        sku = allocateSku_(skuOwner);
+        skuOwner[sku] = p.ProductName + ' (kemasan ' + x.unitName + ')';
+      }
+      const fields = { UnitName: x.unitName, ConversionFactor: x.factor, ContainsUnit: x.containsUnit, BaseUnitEquivalent: x.baseUnitEquivalent, IsTradeItem: x.isTradeItem, SKU: sku, Status: x.status, SortOrder: ++corder };
       if (!c) {
         if (x.status !== STATUS.ACTIVE) return; // baris baru yang langsung dihapus di formulir
         c = C.insert(Object.assign({ ConversionID: uuid_(), VariantID: v.VariantID, ProductID: p.ProductID, IsBaseUnit: false, GTIN: '', InternalBarcode: '', CreatedAt: ts, UpdatedAt: ts }, fields));
@@ -377,8 +393,8 @@ function productSave_(user, input, opts) {
 }
 
 /**
- * Terapkan pilihan barcode ke target (varian / kemasan). Mengembalikan {gtin, internal} baru,
- * atau null bila tidak berubah. Error dikumpulkan ke errs (bukan dilempar) agar semua masalah tampil sekaligus.
+ * Terapkan pilihan barcode ke target (varian / kemasan). Mengembalikan {gtin, internal} baru, atau null bila
+ * tidak berubah. Error dikumpulkan ke errs (bukan dilempar) agar semua masalah tampil sekaligus.
  */
 function applyBarcode_(user, input, target, rec, reason, path, notes, errs) {
   input = input || { mode: 'none' };
@@ -386,7 +402,6 @@ function applyBarcode_(user, input, target, rec, reason, path, notes, errs) {
   const curType = rec.GTIN ? 'gtin' : rec.InternalBarcode ? 'internal' : 'none';
   const code = cleanBarcode(input.code);
   const mode = input.mode || 'none';
-  // tetap: kode sama, atau "internal" tanpa kode pada target yang sudah punya barcode internal
   if (cur && ((mode === curType && code === cur) || (mode === 'internal' && curType === 'internal' && !code))) return null;
   if (!cur && mode === 'none') return null;
   if (cur && cleanText(reason).length < 5) {
@@ -394,12 +409,11 @@ function applyBarcode_(user, input, target, rec, reason, path, notes, errs) {
     return null;
   }
   try {
-    if (cur) unassignBarcode_(user, cur, cleanText(reason));
+    if (cur) retireBarcode_(user, cur, cleanText(reason));
     if (mode === 'none') return { gtin: '', internal: '' };
-    const b = resolveBarcode_(user, input, target, path, notes);
-    assignBarcode_(user, b, target, cur ? cleanText(reason) : 'registrasi');
+    const b = attachBarcode_(user, input, target, path, notes, cur ? cleanText(reason) : 'registrasi');
     if (cur) audit_(user.email, 'barcode.change', target.conversionId ? 'conversion' : 'variant', target.conversionId || target.variantId, { code: cur }, { code: b.Code }, { reason: cleanText(reason), productId: target.productId });
-    return b.BarcodeType === 'gtin' ? { gtin: b.Code, internal: '' } : { gtin: '', internal: b.Code };
+    return b.BarcodeType === 'GTIN' ? { gtin: b.Code, internal: '' } : { gtin: '', internal: b.Code };
   } catch (e) {
     if (!(e instanceof AppError)) throw e;
     (e.details.length ? e.details : [{ path, message: e.message }]).forEach((d) => errs.push({ path: d.path || path, message: d.message, code: d.code || e.code, data: d.data }));
@@ -429,8 +443,13 @@ function productAudit_(id) {
   db_('PRODUCT_VARIANTS')
     .filter((v) => v.ProductID === id)
     .forEach((v) => (variantIds[v.VariantID] = 1));
-  return db_('AuditLog')
-    .filter((a) => a.entity_id === id || variantIds[a.entity_id] || (a.meta_json && a.meta_json.productId === id))
+  return db_('AUDIT_LOGS')
+    .filter((a) => a.EntityID === id || variantIds[a.EntityID] || (a.MetaJson && a.MetaJson.productId === id))
     .reverse()
-    .slice(0, 100);
+    .slice(0, 100)
+    .map(auditView_);
+}
+
+function auditView_(a) {
+  return { id: a.LogID, createdAt: a.CreatedAt, actor: a.Actor, action: a.Action, entityType: a.EntityType, entityId: a.EntityID, before: a.BeforeJson, after: a.AfterJson, meta: a.MetaJson };
 }

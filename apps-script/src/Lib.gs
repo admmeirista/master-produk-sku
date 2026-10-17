@@ -1,6 +1,6 @@
 /**
  * Aturan inti (fungsi murni, tanpa akses Sheets): GTIN, normalisasi & kemiripan nama, kode otomatis
- * brand/kategori/produk/varian, SKU, kombinasi varian, dan konversi satuan.
+ * brand/kategori, kombinasi varian, dan konversi satuan.
  */
 
 // ---------------------------------------------------------------- GTIN / barcode
@@ -169,61 +169,6 @@ function generateMasterCode(name, isUsed, len) {
   throw new AppError('Tidak menemukan kode unik untuk "' + name + '". Perbesar panjang kode di Pengaturan.');
 }
 
-// ---------------------------------------------------------------- Kode produk & varian
-
-/** Rekomendasi kode produk: inisial kata + angka ukuran. "Parfum Eau de Parfum" → PEDP, "Air Mawar 100ml" → AM100. */
-function suggestProductCode(name) {
-  const words = asciiUpper_(name).split(/[^A-Z0-9]+/).filter(Boolean);
-  const nums = words.map((w) => (w.match(/^\d+/) || [''])[0]).filter(Boolean);
-  const text = words.filter((w) => !/^\d/.test(w));
-  let code = text.length >= 2 ? text.slice(0, 4).map((w) => w[0]).join('') : (text[0] || '').slice(0, 4);
-  if (code.length < 2) code = (text.join('') + 'PRD').slice(0, 3);
-  return (code + nums.join('').slice(0, 5)).slice(0, 12);
-}
-
-const UNIT_WORDS_ = { ML: 1, L: 1, LT: 1, LTR: 1, G: 1, GR: 1, GRAM: 1, KG: 1, MG: 1, OZ: 1, CC: 1, PCS: 1, PC: 1 };
-
-/** "Ocean Blue" → OB, "Rose" → RO, "50 ml" → 50, "Shade 01" → S01, "1,5 L" → 15. */
-function attrValueCode_(v) {
-  const up = asciiUpper_(v);
-  const num = up.match(/\d+(?:[.,]\d+)?/g);
-  if (num) {
-    const lead = up
-      .replace(/\d+(?:[.,]\d+)?[A-Z]*/g, ' ')
-      .split(/[^A-Z]+/)
-      .filter((w) => w && !UNIT_WORDS_[w])
-      .slice(0, 2)
-      .map((w) => w[0])
-      .join('');
-    return lead + num.join('').replace(/[.,]/g, '');
-  }
-  const words = up.split(/[^A-Z0-9]+/).filter(Boolean);
-  if (!words.length) return '';
-  if (words.length === 1) return words[0].slice(0, 2);
-  return words
-    .slice(0, 3)
-    .map((w) => w[0])
-    .join('');
-}
-
-/** Kode varian dari nilai atribut: [Ocean Blue, 50 ml] → OB50. */
-function suggestVariantCode(attrs) {
-  return (attrs || [])
-    .map((a) => attrValueCode_(a.value))
-    .join('')
-    .slice(0, 12);
-}
-
-/** Jadikan kode unik di dalam satu produk: OB50, OB502, OB503 … */
-function uniquifyCode(code, isUsed) {
-  if (!isUsed(code)) return code;
-  for (let i = 2; i < 1000; i++) {
-    const c = code.slice(0, 12 - String(i).length) + i;
-    if (!isUsed(c)) return c;
-  }
-  throw new AppError('Tidak menemukan kode varian unik untuk ' + code);
-}
-
 // ---------------------------------------------------------------- Atribut & kombinasi varian
 
 function cleanAttrName(n) {
@@ -258,45 +203,6 @@ function variantCombinations(attrs) {
     .filter((c) => c.length);
 }
 
-// ---------------------------------------------------------------- SKU
-
-const SKU_TOKENS = ['BRAND', 'CATEGORY', 'PRODUCT', 'VARIANT'];
-
-/** SKU varian dari identitas varian (bukan hanya product family). Token kosong & pemisah ganda dibuang. */
-function buildSku(template, p) {
-  const map = { BRAND: normalizeCode(p.brand), CATEGORY: normalizeCode(p.category), PRODUCT: normalizeCode(p.product), VARIANT: normalizeCode(p.variant) };
-  const missing = [];
-  const sku = String(template || DEFAULT_SETTINGS.sku_template)
-    .replace(/\{([A-Z]+)\}/g, (_, t) => {
-      if (map[t] === undefined) {
-        missing.push('{' + t + '}');
-        return '';
-      }
-      if (!map[t] && t !== 'VARIANT') missing.push(t);
-      return map[t];
-    })
-    .replace(/([-_.\/])[-_.\/]+/g, '$1')
-    .replace(/^[-_.\/]+|[-_.\/]+$/g, '');
-  const errors = [];
-  if (sku.length > 64) errors.push('SKU terlalu panjang (> 64 karakter)');
-  if (sku && !/^[A-Z0-9][A-Z0-9\-_.\/]*$/.test(sku)) errors.push('SKU hanya boleh huruf besar, angka, - _ . /');
-  return { ok: !missing.length && !errors.length, sku, missing, errors };
-}
-
-function validateSkuTemplate(t) {
-  const errs = [];
-  const tokens = (String(t).match(/\{([A-Z]+)\}/g) || []).map((x) => x.slice(1, -1));
-  tokens.forEach((x) => SKU_TOKENS.indexOf(x) < 0 && errs.push('Token {' + x + '} tidak dikenal'));
-  ['BRAND', 'PRODUCT', 'VARIANT'].forEach((x) => tokens.indexOf(x) < 0 && errs.push('Template wajib memuat {' + x + '}'));
-  if (/[^A-Z0-9{}\-_.\/]/.test(t)) errs.push('Template hanya boleh token dan pemisah - _ . /');
-  return errs;
-}
-
-/** SKU kemasan yang menjadi trade item sendiri: SKU varian + satuan + isi dasar. VIV-PAR-PEDP-OB50-BOX24 */
-function packSku(variantSku, unit, baseEquivalent) {
-  return variantSku + '-' + normalizeCode(unit) + baseEquivalent;
-}
-
 // ---------------------------------------------------------------- Satuan & konversi
 
 function normalizeUnit(u) {
@@ -323,9 +229,9 @@ function computeConversions(baseUnit, rows) {
     if (!/^[A-Z][A-Z0-9]{1,11}$/.test(unit)) errors.push({ index: i, field: 'unitName', message: 'Nama satuan 2–12 huruf/angka, diawali huruf' });
     else if (unit === base) errors.push({ index: i, field: 'unitName', message: unit + ' adalah satuan dasar' });
     else if (seen[unit]) errors.push({ index: i, field: 'unitName', message: 'Satuan ' + unit + ' ganda' });
-    if (!(Number.isInteger(f) && f >= 2 && f <= 100000)) errors.push({ index: i, field: 'factor', message: 'Isi harus bilangan bulat 2–100.000' });
+    if (!(Number.isInteger(f) && f >= 1 && f <= 100000)) errors.push({ index: i, field: 'factor', message: 'Isi harus bilangan bulat lebih dari 0 (1–100.000)' });
     if (eq[cu] === undefined) errors.push({ index: i, field: 'containsUnit', message: 'Satuan isi ' + cu + ' belum didefinisikan di atasnya' });
-    else if (Number.isInteger(f) && f >= 2) e = f * eq[cu];
+    else if (Number.isInteger(f) && f >= 1) e = f * eq[cu];
     if (e !== null && e > 10000000) {
       errors.push({ index: i, field: 'factor', message: 'Kuantitas ekuivalen terlalu besar' });
       e = null;

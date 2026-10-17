@@ -259,6 +259,7 @@ function commitAll_() {
     throw new AppError('Penyimpanan ke Google Sheets gagal dan sudah dibatalkan. Tidak ada data yang tersimpan sebagian. Silakan coba lagi.', [], 'WRITE_FAILED');
   }
   journalMark_(ref, 'COMMITTED');
+  if (tables.some((t) => DATA_TABLES_[t.name])) bumpDataVersion_();
   try {
     journalSheet_().deleteRows(ref.start, ref.count); // jurnal yang sudah selesai tidak perlu disimpan
   } catch (e) {
@@ -283,24 +284,112 @@ function withLock_(fn) {
   }
 }
 
-// ------------------------------------------------------------------ util tabel
+// ------------------------------------------------------------------ penghitung kode (SYSTEM_COUNTERS)
 
+/** Ambil nomor berikutnya dan naikkan penghitung. Hanya dipanggil di dalam withLock_ (aman konkuren). */
 function nextSeq_(name, count) {
   const n = count === undefined ? 1 : count;
-  const t = db_('Sequences');
-  let rec = t.find((r) => r.name === name);
-  if (!rec) rec = t.insert({ name, value: '1' });
-  const start = Number(rec.value) || 1;
-  if (n) t.update(rec, { value: String(start + n) });
+  const t = db_('SYSTEM_COUNTERS');
+  let rec = t.find((r) => r.CounterName === name);
+  if (!rec) rec = t.insert({ CounterName: name, Value: '1', UpdatedAt: now_() });
+  const start = Number(rec.Value) || 1;
+  if (n) t.update(rec, { Value: String(start + n), UpdatedAt: now_() });
   return start;
 }
 
 function setSeq_(name, value) {
-  const t = db_('Sequences');
-  const rec = t.find((r) => r.name === name);
-  if (rec) t.update(rec, { value: String(value) });
-  else t.insert({ name, value: String(value) });
+  const t = db_('SYSTEM_COUNTERS');
+  const rec = t.find((r) => r.CounterName === name);
+  if (rec) t.update(rec, { Value: String(value), UpdatedAt: now_() });
+  else t.insert({ CounterName: name, Value: String(value), UpdatedAt: now_() });
 }
+
+function padCode_(prefix, n) {
+  return prefix + String(n).padStart(CODE_DIGITS, '0');
+}
+
+/** Product Code baru: PRD000123 (nomor urut permanen; kode yang sudah ada dilewati). */
+function allocateProductCode_() {
+  const used = {};
+  db_('MASTER_PRODUCTS')
+    .rows()
+    .forEach((p) => (used[String(p.ProductCode).toUpperCase()] = 1));
+  for (let guard = 0; guard < 100000; guard++) {
+    const no = nextSeq_('product_no');
+    const code = padCode_(PRODUCT_CODE_PREFIX, no);
+    if (!used[code]) return { no, code };
+  }
+  throw new AppError('Tidak menemukan kode produk kosong');
+}
+
+/** SKU internal baru: SKU000456. skuOwner = peta SKU yang sudah terpakai (UPPERCASE → label). */
+function allocateSku_(skuOwner) {
+  for (let guard = 0; guard < 100000; guard++) {
+    const code = padCode_(SKU_PREFIX, nextSeq_('sku_no'));
+    if (!skuOwner[code]) return code;
+  }
+  throw new AppError('Tidak menemukan SKU kosong');
+}
+
+// ------------------------------------------------------------------ versi data (untuk cache direktori)
+
+const DATA_TABLES_ = { MASTER_BRANDS: 1, MASTER_CATEGORIES: 1, MASTER_PRODUCTS: 1, PRODUCT_VARIANTS: 1, VARIANT_ATTRIBUTES: 1, VARIANT_BARCODES: 1, UNIT_CONVERSIONS: 1, EXTERNAL_SKU_MAPPINGS: 1 };
+
+function dataVersion_() {
+  const c = CacheService.getScriptCache();
+  let v = c.get('data_ver');
+  if (!v) {
+    v = uuid_().slice(0, 8);
+    c.put('data_ver', v, 21600);
+  }
+  return v;
+}
+
+function bumpDataVersion_() {
+  try {
+    CacheService.getScriptCache().put('data_ver', uuid_().slice(0, 8), 21600);
+  } catch (e) {
+    console.error('Gagal memperbarui versi cache: ' + e);
+  }
+}
+
+/**
+ * Cache JSON besar di CacheService (maks. 100 KB per kunci) — dipecah per 90.000 karakter.
+ * Kunci memuat versi data, sehingga cache otomatis basi setelah ada penulisan.
+ */
+function cacheGetBig_(key) {
+  const c = CacheService.getScriptCache();
+  const head = c.get(key + ':n');
+  if (!head) return null;
+  const n = Number(head);
+  const parts = [];
+  for (let i = 0; i < n; i++) {
+    const p = c.get(key + ':' + i);
+    if (p === null || p === undefined) return null;
+    parts.push(p);
+  }
+  try {
+    return JSON.parse(parts.join(''));
+  } catch (e) {
+    return null;
+  }
+}
+
+function cachePutBig_(key, value) {
+  try {
+    const s = JSON.stringify(value);
+    const c = CacheService.getScriptCache();
+    const size = 90000;
+    const n = Math.ceil(s.length / size) || 1;
+    if (n > 80) return; // terlalu besar untuk cache — dibaca langsung dari sheet
+    for (let i = 0; i < n; i++) c.put(key + ':' + i, s.slice(i * size, (i + 1) * size), 600);
+    c.put(key + ':n', String(n), 600);
+  } catch (e) {
+    console.error('Cache gagal: ' + e);
+  }
+}
+
+// ------------------------------------------------------------------ util tabel
 
 function getSettings_() {
   const s = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
@@ -318,21 +407,22 @@ function getSettings_() {
 }
 
 function audit_(actor, action, entityType, entityId, before, after, meta) {
-  db_('AuditLog').insert({
-    id: uuid_(),
-    created_at: now_(),
-    actor: actor || 'system',
-    action,
-    entity_type: entityType,
-    entity_id: entityId || '',
-    before_json: before === undefined ? null : before,
-    after_json: after === undefined ? null : after,
-    meta_json: meta === undefined ? null : meta,
+  db_('AUDIT_LOGS').insert({
+    LogID: uuid_(),
+    CreatedAt: now_(),
+    Actor: actor || 'system',
+    Action: action,
+    EntityType: entityType,
+    EntityID: entityId || '',
+    BeforeJson: before === undefined ? null : before,
+    AfterJson: after === undefined ? null : after,
+    MetaJson: meta === undefined ? null : meta,
   });
 }
 
+/** Kode tampilan produk. Produk baru memakai ProductCode PRD000123 (= nomor urut). */
 function productNoLabel(n) {
-  return n ? 'PRD-' + String(n).padStart(6, '0') : '—';
+  return n ? padCode_(PRODUCT_CODE_PREFIX, n) : '—';
 }
 
 function paginate_(rows, page, size) {
@@ -343,5 +433,11 @@ function paginate_(rows, page, size) {
 function indexBy_(rows, key) {
   const out = {};
   rows.forEach((r) => (out[r[key]] = r));
+  return out;
+}
+
+function groupBy_(rows, key) {
+  const out = {};
+  rows.forEach((r) => (out[r[key]] = out[r[key]] || []).push(r));
   return out;
 }

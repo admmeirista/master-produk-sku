@@ -80,7 +80,7 @@ function fmtNum(n) { return Number(n || 0).toLocaleString('id-ID'); }
 function debounce(fn, ms) { var t; return function () { var a = arguments, s = this; clearTimeout(t); t = setTimeout(function () { fn.apply(s, a); }, ms); }; }
 function uid() { return Math.random().toString(36).slice(2, 10); }
 function normCode(s) { return String(s || '').toUpperCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^A-Z0-9]/g, ''); }
-var STATUS_TXT = { ACTIVE: 'Aktif', INACTIVE: 'Nonaktif', allocated: 'Dialokasikan', assigned: 'Dipakai', retired: 'Dipensiunkan', void: 'Void', mapped: 'Dipetakan', exported: 'Diekspor', confirmed: 'Terkonfirmasi', mismatch: 'Tidak cocok', error: 'Error', admin: 'Admin', data_entry: 'Admin Data', viewer: 'Viewer', reviewer: 'Admin Data' };
+var STATUS_TXT = { ACTIVE: 'Aktif', INACTIVE: 'Nonaktif', allocated: 'Dialokasikan', assigned: 'Dipakai', retired: 'Dipensiunkan', void: 'Void', mapped: 'Dipetakan', exported: 'Diekspor', confirmed: 'Terkonfirmasi', mismatch: 'Tidak cocok', error: 'Error', admin: 'Admin', data_entry: 'Admin Data', viewer: 'Viewer', reviewer: 'Admin Data', ALLOCATED: 'Cadangan', RETIRED: 'Dipensiunkan', VOID: 'Void', DELETED: 'Dihapus', GTIN: 'GTIN produsen', INTERNAL: 'Barcode internal', legacy: 'SKU lama' };
 function badge(s, txt) { return s ? '<span class="badge b-' + esc(s) + '">' + esc(txt || STATUS_TXT[s] || s) + '</span>' : ''; }
 function can(p) { return !!(App.me && App.me.permissions.indexOf(p) >= 0); }
 function cfg() { return (App.me && App.me.config) || {}; }
@@ -257,8 +257,8 @@ function downloadTable(d, format) {
 
 /* ═════════════ Aplikasi: login, kerangka sidebar, router ═════════════ */
 var NAV = [
-  ['MASTER DATA', [['dashboard', 'Dashboard', 'grid'], ['register', 'Registrasi Produk', 'plus', 'product.write'], ['products', 'Direktori Produk', 'package'], ['brands', 'Master Brand', 'tag'], ['categories', 'Master Kategori', 'layers']]],
-  ['IDENTITAS & INTEGRASI', [['barcodes', 'Barcode', 'barcode'], ['mapping', 'Mapping BeeCloud / Shopee', 'link'], ['export', 'Ekspor Data', 'download', 'export.run']]],
+  ['MASTER DATA', [['dashboard', 'Dashboard', 'grid'], ['scan', 'Scan Barcode', 'scan'], ['register', 'Registrasi Produk', 'plus', 'product.write'], ['products', 'Master Produk', 'package'], ['brands', 'Master Brand', 'tag'], ['categories', 'Master Kategori', 'layers']]],
+  ['IDENTITAS & INTEGRASI', [['barcodes', 'Barcode', 'barcode'], ['mapping', 'Mapping BeeCloud / Shopee', 'link'], ['export', 'Ekspor Data', 'download', 'export.run'], ['import', 'Import Data Lama', 'upload', 'import.run']]],
   ['SISTEM', [['users', 'Pengguna', 'users', 'user.manage'], ['settings', 'Pengaturan', 'sliders'], ['audit', 'Audit Log', 'activity', 'audit.read']]]
 ];
 var Pages = {};
@@ -339,6 +339,11 @@ var App = {
     $('#m-open').onclick = function () { side.classList.add('open'); bg.classList.add('open'); };
     bg.onclick = function () { side.classList.remove('open'); bg.classList.remove('open'); };
     App.go(App.page || 'dashboard', App.pageArg);
+    if (!App.keysBound) {
+      App.keysBound = true;
+      // F2 = langsung ke Scan Barcode (scanner USB cukup ditembakkan setelahnya)
+      document.addEventListener('keydown', function (e) { if (e.key === 'F2' && App.me) { e.preventDefault(); App.go('scan'); } });
+    }
   },
   /** Pindah halaman. arg diteruskan ke halaman (mis. id produk). */
   go: function (page, arg, opts) {
