@@ -64,6 +64,16 @@ function sellables_(opts) {
 }
 
 /** Label target pemetaan (varian / kemasan / bundle) dari ID. */
+/** Pencarian SKU untuk dropdown (Child SKU / kemasan / bundle aktif). */
+function skuSearch_(q, kinds) {
+  const k = kinds && kinds.length ? kinds : ['variant', 'pack', 'bundle'];
+  const u = String(q || '').toUpperCase();
+  return sellables_()
+    .filter((s) => k.indexOf(s.kind) >= 0 && (!u || (s.sku + ' ' + s.display_name + ' ' + s.barcode + ' ' + s.legacy_sku).toUpperCase().indexOf(u) >= 0))
+    .slice(0, 30)
+    .map((s) => ({ sku: s.sku, kind: s.kind, displayName: s.display_name, barcode: s.barcode, variantId: s.variant_id, bundleId: s.bundle_id, productId: s.product_id, baseUnit: s.base_unit }));
+}
+
 function mappingTarget_(m) {
   if (m.BundleID) {
     const b = db_('BUNDLE_MASTERS').byId(m.BundleID) || {};

@@ -34,6 +34,7 @@ function bundleList_(f) {
     .filter((b) => (!f.type || b.BundleType === f.type) && (f.status === 'all' || !f.status ? b.Status !== STATUS.ARCHIVED || f.status === 'all' : b.Status === f.status))
     .map((b) => bundleView_(b, ctx));
   if (f.variantId) rows = rows.filter((b) => b.components.some((c) => c.variantId === f.variantId));
+  if (f.productId) rows = rows.filter((b) => b.components.some((c) => c.productId === f.productId));
   if (q) rows = rows.filter((b) => [b.sku, b.name, b.barcode].concat(b.components.map((c) => c.sku + ' ' + c.name)).join(' ').toUpperCase().indexOf(q) >= 0);
   rows.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
   return paginate_(rows, f.page, Math.min(Number(f.pageSize) || 50, 200));

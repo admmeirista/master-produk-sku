@@ -1,18 +1,21 @@
-# Master Produk & SKU — Google Apps Script (v3)
+# Master Produk & SKU — Google Apps Script (v4)
 
 Web App Apps Script dengan **Google Sheets sebagai database**, berbahasa Indonesia, tampilan mengikuti **FMS**
 (font Nunito, sidebar gelap, toast, modal). Hierarki data:
 
 ```
-Brand + Kategori → Product Master → Product Variant (SKU internal) → Variant Barcode (GTIN / internal)
-                                                  └→ Packaging & Unit Conversion (opsional, per varian)
+Brand + Kategori → Parent SKU (PRD…, non-stockable) → Child SKU (SKU…, stockable) → Barcode (GTIN / internal 200…)
+                                         ├→ Kemasan & konversi (BOX/KARTON, satuan beli/jual, histori isi)
+                                         ├→ Kode supplier  ·  Listing kanal (Shopee/TikTok/Tokopedia/BeeCloud)
+                                         └→ Komponen multipack (MP…) / bundle (BDL…)
 ```
 
-Menu: Dashboard · **Scan Barcode** (F2) · **Registrasi Produk** (Quick Entry / Advanced) · Master Produk ·
-**Master Brand** & **Master Kategori** (cukup isi nama, kode otomatis) · Barcode · Mapping SKU Eksternal · Ekspor Data · Import Data Lama ·
-Pengguna · Pengaturan · Audit Log. Tanpa harga dan tanpa approval — produk langsung aktif setelah disimpan.
+Menu (sidebar dapat dilipat, dengan breadcrumb): Dashboard · Data Quality · Registrasi (scan GTIN + auto-fill Open Beauty Facts, Quick Entry / Advanced, Simpan Draft) ·
+Master Produk · Scan Barcode (F2) · Master Brand · Master Kategori · Master Supplier · Supplier SKU Mapping · Packaging & Bundle ·
+Channel SKU Mapping · Registry Barcode · Import & Export · Pengguna · Settings · Audit Log. Tanpa harga, tanpa approval, tanpa transaksi stok.
 
-Analisis revisi, struktur sheet, migrasi, panduan & hasil uji: [REVISI-ANALISIS.md](REVISI-ANALISIS.md).
+Dokumen v4 (arsitektur, ERD, skema, migrasi, deployment, panduan, test matrix, keterbatasan): **[REVISI-V4.md](REVISI-V4.md)**.
+Revisi sebelumnya: [REVISI-ANALISIS.md](REVISI-ANALISIS.md) (v3).
 
 ## Struktur kode (`src/`)
 
@@ -25,14 +28,17 @@ Analisis revisi, struktur sheet, migrasi, panduan & hasil uji: [REVISI-ANALISIS.
 | `MasterDataService.gs`, `BrandService.gs`, `CategoryService.gs` | Master brand & kategori |
 | `ProductService.gs`, `VariantService.gs`, `UnitConversionService.gs` | Registrasi/edit produk, varian, konversi kemasan |
 | `BarcodeService.gs` | Registry GTIN & barcode internal |
-| `MappingService.gs` | Mapping BeeCloud/Shopee & ekspor |
+| `LifecycleService.gs` | Status Draft/Aktif/Nonaktif/Discontinued/Diarsipkan, riwayat, deprecation SKU |
+| `SupplierService.gs`, `BundleService.gs` | Master supplier & kode supplier; multipack, mixed bundle, request mix (BOM) |
+| `MappingService.gs` | Channel SKU mapping (Shopee/TikTok/Tokopedia/BeeCloud/lainnya) & ekspor |
+| `GtinLookupService.gs`, `AttributeService.gs`, `DataQualityService.gs` | Lookup GTIN + auto-fill, master nilai atribut, laporan kualitas data |
 | `AdminService.gs`, `AuthService.gs` | Pengguna, pengaturan, dashboard, audit, login |
-| `MigrationService.gs`, `ImportService.gs` | Migrasi v1/v2 → v3, import template Excel lama |
-| `Index.html`, `Styles.html`, `Scripts.html`, `Pages.html`, `Wizard.html`, `Logo.html` | Antarmuka (HTML Service, vanilla JS) |
+| `MigrationService.gs`, `ImportService.gs` | Migrasi v1/v2 → v4, import template Excel lama, listing marketplace, kode supplier |
+| `Index.html`, `Styles.html`, `Scripts.html`, `Pages.html`, `Ops.html`, `Wizard.html`, `Logo.html` | Antarmuka (HTML Service, vanilla JS) |
 
 ## Database
 
-File Google Sheets terpisah [Master Produk DB](https://docs.google.com/spreadsheets/d/11f_luP2oWDJHklnG4BjxWTjXXRA57XuO-un6tuAJbm4/edit). Struktur tab v3 lihat REVISI-ANALISIS.md §2.
+File Google Sheets terpisah [Master Produk DB](https://docs.google.com/spreadsheets/d/11f_luP2oWDJHklnG4BjxWTjXXRA57XuO-un6tuAJbm4/edit). Struktur tab v4 lihat REVISI-V4.md §3.
 
 ## Cara pasang / memperbarui
 
@@ -40,6 +46,7 @@ File Google Sheets terpisah [Master Produk DB](https://docs.google.com/spreadshe
 2. Di editor Apps Script pilih fungsi **`setup`** › **Jalankan** › izinkan akses. `setup` aman diulang:
    membuat/melengkapi tab, mengisi pengaturan, **memigrasikan data struktur lama** (tab lama tidak dihapus), dan membuat
    akun Admin pertama bila belum ada (password sementara di **Log eksekusi**).
+   v4 meminta izin baru **terhubung ke layanan eksternal** (UrlFetchApp, untuk lookup GTIN Open Beauty Facts) — klik *Izinkan*.
 3. **Terapkan › Kelola deployment › Edit › Versi baru** (URL Web App tetap sama).
 4. (Disarankan) jalankan `installDailyBackup` sekali untuk backup harian otomatis ke Drive.
 
@@ -63,6 +70,7 @@ File Google Sheets terpisah [Master Produk DB](https://docs.google.com/spreadshe
 
 ## Yang masih perlu Anda verifikasi
 
+* Hasil lookup Open Beauty Facts untuk produk Indonesia (cakupan tipis; brand sering kosong) — selalu direview sebelum disimpan.
 * Kolom ekspor BeeCloud (`BEECLOUD_EXPORT_COLUMNS` di `Config.gs`) **belum** dicocokkan dengan template import resmi BeeCloud.
 * Batas panjang SKU BeeCloud & Seller SKU Shopee.
 * Scanner/POS membaca barcode internal prefix `200` sebagai kode biasa.
@@ -75,7 +83,7 @@ npm test
 ```bash
 npm run dev
 ```
-Test menjalankan file `.gs` asli di emulator layanan Apps Script (`test/harness.cjs`) — 18 tes termasuk import workbook Excel asli (lihat REVISI-ANALISIS.md).
+Test menjalankan file `.gs` asli di emulator layanan Apps Script (`test/harness.cjs`) — 32 tes termasuk import workbook Excel asli dan pemeriksaan statis frontend (lihat REVISI-V4.md §7).
 Server pratinjau: http://localhost:8790 dengan data contoh (akun development tercantum di `dev/server.cjs`).
 
 ## Deploy otomatis dari GitHub

@@ -113,7 +113,7 @@ const DEFAULT_SETTINGS = {
 
 /** Penyedia pencarian GTIN eksternal (urutan dicoba). Lihat GtinLookupService.gs. */
 const GTIN_PROVIDERS = ['openbeautyfacts'];
-const GTIN_LOOKUP_CONTACT = 'MeiristaMasterSKU/4.0 (adm.meirista@gmail.com)';
+const GTIN_LOOKUP_CONTACT = 'MeiristaMasterSKU/4.0 (+https://github.com/admmeirista/master-produk-sku)';
 const CHANNEL_LABEL = { shopee: 'Shopee', tiktok: 'TikTok Shop', tokopedia: 'Tokopedia', beecloud: 'BeeCloud', lainnya: 'Kanal lain', legacy: 'SKU lama' };
 
 /**

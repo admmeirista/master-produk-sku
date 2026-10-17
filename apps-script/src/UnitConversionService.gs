@@ -26,6 +26,7 @@ function conversionView_(c) {
     internalBarcode: c.InternalBarcode || '',
     status: c.Status,
     sortOrder: c.SortOrder,
+    effectiveFrom: c.EffectiveFrom || c.CreatedAt || '',
   };
 }
 

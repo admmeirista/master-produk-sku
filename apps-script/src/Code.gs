@@ -99,6 +99,7 @@ const ROUTES = {
   'mapping.create': { perm: 'mapping.write', write: true, fn: (u, p) => createMapping_(u, p) },
   'mapping.action': { perm: 'mapping.write', write: true, fn: (u, p) => mappingAction_(u, p.id, p.action, p.note) },
   'mapping.summary': { perm: 'product.read', fn: () => mappingSummary_() },
+  'sku.search': { perm: 'product.read', fn: (u, p) => skuSearch_(p.q, p.kinds) },
 
   'export.data': { perm: 'export.run', write: true, fn: (u, p) => exportData_(u, p) },
   'export.toSheet': { perm: 'export.run', write: true, fn: (u, p) => exportToSheet_(u, p) },

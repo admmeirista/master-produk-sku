@@ -1,0 +1,297 @@
+<script>
+/* ═════════════ Halaman operasional v4: Data Quality, Supplier, Supplier SKU Mapping, Packaging & Bundle, Channel SKU Mapping ═════════════ */
+
+/** Searchable dropdown SKU (Child SKU / kemasan / bundle aktif). */
+function skuCombo(host, kinds, onChange, placeholder, value) {
+  return combo(host, {
+    value: value || null, placeholder: placeholder || 'Cari SKU, nama, atau barcode…',
+    load: function (q) { return api('sku.search', { q: q, kinds: kinds }, { quiet: true, silent: true }); },
+    label: function (it) { return it.sku + ' — ' + it.displayName; }, sub: function (it) { return (it.kind === 'bundle' ? 'Bundle' : it.kind === 'pack' ? 'Kemasan' : 'Child SKU') + (it.barcode ? ' · ' + it.barcode : ''); },
+    empty: 'Tidak ada SKU aktif yang cocok', onChange: onChange
+  });
+}
+function supplierCombo(host, onChange, value) {
+  var cache = null;
+  return combo(host, {
+    value: value || null, placeholder: 'Cari supplier…',
+    load: function (q) { return (cache ? Promise.resolve(cache) : api('supplier.list', { activeOnly: true }, { quiet: true }).then(function (r) { cache = r; return r; })).then(function (r) { return filterLocal(r, q, ['name', 'code']); }); },
+    label: function (it) { return it.name; }, code: function (it) { return it.code; }, empty: 'Tambahkan di Master Supplier', onChange: onChange
+  });
+}
+function feList(err) { return '<ul class="err-list">' + (err.details && err.details.length ? err.details : [{ message: err.message }]).map(function (d) { return '<li>' + icon('alertCircle') + '<div>' + esc(d.message) + '</div></li>'; }).join('') + '</ul>'; }
+
+/* ───────── Data Quality ───────── */
+Pages.quality = function (main) {
+  main.innerHTML = pageHead('Ringkasan', 'Data Quality', '<button class="btn" id="rq">' + icon('refresh') + 'Periksa ulang</button>', 'Deteksi duplikasi & inkonsistensi master data. Sistem hanya memberi rekomendasi — tidak ada merge otomatis.') + '<div id="qb">' + loadingBox('Memeriksa master data…') + '</div>';
+  var load = function () {
+    $('#qb', main).innerHTML = loadingBox('Memeriksa master data…');
+    api('quality.get').then(function (q) {
+      var sev = { error: ['ERR', 'Harus diperbaiki'], warn: ['NONE', 'Perlu dicek'], info: ['CHECK', 'Info'] };
+      $('#qb', main).innerHTML = '<div class="kpi4" style="grid-template-columns:repeat(3,minmax(0,1fr))">' +
+        '<div class="kpi ' + (q.summary.error ? 'alert' : '') + '"><div class="top"><span class="chip">' + icon('alertCircle') + '</span>Harus diperbaiki</div><div class="v">' + fmtNum(q.summary.error) + '</div><div class="s">identitas ganda / konflik / tidak konsisten</div></div>' +
+        '<div class="kpi"><div class="top"><span class="chip">' + icon('alert') + '</span>Perlu dicek</div><div class="v">' + fmtNum(q.summary.warn) + '</div><div class="s">kandidat duplikat, SKU tidak aktif terpakai</div></div>' +
+        '<div class="kpi"><div class="top"><span class="chip">' + icon('barcode') + '</span>Info</div><div class="v">' + fmtNum(q.summary.info) + '</div><div class="s">kelengkapan data</div></div></div>' +
+        q.sections.map(function (s, i) {
+          var cols = s.rows.length ? Object.keys(s.rows[0]).filter(function (k) { return ['productId', 'productId2', 'bundleId'].indexOf(k) < 0; }) : [];
+          return '<div class="vcard' + (s.count && s.severity !== 'info' ? ' open' : '') + '" data-q="' + i + '"><div class="vcard-h">' + icon('chevron', 'chev') + '<span class="badge b-' + sev[s.severity][0] + '">' + sev[s.severity][1] + '</span><span class="nm">' + esc(s.label) + '</span><span class="right"><b>' + s.count + '</b></span></div>' +
+            '<div class="vcard-b"><div class="info-box">' + icon('zap') + '<span>' + esc(s.recommendation) + '</span></div>' +
+            (s.count ? '<div class="tbl-x" style="margin-top:10px"><table class="t"><thead><tr>' + cols.map(function (c) { return '<th>' + esc(c) + '</th>'; }).join('') + '<th></th></tr></thead><tbody>' + s.rows.map(function (r) {
+              return '<tr>' + cols.map(function (c) { return '<td>' + (c === 'status' ? badge(r[c]) : esc(r[c] === null || r[c] === undefined ? '' : r[c])) + '</td>'; }).join('') + '<td class="nowrap">' + (r.productId ? '<button class="btn sm ghost" data-p="' + esc(r.productId) + '">Buka</button>' : '') + (r.productId2 ? '<button class="btn sm ghost" data-p="' + esc(r.productId2) + '">Buka 2</button>' : '') + (r.bundleId ? '<button class="btn sm ghost" data-b="' + esc(r.bundleId) + '">Bundle</button>' : '') + '</td></tr>';
+            }).join('') + '</tbody></table></div>' : '<div class="muted" style="margin-top:8px">Tidak ada temuan.</div>') + '</div></div>';
+        }).join('') + '<div class="hint">Diperiksa ' + fmtDate(q.checkedAt) + '</div>';
+      $$('.vcard-h', main).forEach(function (h) { h.onclick = function () { h.parentNode.classList.toggle('open'); }; });
+      $$('[data-p]', main).forEach(function (b) { b.onclick = function () { App.go('product', b.getAttribute('data-p')); }; });
+      $$('[data-b]', main).forEach(function (b) { b.onclick = function () { bundleEditor(b.getAttribute('data-b')); }; });
+    }).catch(function (e) { $('#qb', main).innerHTML = errBox(e.message); });
+  };
+  $('#rq', main).onclick = load;
+  load();
+};
+
+/* ───────── Master Supplier ───────── */
+Pages.suppliers = function (main) {
+  var w = can('master.write');
+  main.innerHTML = pageHead('Master data', 'Master Supplier', w ? '<button class="btn pri" id="ns">' + icon('plus') + 'Tambah supplier</button>' : '', 'Kode supplier dibuat otomatis (SUP0001). Harga pembelian di luar cakupan aplikasi.') +
+    '<div class="toolbar"><div class="search">' + icon('search') + '<input class="in" id="q" placeholder="Cari nama atau kode supplier…"></div></div><div id="sl">' + loadingBox() + '</div>';
+  var rows = [], q = '';
+  var render = function () {
+    var list = filterLocal(rows, q, ['name', 'code', 'contactName']);
+    $('#sl', main).innerHTML = list.length ? '<div class="tablewrap"><table class="t"><thead><tr><th>Kode</th><th>Nama</th><th>Kontak</th><th class="num">SKU dipetakan</th><th>Status</th><th></th></tr></thead><tbody>' + list.map(function (s) {
+      return '<tr' + (s.status !== 'ACTIVE' ? ' class="off"' : '') + '><td><span class="chip-code">' + esc(s.code) + '</span></td><td><b>' + esc(s.name) + '</b></td><td>' + esc([s.contactName, s.phone, s.email].filter(Boolean).join(' · ')) + '</td><td class="num">' + s.mappingCount + '</td><td>' + badge(s.status) + '</td><td class="nowrap"><div class="ra"><button class="btn sm ghost" data-m="' + esc(s.id) + '">' + icon('link') + 'Mapping</button>' + (w ? '<button class="btn sm" data-e="' + esc(s.id) + '">' + icon('edit') + 'Ubah</button><button class="btn sm ghost" data-st="' + esc(s.id) + '">' + (s.status === 'ACTIVE' ? 'Nonaktifkan' : 'Aktifkan') + '</button>' : '') + '</div></td></tr>';
+    }).join('') + '</tbody></table></div>' : '<div class="tablewrap">' + emptyBox('Belum ada supplier', 'Tambahkan supplier, lalu petakan kode produk supplier ke Child SKU.', 'truck') + '</div>';
+    $$('[data-e]', main).forEach(function (b) { b.onclick = function () { form(rows.find(function (x) { return x.id === b.getAttribute('data-e'); })); }; });
+    $$('[data-m]', main).forEach(function (b) { b.onclick = function () { App.go('supplierMap', { supplierId: b.getAttribute('data-m') }); }; });
+    $$('[data-st]', main).forEach(function (b) { b.onclick = function () { var s = rows.find(function (x) { return x.id === b.getAttribute('data-st'); }); busy(b, api('supplier.setStatus', { id: s.id, status: s.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE' })).then(function () { toast('Status supplier diperbarui', 'ok'); load(); }).catch(function () {}); }; });
+  };
+  var load = function () { api('supplier.list', {}).then(function (r) { rows = r; render(); }).catch(function (e) { $('#sl', main).innerHTML = errBox(e.message); }); };
+  var form = function (s) {
+    s = s || {};
+    var m = modal('<h3>' + (s.id ? 'Ubah supplier ' + esc(s.code) : 'Tambah supplier') + '</h3><label class="f">Nama supplier <span class="req">*</span></label><input class="in w100" id="sn" value="' + esc(s.name || '') + '">' +
+      '<div class="fgrid"><div><label class="f">Kontak</label><input class="in w100" id="sc" value="' + esc(s.contactName || '') + '"></div><div><label class="f">Telepon</label><input class="in w100" id="sp" value="' + esc(s.phone || '') + '"></div><div class="full"><label class="f">Email</label><input class="in w100" id="se" value="' + esc(s.email || '') + '"></div></div>' +
+      '<label class="f">Catatan</label><textarea class="in w100" rows="2" id="so">' + esc(s.notes || '') + '</textarea><div id="sx"></div><div class="row" style="margin-top:16px"><button class="btn pri" id="sv">Simpan</button><button class="btn" data-close>Batal</button></div>');
+    $('#sn', m).focus();
+    $('#sv', m).onclick = function () {
+      busy($('#sv', m), api('supplier.save', { id: s.id, name: $('#sn', m).value, contactName: $('#sc', m).value, phone: $('#sp', m).value, email: $('#se', m).value, notes: $('#so', m).value }, { silent: true })).then(function (r) { m.close(); toast('Supplier ' + r.name + ' (' + r.code + ') tersimpan', 'ok'); load(); }).catch(function (e) { $('#sx', m).innerHTML = feList(e); });
+    };
+  };
+  if ($('#ns', main)) $('#ns', main).onclick = function () { form(null); };
+  $('#q', main).oninput = debounce(function (e) { q = e.target.value; render(); }, 150);
+  load();
+};
+
+/* ───────── Supplier SKU Mapping ───────── */
+/** Modal tambah/ubah mapping kode produk supplier → Child SKU. preset: { variant:{variantId,sku,...}, supplier, row } */
+function supplierMapForm(preset, done) {
+  preset = preset || {};
+  var row = preset.row || {};
+  var m = modal('<h3>' + (row.id ? 'Ubah mapping supplier' : 'Petakan kode produk supplier') + '</h3><div class="muted">Kode supplier berbeda tidak membuat SKU internal baru.</div>' +
+    '<label class="f">Supplier <span class="req">*</span></label><div id="ms"></div><label class="f">Child SKU internal <span class="req">*</span></label><div id="mv"></div>' +
+    '<div class="fgrid"><div><label class="f">Kode produk supplier <span class="req">*</span></label><input class="in w100 code" id="mc" value="' + esc(row.supplierProductCode || '') + '"></div><div><label class="f">Nama di supplier</label><input class="in w100" id="mn" value="' + esc(row.supplierProductName || '') + '"></div>' +
+    '<div><label class="f">Satuan beli</label><input class="in w100" id="mu" placeholder="mis. BOX" value="' + esc(row.purchaseUnit || '') + '"></div><div><label class="f">Isi per satuan beli (satuan stok)</label><input class="in w100" id="mf" type="number" min="1" step="1" value="' + esc(row.conversionFactor || 1) + '"></div>' +
+    '<div><label class="f">MOQ (opsional)</label><input class="in w100" id="mq" type="number" min="1" step="1" value="' + esc(row.moq || '') + '"></div><div class="full"><label class="chk"><input type="checkbox" id="mm"' + (row.specMismatch ? ' checked' : '') + '> Spesifikasi fisik berbeda dari Child SKU (isi/formula/kemasan) — tandai untuk evaluasi SKU baru</label><input class="in w100" id="mnote" placeholder="Catatan perbedaan" value="' + esc(row.specNote || '') + '"></div></div>' +
+    '<div class="hint" id="mpv"></div><div id="mx"></div><div class="row" style="margin-top:16px"><button class="btn pri" id="msv">Simpan</button><button class="btn" data-close>Batal</button></div>', { wide: false });
+  var sup = supplierCombo($('#ms', m), null, preset.supplier || (row.supplierId ? { id: row.supplierId, name: row.supplierName, code: row.supplierCode } : null));
+  var sku = skuCombo($('#mv', m), ['variant'], function (it) { if (it && !$('#mu', m).value) $('#mu', m).value = it.baseUnit; prev(); }, null, preset.variant || (row.variantId ? { variantId: row.variantId, sku: row.sku, displayName: row.productName + ' ' + (row.variantName || ''), baseUnit: row.baseUnit } : null));
+  var prev = function () { var it = sku.get(); var f = Number($('#mf', m).value) || 0; $('#mpv', m).textContent = it ? 'Contoh: 5 ' + ($('#mu', m).value || '?').toUpperCase() + ' = ' + fmtNum(5 * f) + ' ' + it.baseUnit : ''; };
+  $('#mf', m).oninput = prev; $('#mu', m).oninput = prev; prev();
+  $('#msv', m).onclick = function () {
+    var s = sup.get(), v = sku.get();
+    busy($('#msv', m), api('supplierMap.save', { id: row.id, supplierId: s && s.id, variantId: v && v.variantId, supplierProductCode: $('#mc', m).value, supplierProductName: $('#mn', m).value, purchaseUnit: $('#mu', m).value, conversionFactor: Number($('#mf', m).value), moq: $('#mq', m).value, specMismatch: $('#mm', m).checked, specNote: $('#mnote', m).value }, { silent: true }))
+      .then(function () { m.close(); toast('Mapping supplier tersimpan', 'ok'); if (done) done(); }).catch(function (e) { $('#mx', m).innerHTML = feList(e); });
+  };
+}
+Pages.supplierMap = function (main, arg) {
+  var f = { supplierId: arg && arg.supplierId || '', search: '', status: 'ACTIVE', page: 1 };
+  var w = can('mapping.write');
+  main.innerHTML = pageHead('Operasional', 'Supplier SKU Mapping', w ? '<button class="btn pri" id="nm">' + icon('plus') + 'Petakan kode supplier</button>' : '', 'Satu Child SKU boleh dari banyak supplier. Cari barang berdasarkan kode supplier di sini atau lewat Scan Barcode.') +
+    '<div class="filters"><div class="search">' + icon('search') + '<input class="in" id="q" placeholder="Cari kode supplier, SKU, nama…"></div><div id="fs" style="width:240px"></div><select class="in" id="st"><option value="ACTIVE">Aktif</option><option value="INACTIVE">Nonaktif</option><option value="all">Semua</option></select></div><div id="ml"></div>';
+  var load = function () {
+    var box = $('#ml', main); box.innerHTML = loadingBox();
+    api('supplierMap.list', f).then(function (d) {
+      box.innerHTML = d.rows.length ? '<div class="tablewrap"><table class="t"><thead><tr><th>Supplier</th><th>Kode supplier</th><th>Child SKU</th><th>Satuan beli</th><th class="num">MOQ</th><th>Status</th><th></th></tr></thead><tbody>' + d.rows.map(function (r) {
+        return '<tr' + (r.status !== 'ACTIVE' ? ' class="off"' : '') + '><td><b>' + esc(r.supplierName) + '</b><div class="muted" style="font-size:11.5px">' + esc(r.supplierCode) + '</div></td><td><span class="code">' + esc(r.supplierProductCode) + '</span><div class="muted" style="font-size:11.5px">' + esc(r.supplierProductName) + '</div></td>' +
+          '<td><span class="sku">' + esc(r.sku) + '</span> ' + (r.skuStatus !== 'ACTIVE' ? badge(r.skuStatus) : '') + '<div><a class="link-btn" data-p="' + esc(r.productId) + '">' + esc(r.productName + (r.variantName ? ' — ' + r.variantName : '')) + '</a></div>' + (r.specMismatch ? '<span class="badge b-NONE">Spesifikasi beda: ' + esc(r.specNote) + '</span>' : '') + '</td>' +
+          '<td>1 ' + esc(r.purchaseUnit) + ' = ' + fmtNum(r.conversionFactor) + ' ' + esc(r.baseUnit) + '</td><td class="num">' + (r.moq || '—') + '</td><td>' + badge(r.status) + '</td><td class="nowrap">' + (w ? '<div class="ra"><button class="btn sm" data-e="' + esc(r.id) + '">' + icon('edit') + '</button><button class="btn sm ghost" data-st="' + esc(r.id) + '">' + (r.status === 'ACTIVE' ? 'Nonaktifkan' : 'Aktifkan') + '</button></div>' : '') + '</td></tr>';
+      }).join('') + '</tbody></table></div>' + pager(d, function (p) { f.page = p; load(); }) : '<div class="tablewrap">' + emptyBox('Belum ada mapping supplier', '', 'link') + '</div>';
+      $$('[data-p]', box).forEach(function (a) { a.onclick = function () { App.go('product', a.getAttribute('data-p')); }; });
+      $$('[data-e]', box).forEach(function (b) { b.onclick = function () { supplierMapForm({ row: d.rows.find(function (x) { return x.id === b.getAttribute('data-e'); }) }, load); }; });
+      $$('[data-st]', box).forEach(function (b) { b.onclick = function () { var r = d.rows.find(function (x) { return x.id === b.getAttribute('data-st'); }); busy(b, api('supplierMap.setStatus', { id: r.id, status: r.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE' })).then(function () { toast('Status mapping diperbarui', 'ok'); load(); }).catch(function () {}); }; });
+    }).catch(function (e) { box.innerHTML = errBox(e.message); });
+  };
+  supplierCombo($('#fs', main), function (it) { f.supplierId = it ? it.id : ''; f.page = 1; load(); });
+  $('#q', main).oninput = debounce(function (e) { f.search = e.target.value; f.page = 1; load(); }, 300);
+  $('#st', main).onchange = function (e) { f.status = e.target.value; f.page = 1; load(); };
+  if ($('#nm', main)) $('#nm', main).onclick = function () { supplierMapForm({}, load); };
+  load();
+};
+
+/* ───────── Packaging & Bundle ───────── */
+Pages.bundles = function (main, arg) {
+  var w = can('product.write');
+  var tab = arg && arg.tab || 'bundle';
+  main.innerHTML = pageHead('Operasional', 'Packaging & Bundle', w ? '<button class="btn pri" id="nb">' + icon('plus') + 'Buat multipack / bundle</button>' : '',
+    'Konversi kemasan (BOX, KARTON) diatur per Child SKU di Edit produk. Multipack & bundle punya SKU sendiri; bundle virtual tidak punya saldo stok (stok dihitung dari komponen).') +
+    '<div class="dtabs"><a data-t="bundle" class="' + (tab === 'bundle' ? 'on' : '') + '">Multipack & bundle</a><a data-t="pack" class="' + (tab === 'pack' ? 'on' : '') + '">Konversi kemasan</a></div><div id="bb"></div>';
+  $$('[data-t]', main).forEach(function (a) { a.onclick = function () { App.go('bundles', { tab: a.getAttribute('data-t') }); }; });
+  if ($('#nb', main)) $('#nb', main).onclick = function () { bundleEditor(null); };
+  var box = $('#bb', main);
+  if (tab === 'pack') {
+    box.innerHTML = loadingBox();
+    return api('export.data', { kind: 'conversions' }).then(function (d) {
+      var rows = d.rows.filter(function (r) { return r[10] !== 'Satuan dasar'; });
+      box.innerHTML = '<div class="toolbar"><div class="search">' + icon('search') + '<input class="in" id="pq" placeholder="Cari produk / SKU / satuan…"></div><span class="muted right">' + rows.length + ' konfigurasi kemasan</span></div><div id="pt"></div>';
+      var draw = function (q) {
+        var list = q ? rows.filter(function (r) { return r.join(' ').toLowerCase().indexOf(q.toLowerCase()) >= 0; }) : rows;
+        $('#pt', box).innerHTML = list.length ? '<div class="tablewrap"><table class="t"><thead><tr><th>Produk / varian</th><th>Child SKU</th><th>Kemasan</th><th>= satuan dasar</th><th>Jenis</th><th>Berlaku sejak</th><th>Status</th></tr></thead><tbody>' + list.slice(0, 500).map(function (r) {
+          return '<tr><td><b>' + esc(r[2]) + '</b><div class="muted" style="font-size:11.5px">' + esc(r[3]) + ' · ' + esc(r[0]) + '</div></td><td class="sku">' + esc(r[4]) + '</td><td>1 ' + esc(r[5]) + ' = ' + r[6] + ' ' + esc(r[7]) + '</td><td><b>' + fmtNum(r[8]) + '</b> ' + esc(r[9]) + '</td><td>' + esc(r[10]) + (r[11] ? ' <span class="sku">' + esc(r[11]) + '</span>' : '') + '</td><td class="nowrap muted">' + fmtDate(r[13], false) + '</td><td>' + esc(r[14]) + '</td></tr>';
+        }).join('') + '</tbody></table></div>' : '<div class="tablewrap">' + emptyBox('Belum ada konfigurasi kemasan', 'Atur BOX/KARTON di Edit produk → Kemasan.', 'boxes') + '</div>';
+      };
+      $('#pq', box).oninput = debounce(function (e) { draw(e.target.value); }, 200);
+      draw('');
+    }).catch(function (e) { box.innerHTML = errBox(e.message); });
+  }
+  var f = { search: '', type: '', status: '', page: 1 };
+  box.innerHTML = '<div class="filters"><div class="search">' + icon('search') + '<input class="in" id="bq" placeholder="Cari SKU bundle, nama, komponen…"></div><select class="in" id="bt"><option value="">Semua jenis</option><option value="MULTIPACK">Multipack</option><option value="MIXED">Mixed bundle</option><option value="REQUEST_MIX">Request mix</option></select><select class="in" id="bs"><option value="">Aktif & draft</option><option value="ACTIVE">Aktif</option><option value="INACTIVE">Nonaktif</option><option value="DISCONTINUED">Discontinued</option><option value="all">Semua</option></select></div><div id="bl"></div>';
+  var load = function () {
+    var bl = $('#bl', box); bl.innerHTML = loadingBox();
+    api('bundle.list', f).then(function (d) {
+      bl.innerHTML = d.rows.length ? '<div class="tablewrap"><table class="t"><thead><tr><th>Bundle SKU</th><th>Nama</th><th>Jenis</th><th>Komponen</th><th>Stok</th><th>Status</th><th></th></tr></thead><tbody>' + d.rows.map(function (b) {
+        return '<tr' + (b.status !== 'ACTIVE' ? ' class="off"' : '') + '><td class="sku">' + esc(b.sku) + (b.barcode ? '<div class="code muted" style="font-size:11.5px">' + esc(b.barcode) + '</div>' : '') + '</td><td><b>' + esc(b.name) + '</b></td><td>' + badge(b.type) + (b.type === 'REQUEST_MIX' ? '<div class="muted" style="font-size:11.5px">pilih ' + b.pickQuantity + '</div>' : '') + '</td>' +
+          '<td>' + b.components.map(function (c) { return '<div>' + (b.type === 'REQUEST_MIX' ? 'maks ' : '') + c.quantity + ' × <span class="sku">' + esc(c.sku) + '</span> ' + esc(c.name) + (c.skuStatus !== 'ACTIVE' ? ' ' + badge(c.skuStatus) : '') + '</div>'; }).join('') + '</td><td>' + badge(b.stockMode) + '</td><td>' + badge(b.status) + '</td><td><button class="btn sm" data-e="' + esc(b.id) + '">' + icon('eye') + 'Buka</button></td></tr>';
+      }).join('') + '</tbody></table></div>' + pager(d, function (p) { f.page = p; load(); }) : '<div class="tablewrap">' + emptyBox('Belum ada multipack / bundle', 'Paket jual dari data lama otomatis menjadi multipack saat diimpor.', 'boxes') + '</div>';
+      $$('[data-e]', bl).forEach(function (b) { b.onclick = function () { bundleEditor(b.getAttribute('data-e'), load); }; });
+    }).catch(function (e) { bl.innerHTML = errBox(e.message); });
+  };
+  Pages.bundles.reload = load;
+  $('#bq', box).oninput = debounce(function (e) { f.search = e.target.value; f.page = 1; load(); }, 300);
+  $('#bt', box).onchange = function (e) { f.type = e.target.value; f.page = 1; load(); };
+  $('#bs', box).onchange = function (e) { f.status = e.target.value; f.page = 1; load(); };
+  load();
+};
+/** Editor bundle (baru / ubah) + ubah status + simulasi komposisi request mix. */
+function bundleEditor(id, done) {
+  var after = function () { if (done) done(); else if (App.page === 'bundles' && Pages.bundles.reload) Pages.bundles.reload(); };
+  var open = function (b) {
+    b = b || { type: 'MULTIPACK', stockMode: 'VIRTUAL', components: [], status: 'DRAFT' };
+    var w = can('product.write') && b.status !== 'ARCHIVED';
+    var comps = b.components.map(function (c) { return { variantId: c.variantId, sku: c.sku, displayName: c.name, quantity: c.quantity, skuStatus: c.skuStatus }; });
+    var m = modal('<h3>' + (b.id ? 'Bundle ' + esc(b.sku) : 'Multipack / bundle baru') + (b.id ? ' ' + badge(b.status) : '') + '</h3>' +
+      '<label class="f">Jenis</label><div class="seg" id="ty">' + [['MULTIPACK', 'Multipack (1 SKU × N)'], ['MIXED', 'Mixed bundle'], ['REQUEST_MIX', 'Request mix']].map(function (t) { return '<button type="button" data-ty="' + t[0] + '" class="' + (b.type === t[0] ? 'on' : '') + '"' + (b.id ? ' disabled' : '') + '>' + t[1] + '</button>'; }).join('') + '</div>' +
+      '<label class="f">Nama bundle <span class="req">*</span></label><input class="in w100" id="bn" value="' + esc(b.name || '') + '" placeholder="mis. Paket Viva Air Mawar 6 PCS">' +
+      '<div class="fgrid"><div><label class="f">Mode stok</label><select class="in w100" id="sm"><option value="VIRTUAL"' + (b.stockMode === 'VIRTUAL' ? ' selected' : '') + '>Virtual — tanpa saldo sendiri</option><option value="PREASSEMBLED"' + (b.stockMode === 'PREASSEMBLED' ? ' selected' : '') + '>Dirakit — disimpan sebagai barang terpisah</option></select></div>' +
+      '<div id="pkw"><label class="f">Jumlah isi dipilih customer</label><input class="in w100" id="pk" type="number" min="2" value="' + esc(b.pickQuantity || '') + '"></div></div>' +
+      '<label class="f">Komponen (Child SKU)</label><div id="cl"></div>' + (w ? '<div class="row" style="margin-top:6px"><div id="add" style="flex:1"></div></div>' : '') +
+      '<label class="f">Barcode bundle (opsional)</label><div class="seg" id="bm">' + [['none', 'Tidak ada'], ['gtin', 'GTIN produsen'], ['internal', 'Barcode internal']].map(function (t) { return '<button type="button" data-bm="' + t[0] + '" class="' + ((b.barcodeType === 'GTIN' ? 'gtin' : b.barcodeType === 'INTERNAL' ? 'internal' : 'none') === t[0] ? 'on' : '') + '">' + t[1] + '</button>'; }).join('') + '</div><input class="in w100 code" id="bg" style="margin-top:6px" placeholder="GTIN paket dari produsen" value="' + esc(b.barcodeType === 'GTIN' ? b.barcode : '') + '"><div class="hint" id="bgh"></div>' +
+      '<div id="bx"></div>' + (b.id && b.type === 'REQUEST_MIX' && b.status === 'ACTIVE' ? '<div class="sect">Simulasi komposisi aktual (saat pemenuhan pesanan)</div><div id="sim"></div>' : '') +
+      '<div class="row" style="margin-top:16px">' + (w ? '<button class="btn pri" id="sv">' + (b.id ? 'Simpan perubahan' : 'Simpan bundle') + '</button>' + (!b.id ? '<button class="btn" id="sd">Simpan sebagai draft</button>' : '<button class="btn" id="st">' + icon('power') + 'Ubah status</button>') : '') + '<button class="btn ghost" data-close>Tutup</button></div>', { wide: true });
+    var type = b.type, bmode = b.barcodeType === 'GTIN' ? 'gtin' : b.barcodeType === 'INTERNAL' ? 'internal' : 'none';
+    var sync = function () {
+      $('#pkw', m).style.display = type === 'REQUEST_MIX' ? '' : 'none';
+      $('#sm', m).disabled = type === 'REQUEST_MIX' || !w;
+      if (type === 'REQUEST_MIX') $('#sm', m).value = 'VIRTUAL';
+      $('#bg', m).style.display = bmode === 'gtin' ? '' : 'none';
+      $('#bgh', m).textContent = bmode === 'internal' ? (b.barcodeType === 'INTERNAL' ? 'Tersimpan: ' + b.barcode : 'Dialokasikan otomatis saat simpan (prefix 200).') : '';
+      $('#cl', m).innerHTML = comps.length ? '<table class="t"><thead><tr><th>SKU</th><th>Nama</th><th>' + (type === 'REQUEST_MIX' ? 'Maks per paket' : 'Jumlah') + '</th><th></th></tr></thead><tbody>' + comps.map(function (c, i) {
+        return '<tr><td class="sku">' + esc(c.sku) + (c.skuStatus && c.skuStatus !== 'ACTIVE' ? ' ' + badge(c.skuStatus) : '') + '</td><td>' + esc(c.displayName) + '</td><td style="width:110px"><input class="in sm" type="number" min="1" data-q="' + i + '" value="' + esc(c.quantity) + '"' + (w ? '' : ' disabled') + '></td><td>' + (w ? '<button class="btn sm ghost" data-rm="' + i + '" type="button">' + icon('trash') + '</button>' : '') + '</td></tr>';
+      }).join('') + '</tbody></table>' : '<div class="muted">Belum ada komponen — cari Child SKU di bawah.</div>';
+      $$('[data-q]', m).forEach(function (inp) { inp.oninput = function () { comps[Number(inp.getAttribute('data-q'))].quantity = Number(inp.value); }; });
+      $$('[data-rm]', m).forEach(function (x) { x.onclick = function () { comps.splice(Number(x.getAttribute('data-rm')), 1); sync(); }; });
+    };
+    $$('[data-ty]', m).forEach(function (x) { x.onclick = function () { type = x.getAttribute('data-ty'); $$('[data-ty]', m).forEach(function (y) { y.classList.toggle('on', y === x); }); if (type === 'MULTIPACK' && comps.length) comps = comps.slice(0, 1); sync(); }; });
+    $$('[data-bm]', m).forEach(function (x) { x.onclick = function () { bmode = x.getAttribute('data-bm'); $$('[data-bm]', m).forEach(function (y) { y.classList.toggle('on', y === x); }); sync(); }; });
+    if ($('#add', m)) { var adder = skuCombo($('#add', m), ['variant'], function (it) { if (!it) return; if (comps.some(function (c) { return c.variantId === it.variantId; })) return toast('Komponen sudah ada', 'warn'); if (type === 'MULTIPACK' && comps.length) return toast('Multipack hanya 1 SKU — ubah jumlahnya', 'warn'); comps.push({ variantId: it.variantId, sku: it.sku, displayName: it.displayName, quantity: type === 'MULTIPACK' ? 6 : type === 'REQUEST_MIX' ? (Number($('#pk', m).value) || 1) : 1 }); adder.set(null); sync(); }, '+ Tambah komponen: cari Child SKU…'); }
+    sync();
+    var payload = function (draft) { return { id: b.id, version: b.version, type: type, name: $('#bn', m).value, stockMode: $('#sm', m).value, pickQuantity: Number($('#pk', m).value) || null, components: comps.map(function (c) { return { variantId: c.variantId, quantity: Number(c.quantity) }; }), barcode: { mode: bmode, code: bmode === 'gtin' ? $('#bg', m).value : bmode === 'internal' && b.barcodeType === 'INTERNAL' ? b.barcode : '' }, barcodeChangeReason: b.barcode && (bmode === 'none' || (bmode === 'gtin' && $('#bg', m).value !== b.barcode)) ? 'Diubah di editor bundle' : '', saveAsDraft: !!draft, requestKey: uid() }; };
+    var save = function (btn, draft) { $('#bx', m).innerHTML = ''; busy(btn, api('bundle.save', payload(draft), { silent: true })).then(function (r) { m.close(); toast((r.typeLabel || 'Bundle') + ' ' + r.sku + ' tersimpan', 'ok'); after(); }).catch(function (e) { $('#bx', m).innerHTML = feList(e); }); };
+    if ($('#sv', m)) $('#sv', m).onclick = function () { save($('#sv', m), false); };
+    if ($('#sd', m)) $('#sd', m).onclick = function () { save($('#sd', m), true); };
+    if ($('#st', m)) $('#st', m).onclick = function () { lifecyclePrompt(b.sku, b.status).then(function (v) { if (!v) return; api('bundle.setStatus', { id: b.id, status: v.status, reason: v.reason }).then(function () { m.close(); toast('Status bundle diperbarui', 'ok'); after(); }).catch(function () {}); }); };
+    if ($('#sim', m)) {
+      $('#sim', m).innerHTML = '<div class="muted">Pilih isi sebanyak <b>' + b.pickQuantity + '</b> dari daftar komponen.</div>' + b.components.map(function (c) { return '<div class="row" style="margin-top:6px"><span class="sku" style="width:110px">' + esc(c.sku) + '</span><span class="grow">' + esc(c.name) + '</span><input class="in sm" type="number" min="0" max="' + c.quantity + '" value="0" data-sim="' + esc(c.sku) + '" style="width:80px"></div>'; }).join('') + '<div class="row" style="margin-top:8px"><button class="btn sm" id="sr">Validasi komposisi</button></div><div id="so"></div>';
+      $('#sr', m).onclick = function () {
+        var sel = $$('[data-sim]', m).map(function (x) { return { sku: x.getAttribute('data-sim'), quantity: Number(x.value) }; }).filter(function (x) { return x.quantity > 0; });
+        api('bundle.resolve', { id: b.id, selections: sel }, { silent: true }).then(function (r) { $('#so', m).innerHTML = '<div class="ok-box">' + icon('check') + '<span>Valid. ' + esc(r.note) + '<br>' + r.components.map(function (c) { return c.quantity + ' × ' + esc(c.sku); }).join(', ') + '</span></div>'; }).catch(function (e) { $('#so', m).innerHTML = feList(e); });
+      };
+    }
+  };
+  if (!id) return open(null);
+  api('bundle.get', { id: id }).then(open).catch(function () {});
+}
+
+/* ───────── Channel SKU Mapping ───────── */
+var CHANNELS = [['shopee', 'Shopee'], ['tiktok', 'TikTok Shop'], ['tokopedia', 'Tokopedia'], ['beecloud', 'BeeCloud'], ['lainnya', 'Kanal lain'], ['legacy', 'SKU lama']];
+function isMarketplace(ch) { return ch === 'shopee' || ch === 'tiktok' || ch === 'tokopedia'; }
+/** Modal mapping kanal. preset: { system, sku: {sku,...} } */
+function channelMapForm(preset, done) {
+  preset = preset || {};
+  var ch = preset.system && preset.system !== 'legacy' ? preset.system : 'shopee';
+  var m = modal('<h3>Tambah mapping kanal</h3><label class="f">Kanal</label><div class="seg" id="cs">' + CHANNELS.filter(function (c) { return c[0] !== 'legacy'; }).map(function (c) { return '<button type="button" data-c="' + c[0] + '" class="' + (c[0] === ch ? 'on' : '') + '">' + c[1] + '</button>'; }).join('') + '</div>' +
+    '<label class="f">SKU internal (Child SKU / kemasan / bundle) <span class="req">*</span></label><div id="ck"></div><div class="fgrid">' +
+    '<div><label class="f">Toko / akun</label><input class="in w100" id="cst" placeholder="mis. Meirista Official"></div><div class="mk"><label class="f">ID produk / listing <span class="req">*</span></label><input class="in w100 code" id="cpi" inputmode="numeric"></div>' +
+    '<div class="mk"><label class="f">ID variasi</label><input class="in w100 code" id="cvi" inputmode="numeric" placeholder="kosong bila tanpa variasi"></div><div class="mk"><label class="f">SKU induk listing</label><input class="in w100 code" id="cps" placeholder="tidak harus sama dengan Parent SKU internal"></div>' +
+    '<div><label class="f" id="cel">Seller SKU variasi</label><input class="in w100 code" id="ces"></div><div class="mk"><label class="f">Nama listing</label><input class="in w100" id="cln"></div></div>' +
+    '<div class="hint">Status awal "Dipetakan". Ekspor tidak sama dengan tersinkron — konfirmasi setelah dicek di kanal.</div><div id="cx"></div><div class="row" style="margin-top:16px"><button class="btn pri" id="csv">Simpan</button><button class="btn" data-close>Batal</button></div>', { wide: true });
+  var sk = skuCombo($('#ck', m), ['variant', 'pack', 'bundle'], null, null, preset.sku || null);
+  var sync = function () { $$('.mk', m).forEach(function (x) { x.style.display = isMarketplace(ch) ? '' : 'none'; }); $('#cel', m).textContent = ch === 'beecloud' ? 'Item Code BeeCloud (kosong = SKU internal)' : isMarketplace(ch) ? 'Seller SKU variasi' : 'Kode di kanal'; };
+  $$('[data-c]', m).forEach(function (b) { b.onclick = function () { ch = b.getAttribute('data-c'); $$('[data-c]', m).forEach(function (y) { y.classList.toggle('on', y === b); }); sync(); }; });
+  sync();
+  $('#csv', m).onclick = function () {
+    var it = sk.get(); if (!it) return toast('Pilih SKU internal', 'err');
+    busy($('#csv', m), api('mapping.create', { system: ch, sku: it.sku, storeAccount: $('#cst', m).value, externalProductId: $('#cpi', m).value, externalVariationId: $('#cvi', m).value, externalParentSku: $('#cps', m).value, externalSku: $('#ces', m).value, listingName: $('#cln', m).value, requestKey: uid() }, { silent: true }))
+      .then(function () { m.close(); toast('Mapping ' + (CHANNELS.find(function (c) { return c[0] === ch; }) || [])[1] + ' tersimpan', 'ok'); if (done) done(); }).catch(function (e) { $('#cx', m).innerHTML = feList(e); });
+  };
+}
+Pages.mapping = function (main, arg) {
+  var f = { system: arg && arg.system || 'shopee', status: '', store: '', search: '', page: 1 };
+  var w = can('mapping.write');
+  main.innerHTML = pageHead('Operasional', 'Channel SKU Mapping', w ? '<button class="btn pri" id="nm">' + icon('plus') + 'Tambah mapping</button>' : '',
+    'SKU internal dipisahkan dari kode kanal. Satu Child SKU boleh di banyak listing; listing paket menunjuk multipack/bundle. Tidak ada sinkronisasi API otomatis — gunakan import, ekspor, dan konfirmasi manual.') +
+    '<div id="sum" class="row" style="margin-bottom:12px"></div>' +
+    '<div class="toolbar"><div class="seg" id="sy">' + CHANNELS.map(function (c) { return '<button data-s="' + c[0] + '" class="' + (c[0] === f.system ? 'on' : '') + '">' + c[1] + '</button>'; }).join('') + '</div><div class="search">' + icon('search') + '<input class="in" id="q" placeholder="Cari SKU, ID listing, nama…"></div>' +
+    '<input class="in" id="sto" placeholder="Toko/akun" style="width:150px"><select class="in" id="st" style="width:auto"><option value="">Semua status</option><option value="unmapped">Belum dipetakan</option><option value="mapped">Dipetakan</option><option value="exported">Diekspor</option><option value="confirmed">Terkonfirmasi</option><option value="error">Error</option><option value="mismatch">Tidak cocok</option></select></div><div id="ml"></div>';
+  var summary = function () {
+    api('mapping.summary', {}, { quiet: true, silent: true }).then(function (s) {
+      var x = s[f.system] || { mapped: 0, exported: 0, confirmed: 0, error: 0 };
+      $('#sum', main).innerHTML = f.system === 'legacy' ? '' : ['unmapped', 'mapped', 'exported', 'confirmed', 'error'].map(function (k) { return '<span class="badge b-' + k + '">' + esc(STATUS_TXT[k]) + ': ' + fmtNum(x[k] || 0) + '</span>'; }).join(' ');
+    }).catch(function () {});
+  };
+  var load = function () {
+    var box = $('#ml', main); box.innerHTML = loadingBox();
+    $('#st', main).style.display = f.system === 'legacy' ? 'none' : '';
+    summary();
+    if (f.status === 'unmapped') {
+      return api('mapping.unmapped', { system: f.system, search: f.search }).then(function (rows) {
+        box.innerHTML = rows.length ? '<div class="tablewrap"><table class="t"><thead><tr><th>SKU internal</th><th>Jenis</th><th>Nama</th><th>Barcode</th><th></th></tr></thead><tbody>' + rows.map(function (r) {
+          return '<tr><td class="sku">' + esc(r.sku) + '</td><td>' + (r.kind === 'bundle' ? 'Bundle' : r.kind === 'pack' ? 'Kemasan' : 'Child SKU') + '</td><td>' + esc(r.displayName) + (r.legacySku ? '<div class="muted" style="font-size:11.5px">lama: ' + esc(r.legacySku) + '</div>' : '') + '</td><td class="code">' + esc(r.barcode) + '</td><td>' + (w ? '<button class="btn sm" data-map="' + esc(r.sku) + '" data-name="' + esc(r.displayName) + '">' + icon('link') + 'Petakan</button>' : '') + '</td></tr>';
+        }).join('') + '</tbody></table></div><div class="hint">Menampilkan maks. 50 — persempit dengan pencarian.</div>' : '<div class="tablewrap">' + emptyBox('Semua SKU aktif sudah dipetakan ke kanal ini', '', 'check') + '</div>';
+        $$('[data-map]', box).forEach(function (b) { b.onclick = function () { channelMapForm({ system: f.system, sku: { sku: b.getAttribute('data-map'), displayName: b.getAttribute('data-name'), kind: 'variant' } }, load); }; });
+      }).catch(function (e) { box.innerHTML = errBox(e.message); });
+    }
+    api('mapping.list', f).then(function (d) {
+      var leg = f.system === 'legacy', mk = isMarketplace(f.system);
+      box.innerHTML = d.rows.length ? '<div class="tablewrap"><table class="t"><thead><tr>' + (mk ? '<th>Toko</th><th>ID produk / variasi</th><th>SKU induk / seller SKU</th>' : '<th>' + (leg ? 'SKU lama' : 'Kode kanal') + '</th>') + '<th>SKU internal</th><th>Barang</th>' + (leg ? '' : '<th>Status</th>') + '<th></th></tr></thead><tbody>' + d.rows.map(function (r) {
+        return '<tr>' + (mk ? '<td>' + esc(r.storeAccount || '—') + '</td><td class="code">' + esc(r.externalProductId) + (r.externalVariationId ? '<div class="muted">var ' + esc(r.externalVariationId) + '</div>' : '') + '</td><td class="sku">' + esc(r.externalParentSku || '—') + '<div>' + esc(r.externalSku || '') + '</div></td>' : '<td class="sku">' + esc(r.externalSku) + (leg || r.skuMatches ? '' : ' ' + badge('mismatch', 'beda')) + '</td>') +
+          '<td class="sku">' + esc(r.internalSku || '—') + (r.targetStatus && r.targetStatus !== 'ACTIVE' ? ' ' + badge(r.targetStatus) : '') + '<div class="muted" style="font-size:11px">' + (r.targetKind === 'bundle' ? 'Bundle' : r.targetKind === 'pack' ? 'Kemasan' : 'Child SKU') + '</div></td><td>' + (r.productId ? '<a class="link-btn" data-p="' + esc(r.productId) + '">' + esc(r.displayName) + '</a>' : r.bundleId ? '<a class="link-btn" data-b="' + esc(r.bundleId) + '">' + esc(r.displayName) + '</a>' : esc(r.displayName || '—')) + (r.listingName ? '<div class="muted" style="font-size:11.5px">' + esc(r.listingName) + '</div>' : '') + '</td>' +
+          (leg ? '' : '<td>' + badge(r.status) + (r.lastError ? '<div class="muted" style="font-size:11.5px">' + esc(r.lastError) + '</div>' : '') + '</td>') + '<td class="nowrap">' + (w ? (leg ? '<button class="btn sm ghost" data-off="' + esc(r.id) + '">Nonaktifkan</button>' : '<select class="in sm" data-act="' + esc(r.id) + '"><option value="">Aksi…</option><option value="mark_exported">Tandai diekspor</option><option value="confirm">Konfirmasi (ada bukti)</option><option value="mark_error">Tandai error</option><option value="reset">Reset</option><option value="deactivate">Nonaktifkan</option></select>') : '') + '</td></tr>';
+      }).join('') + '</tbody></table></div>' + pager(d, function (p) { f.page = p; load(); }) : '<div class="tablewrap">' + emptyBox(leg ? 'Belum ada SKU lama' : 'Belum ada mapping', leg ? 'SKU format lama tercatat otomatis saat migrasi / import.' : 'Pilih status "Belum dipetakan" untuk melihat SKU yang perlu dipetakan, atau import listing dari Seller Center.', 'link') + '</div>';
+      $$('[data-p]', box).forEach(function (a) { a.onclick = function () { App.go('product', a.getAttribute('data-p')); }; });
+      $$('[data-b]', box).forEach(function (a) { a.onclick = function () { bundleEditor(a.getAttribute('data-b')); }; });
+      var act = function (id, a, note, el) { api('mapping.action', { id: id, action: a, note: note }).then(function () { toast('Mapping diperbarui', 'ok'); load(); }).catch(function () { if (el) el.value = ''; }); };
+      $$('[data-off]', box).forEach(function (b) { b.onclick = function () { promptText('Nonaktifkan SKU lama', 'Alasan', { min: 3, danger: true, ok: 'Nonaktifkan' }).then(function (n) { if (n) act(b.getAttribute('data-off'), 'deactivate', n); }); }; });
+      $$('[data-act]', box).forEach(function (s) {
+        s.onchange = function () {
+          var a = s.value; if (!a) return;
+          var need = ['confirm', 'mark_error', 'deactivate'].indexOf(a) >= 0;
+          (need ? promptText('Catatan / bukti', 'Mis. "dicek di Seller Centre 14/10, SKU tampil"', { min: 3 }) : Promise.resolve('')).then(function (note) { if (need && !note) { s.value = ''; return; } act(s.getAttribute('data-act'), a, note, s); });
+        };
+      });
+    }).catch(function (e) { box.innerHTML = errBox(e.message); });
+  };
+  $$('#sy button', main).forEach(function (b) { b.onclick = function () { $$('#sy button', main).forEach(function (x) { x.classList.remove('on'); }); b.classList.add('on'); f.system = b.getAttribute('data-s'); f.page = 1; if (f.system === 'legacy' && f.status === 'unmapped') { f.status = ''; $('#st', main).value = ''; } load(); }; });
+  $('#q', main).oninput = debounce(function (e) { f.search = e.target.value; f.page = 1; load(); }, 300);
+  $('#sto', main).oninput = debounce(function (e) { f.store = e.target.value; f.page = 1; load(); }, 400);
+  $('#st', main).onchange = function (e) { f.status = e.target.value; f.page = 1; load(); };
+  if ($('#nm', main)) $('#nm', main).onclick = function () { channelMapForm({ system: f.system }, load); };
+  load();
+};
+</script>

@@ -11,7 +11,11 @@ const { createGas } = require('../test/harness.cjs');
 
 const SRC = path.join(__dirname, '../src');
 const PORT = Number(process.env.PORT || 8790);
-const { ctx } = createGas({ ownerEmail: 'owner@toko.local' });
+const { ctx, state } = createGas({ ownerEmail: 'owner@toko.local' });
+// Open Beauty Facts tiruan (development, tanpa internet): satu GTIN contoh ditemukan, lainnya 404.
+// Respons di bawah adalah salinan bentuk respons API v2 yang asli untuk GTIN 8993137699549.
+const OBF_SAMPLE = { code: '8993137699549', status: 1, product: { brands: '', categories_tags: ['en:non-food-products', 'en:face-masks'], code: '8993137699549', image_front_url: '', product_name: 'Wardah nature daily MINERAL + clarifying clay mask 100ML', quantity: '' } };
+state.fetch = (url) => (url.indexOf('8993137699549') > 0 ? { code: 200, body: JSON.stringify(OBF_SAMPLE) } : { code: 404, body: '{"status":0}' });
 const call = (t, a, p) => JSON.parse(JSON.stringify(ctx.api(t, a, p)));
 
 // ----- data demo (akun development; password tercatat di sini, bukan untuk produksi)
@@ -33,7 +37,8 @@ const cats = call(entry, 'category.list', {}).data;
 const B = (n) => brands.find((b) => b.name === n).id;
 const C = (n) => cats.find((c) => c.name === n).id;
 const g13 = (b) => { let s = 0; for (let i = 11, w = 3; i >= 0; i--, w = w === 3 ? 1 : 3) s += Number(b[i]) * w; return b + ((10 - (s % 10)) % 10); };
-const save = (input) => { const r = call(entry, 'product.save', { input }); if (!r.ok) console.error('seed gagal', input.name, r.error); };
+const save = (input) => { const r = call(entry, 'product.save', { input }); if (!r.ok) console.error('seed gagal', input.name, r.error); return r.data; };
+const must = (r, what) => { if (!r.ok) console.error('seed gagal', what, r.error); return r.data; };
 save({ brandId: B('Scarlett'), categoryId: C('Parfum'), name: 'Parfum Eau de Parfum', baseUnit: 'BOTOL', hasVariants: true, variants: [
   { attributes: [{ name: 'Aroma', value: 'Ocean Blue' }, { name: 'Volume', value: '50 ml' }], barcode: { mode: 'gtin', code: g13('899100000001') }, conversions: [{ unitName: 'BOX', factor: 24, isTradeItem: true, barcode: { mode: 'gtin', code: g13('899100000091') } }, { unitName: 'KARTON', factor: 6, containsUnit: 'BOX' }] },
   { attributes: [{ name: 'Aroma', value: 'Ocean Blue' }, { name: 'Volume', value: '100 ml' }], barcode: { mode: 'gtin', code: g13('899100000002') }, conversions: [{ unitName: 'BOX', factor: 12 }] },
@@ -43,6 +48,20 @@ save({ brandId: B('Scarlett'), categoryId: C('Parfum'), name: 'Parfum Eau de Par
 save({ brandId: B('Viva'), categoryId: C('Toner'), name: 'Viva Air Mawar 100ml', baseUnit: 'BOTOL', hasVariants: false, variants: [{ barcode: { mode: 'gtin', code: '8992796011501' }, conversions: [{ unitName: 'LUSIN', factor: 12 }, { unitName: 'KARTON', factor: 4, containsUnit: 'LUSIN' }] }] });
 save({ brandId: B('Hanasui'), categoryId: C('Lipstick'), name: 'Hanasui Matte Lip Cream', baseUnit: 'PCS', hasVariants: true, variants: ['01 Pink Nude', '02 Rosy', '03 Brick'].map((sh) => ({ attributes: [{ name: 'Shade', value: sh }], barcode: { mode: 'internal' }, conversions: [{ unitName: 'BOX', factor: 12 }, { unitName: 'KARTON', factor: 10, containsUnit: 'BOX' }] })) });
 
+// v4: supplier, kode supplier, bundle, mapping channel, draft
+{
+  const list = call(entry, 'product.list', { status: 'all', pageSize: 50 }).data.rows;
+  const det = (name) => call(entry, 'product.get', { id: list.find((p) => p.name.indexOf(name) >= 0).id }).data;
+  const pf = det('Parfum'), viva = det('Viva'), lip = det('Hanasui');
+  const sa = must(call(entry, 'supplier.save', { name: 'PT Wangi Sejahtera', contactName: 'Andi', phone: '0812-0000-0001' }), 'supplier');
+  must(call(entry, 'supplier.save', { name: 'CV Aroma Nusantara' }), 'supplier 2');
+  must(call(entry, 'supplierMap.save', { supplierId: sa.id, supplierProductCode: 'PF-OB50', variantId: pf.variants[0].id, purchaseUnit: 'BOX', conversionFactor: 24, moq: 2 }), 'supplier map');
+  must(call(entry, 'bundle.save', { type: 'MULTIPACK', name: 'Paket Viva Air Mawar isi 6', components: [{ variantId: viva.variants[0].id, quantity: 6 }] }), 'multipack');
+  must(call(entry, 'bundle.save', { type: 'MIXED', name: 'Bundle Lip Cream 3 Shade', components: lip.variants.map((v) => ({ variantId: v.id, quantity: 1 })) }), 'mixed');
+  must(call(entry, 'bundle.save', { type: 'REQUEST_MIX', name: 'Lip Cream Pilih 2', pickQuantity: 2, components: lip.variants.map((v) => ({ variantId: v.id, quantity: 1 })) }), 'request mix');
+  must(call(entry, 'mapping.create', { system: 'shopee', storeAccount: 'Meirista Official', sku: pf.variants[0].sku, externalProductId: '43465728785', externalVariationId: '351267547392', externalParentSku: 'EDP-OCEAN', externalSku: 'EDP-OB50' }), 'mapping');
+  save({ brandId: B('Pixy'), categoryId: C('Powder Refill'), name: 'Pixy Two Way Cake Refill', baseUnit: 'PCS', hasVariants: false, saveAsDraft: true, variants: [{ barcode: { mode: 'none' }, conversions: [] }] });
+}
 // ----- HTML seperti HtmlService (include + scriptlet)
 function page() {
   let html = fs.readFileSync(path.join(SRC, 'Index.html'), 'utf8');

@@ -78,6 +78,7 @@ function settingsSave_(user, input) {
     if (missing.length) throw new AppError('Satuan dasar masih dipakai produk: ' + missing.join(', '));
   }
   if (input.pack_units !== undefined) val.pack_units = cleanUnitList_(input.pack_units, 'Satuan kemasan');
+  if (input.gtin_lookup_enabled !== undefined) val.gtin_lookup_enabled = !!input.gtin_lookup_enabled;
   if (input.attribute_types !== undefined) {
     const list = (Array.isArray(input.attribute_types) ? input.attribute_types : String(input.attribute_types).split(/[\n,]/)).map(cleanAttrName).filter(Boolean);
     if (!list.length) throw new AppError('Jenis atribut minimal satu');
@@ -124,7 +125,13 @@ function dashboard_() {
       withoutBarcode: liveV.filter((v) => !v.GTIN && !v.InternalBarcode).length,
       conversions: C.filter((c) => !c.IsBaseUnit && c.Status === STATUS.ACTIVE && liveP[c.ProductID]).length,
       variantsAll: V.length,
+      drafts: P.filter((p) => p.Status === STATUS.DRAFT).length,
+      discontinued: V.filter((v) => v.Status === STATUS.DISCONTINUED).length,
+      bundles: db_('BUNDLE_MASTERS').filter((b) => b.Status === STATUS.ACTIVE).length,
+      suppliers: db_('MASTER_SUPPLIERS').filter((x) => x.Status === STATUS.ACTIVE).length,
+      supplierMaps: db_('SUPPLIER_PRODUCT_MAPPING').filter((x) => x.Status === STATUS.ACTIVE).length,
     },
+    channels: mappingSummary_(),
     byBrand: Object.keys(byBrand)
       .map((k) => ({ name: k, n: byBrand[k] }))
       .sort((a, b) => b.n - a.n)

@@ -40,14 +40,14 @@ function computeEq(base, rows) {
 
 var Wiz = {
   st: null, main: null, checks: {}, open3: {},
-  key: function () { return 'rpm_wiz3_' + App.me.user.id; },
+  key: function () { return 'rpm_wiz4_' + App.me.user.id; },
   fresh: function (mode) {
-    return { v: 3, mode: mode || 'quick', step: 1, productId: null, version: null, productCode: '', brand: null, category: null, name: '', baseUnit: '',
-      attrs: [{ name: '', values: [] }], variants: [Wiz.newVariant([])], similar: [], ack: false, errors: {}, savedAt: null, note: '' };
+    return { v: 4, mode: mode || 'quick', step: 1, productId: null, version: null, productCode: '', brand: null, category: null, name: '', baseUnit: '', description: '', imageUrl: '', dataSource: '', status: '',
+      attrs: [{ name: '', values: [] }], variants: [Wiz.newVariant([])], similar: [], ack: false, errors: {}, savedAt: null, note: '', reqKey: uid(), lookup: null };
   },
   newVariant: function (attrs) {
     return { key: uid(), id: null, saved: false, attributes: attrs || [], name: (attrs || []).map(function (a) { return a.value; }).join(' '), nameTouched: false,
-      sku: '', status: 'ACTIVE', barcode: { mode: 'gtin', code: '' }, orig: null, reason: '', conversions: [] };
+      sku: '', status: 'ACTIVE', barcode: { mode: 'gtin', code: '' }, orig: null, reason: '', conversions: [], batchTracking: false, expiryTracking: false, shelfLifeMonths: '', purchaseUnit: '', salesUnit: '', statusReason: '' };
   },
   newConv: function (unit, factor, contains) { return { key: uid(), id: null, saved: false, unitName: unit || '', factor: factor || '', containsUnit: contains || '', isTradeItem: false, tradeSaved: false, sku: '', status: 'ACTIVE', barcode: { mode: 'gtin', code: '' }, orig: null, reason: '' }; },
 
@@ -70,12 +70,12 @@ var Wiz = {
     }
     var draft = null;
     try { draft = JSON.parse(Store.get(Wiz.key()) || 'null'); } catch (e) { draft = null; }
-    var useDraft = draft && draft.v === 3 && !arg.gtin && !arg.mode && (draft.name || draft.brand || draft.variants.some(function (v) { return v.barcode.code || v.attributes.length; }));
+    var useDraft = draft && draft.v === 4 && !arg.gtin && !arg.mode && (draft.name || draft.brand || draft.variants.some(function (v) { return v.barcode.code || v.attributes.length; }));
     Wiz.st = useDraft ? draft : Wiz.fresh(arg.mode);
     Wiz.restored = !!useDraft;
-    if (arg.gtin) Wiz.st.variants[0].barcode = { mode: 'gtin', code: arg.gtin };
     Wiz.guard();
     Wiz.render();
+    if (arg.gtin) Wiz.lookup(arg.gtin);
   },
   guard: function () { App.leaveGuard = function () { var s = Wiz.st; return !s || Wiz.done || !(s.name || s.brand || s.variants.some(function (v) { return v.barcode.code; })); }; },
   persist: debounce(function () { var s = Wiz.st; if (!s || s.productId || Wiz.done) return; s.savedAt = new Date().toISOString(); Store.set(Wiz.key(), JSON.stringify(s)); }, 400),
@@ -88,11 +88,12 @@ var Wiz = {
     var s = Wiz.fresh(p.hasVariants ? 'advanced' : 'quick');
     var bcOf = function (g, i) { return g ? { mode: 'gtin', code: g } : i ? { mode: 'internal', code: i } : { mode: 'none', code: '' }; };
     Object.assign(s, {
-      productId: p.id, version: p.version, productCode: p.productCode, brand: p.brand, category: p.category, name: p.name, baseUnit: p.baseUnit, step: p.hasVariants ? 2 : 1,
+      productId: p.id, version: p.version, productCode: p.productCode, brand: p.brand, category: p.category, name: p.name, baseUnit: p.baseUnit, step: p.hasVariants ? 2 : 1, description: p.description, imageUrl: p.imageUrl, dataSource: p.dataSource, status: p.status,
       attrs: Wiz.attrsFrom(p.variants),
       variants: p.variants.map(function (v) {
         var b = bcOf(v.gtin, v.internalBarcode);
-        return { key: uid(), id: v.id, saved: true, attributes: v.attributes, name: v.name, nameTouched: true, sku: v.sku, status: v.status, barcode: Object.assign({}, b), orig: b, reason: '',
+        return { key: uid(), id: v.id, saved: true, attributes: v.attributes, name: v.name, nameTouched: true, sku: v.sku, status: v.status, savedStatus: v.status, barcode: Object.assign({}, b), orig: b, reason: '', statusReason: '',
+          batchTracking: v.batchTracking, expiryTracking: v.expiryTracking, shelfLifeMonths: v.shelfLifeMonths || '', purchaseUnit: v.purchaseUnit, salesUnit: v.salesUnit,
           conversions: v.conversions.filter(function (c) { return !c.isBaseUnit; }).map(function (c) {
             var cb = bcOf(c.gtin, c.internalBarcode);
             return { key: uid(), id: c.id, saved: true, unitName: c.unitName, factor: c.factor, containsUnit: c.containsUnit, isTradeItem: c.isTradeItem, tradeSaved: c.isTradeItem, sku: c.sku, status: c.status, barcode: Object.assign({}, cb.mode === 'none' ? { mode: 'gtin', code: '' } : cb), orig: cb, reason: '' };
@@ -106,13 +107,14 @@ var Wiz = {
     var s = Wiz.fresh(p.hasVariants ? 'advanced' : 'quick');
     var act = p.variants.filter(function (v) { return v.status === 'ACTIVE'; });
     Object.assign(s, {
-      brand: p.brand.status === 'ACTIVE' ? p.brand : null, category: p.category.status === 'ACTIVE' ? p.category : null, name: p.name, baseUnit: p.baseUnit, step: 1,
+      brand: p.brand.status === 'ACTIVE' ? p.brand : null, category: p.category.status === 'ACTIVE' ? p.category : null, name: p.name, baseUnit: p.baseUnit, step: 1, description: p.description,
       attrs: Wiz.attrsFrom(act),
       note: 'Duplikat dari ' + p.name + ' (' + p.productCode + '). ID, SKU, dan GTIN tidak disalin — ubah nama/atribut, lalu isi GTIN masing-masing varian.',
       variants: act.map(function (v) {
         var nv = Wiz.newVariant(v.attributes.map(function (a) { return { name: a.name, value: a.value }; }));
         nv.barcode = { mode: p.hasVariants ? 'gtin' : 'gtin', code: '' };
         nv.conversions = v.conversions.filter(function (c) { return !c.isBaseUnit && c.status === 'ACTIVE'; }).map(function (c) { var n = Wiz.newConv(c.unitName, c.factor, c.containsUnit); n.isTradeItem = c.isTradeItem; return n; });
+        Object.assign(nv, { batchTracking: v.batchTracking, expiryTracking: v.expiryTracking, shelfLifeMonths: v.shelfLifeMonths || '', purchaseUnit: v.purchaseUnit, salesUnit: v.salesUnit });
         return nv;
       })
     });
@@ -167,12 +169,13 @@ var Wiz = {
     var multiSaved = s.variants.filter(function (v) { return v.saved; }).length > 1 || s.variants.length > 1;
     main.innerHTML = pageHead(s.productId ? 'Edit produk · ' + s.productCode : 'Master data', s.productId ? s.name : 'Registrasi Produk',
       s.productId ? '<button class="btn" id="wz-cancel">' + icon('x') + 'Batal</button>' : (Wiz.restored ? '<button class="btn ghost" id="wz-reset">' + icon('refresh') + 'Mulai dari awal</button>' : ''),
-      s.productId ? 'ID, kode produk, dan SKU bersifat permanen. Nama, brand, kategori, atribut, barcode, dan kemasan boleh dikoreksi — semuanya tercatat di audit.' : 'Kode produk & SKU dibuat otomatis. Produk langsung aktif setelah disimpan — tanpa approval.') +
+      s.productId ? 'ID, kode produk, dan SKU bersifat permanen. Nama, brand, kategori, atribut, barcode, dan kemasan boleh dikoreksi — semuanya tercatat di audit.' : 'Kode produk & SKU dibuat otomatis. Scan GTIN dulu untuk cek duplikat &amp; auto-fill. Simpan langsung aktif, atau Simpan sebagai Draft bila data belum lengkap — tanpa approval.') +
       (s.note ? '<div class="info-box" style="margin:-8px 0 14px">' + icon('copy') + '<span>' + esc(s.note) + '</span></div>' : '') +
       (Wiz.restored && !s.productId ? '<div class="info-box" style="margin:-8px 0 14px">' + icon('clock') + '<span>Melanjutkan draf yang belum disimpan' + (s.savedAt ? ' (' + fmtDate(s.savedAt) + ')' : '') + '. Draf hanya tersimpan di perangkat ini.</span></div>' : '') +
+      (s.productId ? '' : '<form class="regscan" id="wz-scan" autocomplete="off"><span class="k">' + icon('scan') + ' SCAN GTIN</span><input class="in" name="q" placeholder="Scan / ketik GTIN untuk cek duplikat & auto-fill, lalu Enter" spellcheck="false"><button class="btn pri" type="submit">Cari</button></form><div id="wz-gl"></div>') +
       '<div class="mode"><button type="button" data-mode="quick" class="' + (quick ? 'on' : '') + '"' + (!quick && multiSaved ? ' disabled title="Produk punya lebih dari satu varian"' : '') + '><span class="i">' + icon('zap') + '</span><span><b>Quick Entry</b><span>Satu varian fisik — Brand, Kategori, Nama, Barcode, Satuan → Simpan.</span></span></button>' +
       '<button type="button" data-mode="advanced" class="' + (quick ? '' : 'on') + '"><span class="i">' + icon('layers') + '</span><span><b>Advanced</b><span>Beberapa varian (aroma, volume, shade…) dengan GTIN masing-masing.</span></span></button></div>' +
-      (quick ? '' : '<div class="stepper" style="grid-template-columns:repeat(4,minmax(0,1fr))">' + steps.map(function (n, i) {
+      (quick ? '' : '<div class="stepper s4">' + steps.map(function (n, i) {
         var k = i + 1; return '<button class="stp' + (s.step === k ? ' on' : s.step > k ? ' done' : '') + (bad[k] ? ' bad' : '') + '" data-step="' + k + '"><span class="n">' + (bad[k] ? '!' : s.step > k ? '✓' : k) + '</span><span><span class="k">Tahap ' + k + '</span><span class="v" style="display:block">' + n + '</span></span></button>';
       }).join('') + '</div>') +
       '<div class="wz-grid"><div id="wz-body"></div><aside class="wz-side" id="wz-side"></aside></div>';
@@ -180,6 +183,12 @@ var Wiz = {
     $$('[data-mode]', main).forEach(function (b) { b.onclick = function () { Wiz.setMode(b.getAttribute('data-mode')); }; });
     if ($('#wz-cancel', main)) $('#wz-cancel', main).onclick = function () { Wiz.done = true; App.go('product', s.productId, { force: true }); };
     if ($('#wz-reset', main)) $('#wz-reset', main).onclick = function () { ask('Hapus draf dan mulai registrasi baru?', 'Mulai baru', true).then(function (y) { if (y) { Store.del(Wiz.key()); Wiz.restored = false; Wiz.st = Wiz.fresh(); Wiz.render(); } }); };
+    var sf = $('#wz-scan', main);
+    if (sf) {
+      sf.onsubmit = function (e) { e.preventDefault(); var q = sf.q.value.trim(); if (q) Wiz.lookup(q); };
+      if (!s.name && !s.brand && !s.variants.some(function (v) { return v.barcode.code; })) setTimeout(function () { sf.q.focus(); }, 60);
+    }
+    Wiz.renderLookup();
     var body = $('#wz-body', main);
     if (quick) Wiz.quickForm(body);
     else if (s.step === 1) Wiz.step1(body); else if (s.step === 2) Wiz.step2(body); else if (s.step === 3) Wiz.step3(body); else Wiz.step4(body);
@@ -246,7 +255,8 @@ var Wiz = {
       '<div class="fld"><label class="f">Satuan Dasar <span class="req">*</span></label><select class="in w100' + Wiz.errCls('baseUnit') + '" id="f-unit"><option value="">Pilih satuan…</option>' +
       (cfg().baseUnits || []).concat(s.baseUnit && (cfg().baseUnits || []).indexOf(s.baseUnit) < 0 ? [s.baseUnit] : []).map(function (u) { return '<option' + (u === s.baseUnit ? ' selected' : '') + '>' + esc(u) + '</option>'; }).join('') + '</select>' +
       '<div class="hint">Unit stok terkecil. Parfum → BOTOL, lipstik → PCS.</div>' + Wiz.fe('baseUnit') + '</div>' +
-      '<div class="fld"><label class="f">Kode Produk</label><div class="in w100" style="display:flex;align-items:center;background:#fbfaf6;color:var(--muted)">' + (s.productCode ? '<span class="code" style="color:var(--fg)">' + esc(s.productCode) + '</span>&nbsp;' + icon('lock') : 'Otomatis (PRD…) saat disimpan') + '</div></div></div>';
+      '<div class="fld"><label class="f">Parent SKU</label><div class="in w100" style="display:flex;align-items:center;background:#fbfaf6;color:var(--muted)">' + (s.productCode ? '<span class="code" style="color:var(--fg)">' + esc(s.productCode) + '</span>&nbsp;' + icon('lock') : 'Otomatis (PRD…) saat disimpan') + '</div></div>' +
+      '<div class="fld full"><label class="f">Deskripsi (opsional)</label><div class="row" style="align-items:flex-start">' + (s.imageUrl ? '<img class="thumb" src="' + esc(s.imageUrl) + '" alt="" onerror="this.remove()">' : '') + '<textarea class="in grow" rows="2" id="f-desc" maxlength="1000" placeholder="Catatan produk, komposisi singkat, dll.">' + esc(s.description || '') + '</textarea></div>' + (s.dataSource ? '<div class="hint">Sumber data awal: ' + esc(s.dataSource) + '</div>' : '') + '</div></div>';
   },
   bindIdent: function (body) {
     var s = Wiz.st;
@@ -260,6 +270,7 @@ var Wiz = {
     hint();
     $('#f-name', body).oninput = function (e) { s.name = e.target.value; Wiz.clearErr('name'); Wiz.check(); Wiz.renderSide(); Wiz.persist(); };
     $('#f-unit', body).onchange = function (e) { s.baseUnit = e.target.value; Wiz.clearErr('baseUnit'); Wiz.renderSide(); Wiz.persist(); if (Wiz.isQuick()) Wiz.renderConvs(); };
+    $('#f-desc', body).oninput = function (e) { s.description = e.target.value; Wiz.persist(); };
     Wiz.renderSimilar();
   },
   /** Cek kemungkinan duplikat nama (debounce). */
@@ -287,14 +298,15 @@ var Wiz = {
     var packs = v.conversions.filter(function (c) { return c.status !== 'DELETED'; }).length;
     body.innerHTML = '<div class="card"><div class="sec-h"><h3>Quick Entry</h3><span class="sub">Untuk produk dengan satu varian fisik. Scan barcode langsung ke kolom GTIN.</span></div>' + Wiz.identFields() +
       '<div class="fld" style="margin-top:4px"><label class="f">Barcode / GTIN <span class="req">*</span></label><div id="q-bc" data-v="0"></div><div data-vs="0" style="margin-top:6px"></div></div>' +
-      '<details class="opt-sec"' + (packs ? ' open' : '') + '><summary>' + icon('boxes') + 'Kemasan & konversi <span class="muted">— opsional (BOX, KARTON, isi per kemasan)</span><span class="right muted">' + packs + ' satuan</span></summary><div class="body" id="vc"></div></details>' +
-      '<div class="wz-foot"><span class="muted" style="font-size:12.5px">' + (s.productId ? '' : 'Draf tersimpan otomatis di perangkat ini.') + '</span><button class="btn pri right" id="sv-q">' + icon('check') + (s.productId ? 'Simpan Perubahan' : 'Simpan Produk') + '</button></div></div>';
+      '<details class="opt-sec"' + (packs || v.batchTracking || v.expiryTracking ? ' open' : '') + '><summary>' + icon('boxes') + 'Kemasan, satuan & inventory <span class="muted">— opsional (BOX, KARTON, satuan beli, batch/expiry)</span><span class="right muted">' + packs + ' satuan</span></summary><div class="body" id="vc"></div></details>' +
+      '<div class="wz-foot"><span class="muted" style="font-size:12.5px">' + (s.productId ? '' : 'Isian tersimpan otomatis di perangkat ini.') + '</span>' + (s.productId ? '' : '<button class="btn right" id="dr-q">Simpan sebagai Draft</button>') + '<button class="btn pri' + (s.productId ? ' right' : '') + '" id="sv-q">' + icon('check') + (s.productId ? 'Simpan Perubahan' : 'Simpan Produk') + '</button></div></div>';
     Wiz.bindIdent(body);
     var bcHost = $('#q-bc', body);
     var draw = function () { bcHost.innerHTML = Wiz.bcInput(v, 'variants.0.barcode', '0', true); Wiz.bindBc(bcHost, v, 'variants.0.barcode', '0', draw); Wiz.updateStatus(); };
     draw();
     Wiz.renderConvs();
     $('#sv-q', body).onclick = function () { Wiz.save($('#sv-q', body)); };
+    if ($('#dr-q', body)) $('#dr-q', body).onclick = function () { Wiz.save($('#dr-q', body), false, true); };
     setTimeout(function () { var i = s.brand ? $('[data-bi]', body) : $('#f-brand input', body); if (i && !s.productId) i.focus(); }, 50);
   },
 
@@ -461,7 +473,7 @@ var Wiz = {
           cols.map(function (c, ci) { var a = v.attributes.find(function (x) { return x.name === c; }); return '<td style="min-width:120px"><input class="in sm' + (ci === 0 ? '' : '') + Wiz.errCls(p + '.attributes') + '" data-av="' + esc(c) + '" maxlength="40" value="' + esc(a ? a.value : '') + '" placeholder="' + esc(c) + '"></td>'; }).join('') +
           '<td style="min-width:160px"><input class="in sm" data-vn maxlength="120" value="' + esc(v.name) + '">' + Wiz.fe(p + '.attributes') + Wiz.fe(p + '.name') + '</td>' +
           '<td>' + Wiz.bcInput(v, p + '.barcode', String(i)) + '</td><td class="sku nowrap">' + (v.sku ? esc(v.sku) + ' ' + icon('lock') : '<span class="muted">otomatis</span>') + '</td>' +
-          '<td data-vs="' + i + '" style="min-width:140px"></td><td class="nowrap">' + (v.saved ? '<select class="in sm" data-st style="width:auto"><option value="ACTIVE"' + (v.status === 'ACTIVE' ? ' selected' : '') + '>Aktif</option><option value="INACTIVE"' + (v.status !== 'ACTIVE' ? ' selected' : '') + '>Nonaktif</option></select>'
+          '<td data-vs="' + i + '" style="min-width:140px"></td><td class="nowrap">' + (v.saved ? '<select class="in sm" data-st style="width:auto">' + [v.savedStatus || v.status].concat(((cfg().lifecycle || {})[v.savedStatus || v.status] || [])).map(function (o) { return '<option value="' + o + '"' + (o === v.status ? ' selected' : '') + '>' + esc(STATUS_TXT[o] || o) + '</option>'; }).join('') + '</select>'
             : '<button class="btn sm ghost" data-del title="Hapus kombinasi ini (tidak tersedia)" type="button">' + icon('trash') + '</button>') + '</td></tr>';
       }).join('') + '</tbody></table></div><div class="hint">Tips: scan GTIN berurutan — setelah Enter kursor pindah ke baris berikutnya. Tanpa GTIN produsen? Pilih <b>Barcode internal</b>.</div>';
     $$('tr[data-v]', box).forEach(function (tr) {
@@ -478,7 +490,11 @@ var Wiz = {
       });
       $('[data-vn]', tr).oninput = function (e) { v.name = e.target.value; v.nameTouched = true; Wiz.clearErr(p + '.name'); Wiz.persist(); };
       Wiz.bindBc($('.bc', tr), v, p + '.barcode', String(i), Wiz.renderVariants);
-      var stl = $('[data-st]', tr); if (stl) stl.onchange = function () { v.status = stl.value; Wiz.renderVariants(); Wiz.renderSide(); Wiz.persist(); };
+      var stl = $('[data-st]', tr); if (stl) stl.onchange = function () {
+        var to = stl.value;
+        if (to === (v.savedStatus || '') ) { v.status = to; v.statusReason = ''; return Wiz.renderVariants(); }
+        promptText('Ubah status ' + v.sku + ' → ' + (STATUS_TXT[to] || to), 'Alasan (min. 5 karakter)', { min: 5 }).then(function (rs) { if (rs) { v.status = to; v.statusReason = rs; } Wiz.renderVariants(); Wiz.renderSide(); Wiz.persist(); });
+      };
       var del = $('[data-del]', tr); if (del) del.onclick = function () { s.variants.splice(i, 1); s.errors = {}; Wiz.checks = {}; Wiz.renderVariants(); Wiz.comboBar(); Wiz.renderSide(); Wiz.persist(); };
     });
     Wiz.updateStatus();
@@ -505,7 +521,7 @@ var Wiz = {
       var isOpen = quick || (Wiz.open3[v.key] !== undefined ? Wiz.open3[v.key] : (i < 3 || hasErr));
       return '<div class="vcard' + (isOpen ? ' open' : '') + '" data-v="' + i + '"' + (quick ? ' style="box-shadow:none;border:0;margin:0"' : '') + '>' + (quick ? '' : '<div class="vcard-h">' + icon('chevron', 'chev') + '<span class="nm">' + esc(v.name || 'Varian ' + (i + 1)) + '</span>' +
         (v.status !== 'ACTIVE' ? badge('INACTIVE') : '') + (hasErr ? '<span class="badge b-ERR">Perlu dicek</span>' : '') + '<span class="muted right">' + (actives.length ? actives.map(function (c, j) { var r = calc[j]; return esc(c.unitName) + (r && r.eq ? ' (' + r.eq + ')' : ''); }).join(' · ') : 'hanya ' + esc(base)) + '</span></div>') +
-        '<div class="vcard-b"' + (quick ? ' style="border:0;padding:0"' : '') + '><div class="cv-row base"><span>1 ' + esc(base) + '</span><span class="lbl">=</span><span>1</span><span>' + esc(base) + '</span><span class="eq">satuan dasar</span><span></span><span></span></div>' +
+        '<div class="vcard-b"' + (quick ? ' style="border:0;padding:0"' : '') + '>' + Wiz.invFields(v, i) + '<div class="cv-row base"><span>1 ' + esc(base) + '</span><span class="lbl">=</span><span>1</span><span>' + esc(base) + '</span><span class="eq">satuan dasar</span><span></span><span></span></div>' +
         v.conversions.map(function (c, j) {
           if (c.status === 'DELETED') return '';
           var p = 'variants.' + i + '.conversions.' + j, active = c.status === 'ACTIVE', r = active ? calc[k++] : null, locked = c.saved && c.tradeSaved;
@@ -527,6 +543,9 @@ var Wiz = {
     $$('.vcard', box).forEach(function (card) {
       var i = Number(card.getAttribute('data-v')), v = s.variants[i];
       var h = $('.vcard-h', card); if (h) h.onclick = function () { card.classList.toggle('open'); Wiz.open3[v.key] = card.classList.contains('open'); };
+      $$('[data-inv]', card).forEach(function (el) {
+        el.onchange = function () { var k = el.getAttribute('data-inv'); v[k] = el.type === 'checkbox' ? el.checked : el.value; Wiz.clearErr('variants.' + i + '.' + k); Wiz.persist(); };
+      });
       $$('.cv-row[data-c]', card).forEach(function (row) {
         var j = Number(row.getAttribute('data-c')), c = v.conversions[j], p = 'variants.' + i + '.conversions.' + j;
         var redraw = function () { Wiz.open3[v.key] = true; Wiz.renderConvs(); Wiz.renderSide(); Wiz.persist(); };
@@ -557,13 +576,14 @@ var Wiz = {
       var cp = $('[data-copy]', card);
       if (cp) cp.onclick = function () {
         var src = v.conversions.filter(function (c) { return c.status === 'ACTIVE'; });
-        if (!src.length) return toast('Belum ada kemasan untuk diterapkan', 'warn');
-        ask('Terapkan ' + src.length + ' kemasan (' + src.map(function (c) { return c.unitName + ' ' + c.factor; }).join(', ') + ') ke semua varian aktif lain? Kemasan yang belum tersimpan di varian lain diganti; kemasan tersimpan tidak diubah. Setelahnya Anda tetap bisa mengubah varian tertentu (override).', 'Terapkan').then(function (y) {
+        if (!src.length && !v.batchTracking && !v.expiryTracking && !v.purchaseUnit) return toast('Belum ada kemasan / pengaturan untuk diterapkan', 'warn');
+        ask('Terapkan ' + src.length + ' kemasan (' + src.map(function (c) { return c.unitName + ' ' + c.factor; }).join(', ') + ') beserta satuan beli/jual & pengaturan batch/expiry ke semua varian aktif lain? Kemasan yang belum tersimpan di varian lain diganti; kemasan tersimpan tidak diubah. Setelahnya Anda tetap bisa mengubah varian tertentu (override).', 'Terapkan').then(function (y) {
           if (!y) return;
           s.variants.forEach(function (o) {
             if (o === v || o.status !== 'ACTIVE') return;
             var savedNames = o.conversions.filter(function (c) { return c.saved && c.status !== 'DELETED'; }).map(function (c) { return c.unitName; });
             o.conversions = o.conversions.filter(function (c) { return c.saved; }).concat(src.filter(function (c) { return savedNames.indexOf(c.unitName) < 0; }).map(function (c) { var n = Wiz.newConv(c.unitName, c.factor, c.containsUnit); n.isTradeItem = c.isTradeItem; return n; }));
+            ['batchTracking', 'expiryTracking', 'shelfLifeMonths', 'purchaseUnit', 'salesUnit'].forEach(function (k) { o[k] = v[k]; });
           });
           s.errors = {}; toast('Konversi diterapkan ke semua varian', 'ok'); Wiz.renderConvs(); Wiz.renderSide(); Wiz.persist();
         });
@@ -572,6 +592,85 @@ var Wiz = {
       if (calcEl) { var run = function () { $('[data-r]', calcEl).textContent = fmtNum((Number($('[data-q]', calcEl).value) || 0) * Number($('[data-qu]', calcEl).value || 0)) + ' ' + base; }; $('[data-q]', calcEl).oninput = run; $('[data-qu]', calcEl).onchange = run; run(); }
     });
     Wiz.updateStatus();
+  },
+
+  /** Pengaturan inventory per Child SKU: satuan beli/jual & konfigurasi batch/expiry (bukan saldo stok). */
+  invFields: function (v, i) {
+    var s = Wiz.st, p = 'variants.' + i;
+    var units = [s.baseUnit].concat(v.conversions.filter(function (c) { return c.status === 'ACTIVE' && c.unitName; }).map(function (c) { return c.unitName; }));
+    var sel = function (k, label) { return '<div><label class="f">' + label + '</label><select class="in sm w100' + Wiz.errCls(p + '.' + k) + '" data-inv="' + k + '">' + units.map(function (u, j) { return '<option value="' + (j === 0 ? '' : esc(u)) + '"' + ((v[k] || '') === (j === 0 ? '' : u) ? ' selected' : '') + '>' + esc(u) + (j === 0 ? ' (satuan stok)' : '') + '</option>'; }).join('') + '</select>' + Wiz.fe(p + '.' + k) + '</div>'; };
+    return '<div class="inv-grid" style="margin:8px 0 10px">' + sel('purchaseUnit', 'Satuan beli') + sel('salesUnit', 'Satuan jual') +
+      '<label class="chk"><input type="checkbox" data-inv="batchTracking"' + (v.batchTracking ? ' checked' : '') + '> Lacak batch / lot</label>' +
+      '<label class="chk"><input type="checkbox" data-inv="expiryTracking"' + (v.expiryTracking ? ' checked' : '') + '> Lacak kedaluwarsa</label>' +
+      '<div><label class="f">Masa simpan (bulan)</label><input class="in sm w100' + Wiz.errCls(p + '.shelfLifeMonths') + '" data-inv="shelfLifeMonths" type="number" min="1" max="600" value="' + esc(v.shelfLifeMonths || '') + '" placeholder="opsional">' + Wiz.fe(p + '.shelfLifeMonths') + '</div></div>' +
+      '<div class="hint" style="margin-top:-4px">Batch & expiry hanya konfigurasi — lot & saldo aktual dicatat di sistem inventory/FMS. Batch berbeda tidak membuat SKU baru.</div>';
+  },
+
+  /** Barcode-first: scan GTIN → cek internal → (Open Beauty Facts) → usulan auto-fill untuk direview. */
+  lookup: function (raw) {
+    var s = Wiz.st, el = $('#wz-gl', Wiz.main);
+    if (el) el.innerHTML = loadingBox('Mencari ' + raw + ' di master & Open Beauty Facts…');
+    api('gtin.lookup', { gtin: raw }, { silent: true }).then(function (r) {
+      s.lookup = r;
+      if (r.valid && r.stage !== 'internal') Wiz.placeGtin(r.gtin);
+      Wiz.render();
+    }).catch(function (e) { if (el) el.innerHTML = errBox(e.message); });
+  },
+  /** Masukkan GTIN hasil scan ke formulir varian (Quick: varian tunggal; Advanced: baris pertama yang kosong). */
+  placeGtin: function (code) {
+    var s = Wiz.st;
+    if (Wiz.isQuick()) { s.variants[0].barcode = { mode: 'gtin', code: code }; return; }
+    var v = s.variants.find(function (x) { return !x.saved && x.barcode.mode === 'gtin' && !x.barcode.code; });
+    if (!v) { v = Wiz.newVariant(Wiz.attrCols().map(function (n) { return { name: n, value: '' }; })); v.manual = true; s.variants.push(v); }
+    v.barcode = { mode: 'gtin', code: code };
+  },
+  renderLookup: function () {
+    var s = Wiz.st, el = $('#wz-gl', Wiz.main), r = s.lookup;
+    if (!el || !r) return;
+    if (r.stage === 'internal') {
+      el.innerHTML = '<div class="gl found"><div class="gl-h">' + icon('check') + '<div><div class="t">Sudah terdaftar — jangan buat produk baru</div><div class="muted">Kode ' + esc(r.gtin) + ' ditemukan di master. Buka produknya untuk melihat atau menambah varian/kemasan.</div></div><button class="btn sm ghost right" id="gx">Tutup</button></div><div class="scan-res" id="gr"></div></div>';
+      renderScan($('#gr', el), r.internal);
+    } else if (r.stage === 'invalid') {
+      el.innerHTML = '<div class="gl manual"><div class="gl-h">' + icon('alert') + '<div><div class="t">' + esc(r.gtin) + ' bukan GTIN produsen yang valid</div><div class="muted">' + esc(r.message || '') + '. Kode ini tidak dipakai sebagai GTIN resmi. Bila barang tidak punya GTIN, pilih <b>Barcode internal</b>.</div></div><button class="btn sm ghost right" id="gx">Tutup</button></div></div>';
+    } else if (r.stage === 'external' && r.suggestion) {
+      var g = r.suggestion, x = r.external;
+      el.innerHTML = '<div class="gl"><div class="gl-h">' + (g.imageUrl ? '<img class="thumb" src="' + esc(g.imageUrl) + '" alt="" onerror="this.remove()">' : icon('sparkles')) + '<div class="grow"><div class="t">Usulan auto-fill untuk GTIN ' + esc(r.gtin) + '</div><div class="muted">Belum ada di master. Periksa & edit sebelum menyimpan — data eksternal bisa tidak lengkap.</div></div><button class="btn sm ghost" id="gx">Abaikan</button></div>' +
+        '<div class="gl-grid"><div>Nama</div><div><b>' + esc(g.name || '—') + '</b></div><div></div>' +
+        '<div>Brand</div><div>' + (g.brand ? esc(g.brand.name) + ' <span class="chip-code ghost">' + esc(g.brand.code) + '</span>' : '<span class="muted">' + (g.brandText ? '"' + esc(g.brandText) + '" belum ada di Master Brand' : 'tidak terdeteksi') + '</span>') + '</div><div>' + (!g.brand && g.brandText && can('master.write') ? '<button class="btn sm ghost" id="gnb">Tambah brand</button>' : '') + '</div>' +
+        '<div>Kategori</div><div>' + (g.category ? esc(g.category.name) + ' <span class="chip-code ghost">' + esc(g.category.code) + '</span>' : '<span class="muted">' + (g.categoryText ? 'tidak cocok: ' + esc(g.categoryText) : 'tidak terdeteksi') + '</span>') + '</div><div></div>' +
+        '<div>Ukuran</div><div>' + (g.attributes.length ? g.attributes.map(function (a) { return '<span class="attr-pill"><i>' + esc(a.name) + '</i>' + esc(a.value) + '</span>'; }).join('') : '<span class="muted">tidak terdeteksi</span>') + '</div><div></div></div>' +
+        (g.similarParents.length ? '<div class="warn-box">' + icon('alert') + '<span>Parent yang mirip sudah ada: ' + g.similarParents.map(function (p) { return '<a class="link-btn" data-pp="' + esc(p.id) + '">' + esc(p.name) + ' (' + esc(p.productCode) + ')</a>'; }).join(', ') + '. Bila ini variannya, tambahkan GTIN sebagai varian di produk tersebut.</span></div>' : '') +
+        '<div class="row" style="margin-top:10px"><button class="btn pri" id="gapply">' + icon('check') + 'Pakai usulan</button><span class="gl-src">Sumber: ' + esc(x.providerLabel) + (x.cached ? ' (cache)' : '') + ' · ' + fmtDate(x.fetchedAt) + ' · ' + esc(x.license || '') + (x.url ? ' · <a href="' + esc(x.url) + '" target="_blank" rel="noopener">lihat sumber</a>' : '') + '</span></div></div>';
+      $('#gapply', el).onclick = function () { Wiz.applySuggestion(r); };
+      $$('[data-pp]', el).forEach(function (a) { a.onclick = function () { App.go('register', { productId: a.getAttribute('data-pp'), addGtin: r.gtin }); }; });
+      if ($('#gnb', el)) $('#gnb', el).onclick = function () { busy($('#gnb', el), api('brand.create', { name: g.brandText }, { silent: true })).then(function (b) { Ref.drop('brand'); g.brand = { id: b.id, name: b.name, code: b.code }; toast('Brand ' + b.name + ' (' + b.code + ') ditambahkan', 'ok'); Wiz.renderLookup(); }).catch(function (e) { toast(e.message, 'err'); }); };
+    } else {
+      var x2 = r.external || {};
+      el.innerHTML = '<div class="gl manual"><div class="gl-h">' + icon('search') + '<div><div class="t">GTIN ' + esc(r.gtin) + ' belum terdaftar</div><div class="muted">' + esc(x2.status === 'NOT_FOUND' ? 'Tidak ditemukan di ' + (x2.providerLabel || 'penyedia eksternal') + '.' : x2.message || 'Pencarian eksternal tidak tersedia.') + ' GTIN sudah dimasukkan ke formulir — lanjutkan registrasi manual.</div></div><button class="btn sm ghost right" id="gx">Tutup</button></div></div>';
+    }
+    var gx = $('#gx', el); if (gx) gx.onclick = function () { s.lookup = null; el.innerHTML = ''; };
+  },
+  /** Terapkan usulan auto-fill (user tetap bisa mengedit semuanya sebelum menyimpan). */
+  applySuggestion: function (r) {
+    var s = Wiz.st, g = r.suggestion;
+    if (g.name) s.name = g.name;
+    if (g.brand) s.brand = g.brand;
+    if (g.category) s.category = g.category;
+    if (g.imageUrl) s.imageUrl = g.imageUrl;
+    s.dataSource = g.dataSource;
+    if (!Wiz.isQuick() && g.attributes.length) {
+      var v = s.variants.find(function (x) { return x.barcode.code === r.gtin; });
+      g.attributes.forEach(function (a) {
+        var at = s.attrs.find(function (x) { return titleCase(x.name) === a.name; });
+        if (!at) { at = s.attrs[0] && !s.attrs[0].name ? s.attrs[0] : null; if (at) at.name = a.name; else { at = { name: a.name, values: [] }; s.attrs.push(at); } }
+        if (at.values.indexOf(a.value) < 0) at.values.push(a.value);
+        if (v) { var va = v.attributes.find(function (x) { return x.name === a.name; }); if (va) va.value = a.value; else v.attributes.push({ name: a.name, value: a.value }); if (!v.nameTouched) v.name = v.attributes.map(function (x) { return x.value; }).join(' '); }
+      });
+    }
+    s.lookup = null;
+    toast('Usulan diterapkan — periksa sebelum menyimpan', 'ok');
+    Wiz.check();
+    Wiz.render();
   },
 
   /* ---------- MODE B: tahap 4 — ringkasan & simpan ---------- */
@@ -584,10 +683,11 @@ var Wiz = {
         return '<tr' + (v.status !== 'ACTIVE' ? ' class="off"' : '') + '><td class="muted">' + (i + 1) + '</td><td><b>' + esc(v.name || '—') + '</b>' + (v.sku ? '<div class="sku">' + esc(v.sku) + '</div>' : '<div class="muted" style="font-size:11.5px">SKU otomatis</div>') + '</td><td>' + v.attributes.map(function (a) { return '<span class="attr-pill"><i>' + esc(a.name) + '</i>' + esc(a.value) + '</span>'; }).join('') + '</td>' +
           '<td>' + (v.barcode.mode === 'gtin' && v.barcode.code ? '<span class="code">' + esc(v.barcode.code) + '</span> ' : '') + '<span class="badge b-' + st.cls + '">' + esc(st.txt) + '</span></td><td>' + (acts.length ? acts.map(function (c, j) { return esc(c.unitName) + ' = ' + (calc[j].eq || '?') + (c.isTradeItem ? ' (ber-SKU)' : ''); }).join('<br>') : '<span class="muted">—</span>') + '</td><td>' + badge(v.status) + '</td></tr>';
       }).join('') + '</tbody></table></div>' +
-      '<div class="wz-foot"><button class="btn" id="bk">' + icon('arrowLeft') + 'Kembali</button><button class="btn ghost right" id="ck">Periksa tanpa menyimpan</button><button class="btn pri" id="sv4">' + icon('check') + (s.productId ? 'Simpan Perubahan' : 'Simpan Produk') + '</button></div></div>';
+      '<div class="wz-foot"><button class="btn" id="bk">' + icon('arrowLeft') + 'Kembali</button><button class="btn ghost right" id="ck">Periksa tanpa menyimpan</button>' + (s.productId ? '' : '<button class="btn" id="dr4">Simpan sebagai Draft</button>') + '<button class="btn pri" id="sv4">' + icon('check') + (s.productId ? 'Simpan Perubahan' : 'Simpan Produk') + '</button></div></div>';
     $('#bk', body).onclick = function () { Wiz.goStep(3); };
     $('#ck', body).onclick = function () { Wiz.save($('#ck', body), true); };
     $('#sv4', body).onclick = function () { Wiz.save($('#sv4', body)); };
+    if ($('#dr4', body)) $('#dr4', body).onclick = function () { Wiz.save($('#dr4', body), false, true); };
   },
 
   /* ---------- panel ringkasan samping ---------- */
@@ -626,21 +726,26 @@ var Wiz = {
     return {
       productId: s.productId || undefined, version: s.version || undefined,
       brandId: s.brand && s.brand.id, categoryId: s.category && s.category.id, name: s.name, baseUnit: s.baseUnit, hasVariants: !quick, acknowledgeSimilar: s.ack,
+      description: s.description, imageUrl: s.imageUrl, dataSource: s.dataSource,
       variants: variants.map(function (v) {
         return { id: v.id || undefined, name: quick && !v.saved ? '' : v.name, attributes: quick ? (v.saved ? v.attributes : []) : v.attributes.filter(function (a) { return String(a.value).trim(); }), status: v.status,
-          barcode: { mode: v.barcode.mode, code: v.barcode.code }, barcodeChangeReason: v.reason,
+          barcode: { mode: v.barcode.mode, code: v.barcode.code }, barcodeChangeReason: v.reason, statusReason: v.statusReason,
+          batchTracking: !!v.batchTracking, expiryTracking: !!v.expiryTracking, shelfLifeMonths: v.shelfLifeMonths === '' || v.shelfLifeMonths === null ? '' : Number(v.shelfLifeMonths), purchaseUnit: v.purchaseUnit || '', salesUnit: v.salesUnit || '',
           conversions: v.conversions.filter(function (c) { return c.saved || c.status === 'ACTIVE'; }).map(function (c) { return { id: c.id || undefined, unitName: c.unitName, factor: Number(c.factor), containsUnit: c.containsUnit || s.baseUnit, isTradeItem: !!c.isTradeItem, status: c.status, barcode: c.isTradeItem ? { mode: c.barcode.mode, code: c.barcode.code } : { mode: 'none' }, barcodeChangeReason: c.reason }; }) };
       })
     };
   },
-  save: function (btn, dryRun) {
+  save: function (btn, dryRun, asDraft) {
     var s = Wiz.st, quick = Wiz.isQuick();
     var steps = quick ? [1] : [1, 2, 3];
     for (var k = 0; k < steps.length; k++) { var iss = Wiz.issues(steps[k]); if (iss.length) { toast(iss[0], 'err'); if (!quick && s.step !== steps[k]) { s.step = steps[k]; Wiz.render(); } return; } }
     if (s.similar.length && !s.ack && !dryRun) { toast('Ada kemungkinan produk duplikat. Lihat detailnya, atau centang "Lanjutkan — ini produk yang berbeda".', 'warn'); if (!quick && s.step !== 1) { s.step = 1; Wiz.render(); } return; }
     // conversions dengan status DELETED yang belum tersimpan tidak perlu dikirim; index path server = urutan payload
     s.variants.forEach(function (v) { v.conversions = v.conversions.filter(function (c) { return c.saved || c.status === 'ACTIVE'; }); });
-    busy(btn, api(dryRun ? 'product.validate' : 'product.save', { input: Wiz.payload() }, { silent: true })).then(function (d) {
+    var input = Wiz.payload();
+    if (asDraft) input.saveAsDraft = true;
+    // requestKey: kirim ulang / klik ganda tidak menyimpan dua kali (server mengembalikan hasil pertama)
+    busy(btn, api(dryRun ? 'product.validate' : 'product.save', { input: input, requestKey: dryRun ? undefined : s.reqKey + (s.productId ? ':' + s.version : '') }, { silent: true })).then(function (d) {
       s.errors = {};
       if (dryRun) { Wiz.renderSide(); return toast('Data valid — ' + d.variants.length + ' varian siap disimpan', 'ok'); }
       Wiz.done = true; App.leaveGuard = null;
@@ -663,8 +768,9 @@ var Wiz = {
   success: function (d, edited) {
     var rows = [];
     d.variants.forEach(function (v) { rows.push([v.sku, v.isDefault ? 'Standar' : v.name, v.gtin || v.internalBarcode || '—']); v.conversions.forEach(function (c) { if (c.sku) rows.push([c.sku, (v.isDefault ? '' : v.name + ' · ') + c.unitName + ' isi ' + c.baseUnitEquivalent, c.gtin || c.internalBarcode || '—']); }); });
-    Wiz.main.innerHTML = '<div class="success"><div class="ring">' + icon('check') + '</div><div class="eyebrow">' + esc(d.productCode) + '</div><h2>' + (edited ? 'Perubahan tersimpan' : 'Produk tersimpan') + '</h2>' +
-      '<p class="muted">' + esc(d.name) + ' · ' + d.variants.length + ' varian · ' + rows.length + ' SKU. ' + (edited ? '' : 'Produk langsung aktif di Master Produk.') + '</p>' +
+    var draft = d.status === 'DRAFT';
+    Wiz.main.innerHTML = '<div class="success"><div class="ring">' + icon('check') + '</div><div class="eyebrow">' + esc(d.productCode) + ' · ' + esc(STATUS_TXT[d.status] || d.status) + '</div><h2>' + (edited ? 'Perubahan tersimpan' : draft ? 'Draft tersimpan' : 'Produk tersimpan') + '</h2>' +
+      '<p class="muted">' + esc(d.name) + ' · ' + d.variants.length + ' Child SKU · ' + rows.length + ' SKU. ' + (edited ? '' : draft ? 'Belum tersedia untuk sistem downstream — aktifkan dari halaman detail bila sudah lengkap.' : 'Produk langsung aktif di Master Produk.') + '</p>' +
       '<div class="tbl-x" style="text-align:left;margin:16px 0"><table class="t"><thead><tr><th>SKU</th><th>Varian</th><th>Barcode</th></tr></thead><tbody>' + rows.slice(0, 50).map(function (r) { return '<tr><td class="sku">' + esc(r[0]) + '</td><td>' + esc(r[1]) + '</td><td class="code">' + esc(r[2]) + '</td></tr>'; }).join('') + '</tbody></table></div>' +
       '<div class="row" style="justify-content:center"><button class="btn pri" id="s2">' + icon('plus') + 'Registrasi produk lain</button><button class="btn" id="s1">' + icon('package') + 'Lihat produk</button><button class="btn" id="s3">' + icon('scan') + 'Scan barcode</button></div></div>';
     toast(edited ? 'Perubahan produk tersimpan' : 'Produk ' + d.name + ' tersimpan', 'ok');
