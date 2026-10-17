@@ -143,6 +143,8 @@ function masterRename_(user, kind, id, input) {
   // KODE TIDAK BERUBAH — SKU yang sudah terbit tetap konsisten
   db_(k.table).update(rec, { [k.name]: name, NameKey: chk.key, UpdatedBy: user.email, UpdatedAt: now_() });
   audit_(user.email, kind + '.rename', kind, id, before, { name, code: rec[k.code] });
+  // nama Produk SKU otomatis = brand + parent + atribut → ikut diperbarui (SKU tidak berubah)
+  if (kind === 'brand') refreshSkuNames_(id);
   return masterView_(k, rec, {});
 }
 
@@ -169,4 +171,74 @@ function masterDelete_(user, kind, id) {
   db_(k.table).update(rec, { Status: STATUS.DELETED, UpdatedBy: user.email, UpdatedAt: now_() });
   audit_(user.email, kind + '.delete', kind, id, { name: rec[k.name], code: rec[k.code], status: 'ACTIVE' }, { status: STATUS.DELETED });
   return true;
+}
+
+/**
+ * Import Excel Master Brand / Master Kategori. File .xlsx dibaca di browser (SheetJS) — Apps Script tidak membaca
+ * XLSX langsung — lalu baris dikirim sebagai teks: [{ row, name, code? }].
+ *   Pratinjau (opts.dryRun) tidak menulis apa pun; Import berjalan di dalam lock (kode otomatis dialokasikan aman).
+ *   Nama yang sudah terdaftar (normalisasi huruf/spasi/tanda baca) → Dilewati, sehingga import ulang tidak menggandakan.
+ *   Kolom kode di file TIDAK menimpa kode existing dan tidak dipakai untuk data baru (kode selalu otomatis);
+ *   mempertahankan kode lama = proses migrasi terpisah (Import & Export › Import › Referensi, dengan pratinjau).
+ */
+function masterImport_(user, kind, p, opts) {
+  const k = masterCfg_(kind);
+  opts = opts || {};
+  const rows = (p && p.rows) || [];
+  if (!rows.length) throw new AppError('File tidak berisi baris data');
+  if (rows.length > 2000) throw new AppError('Maksimal 2.000 baris per file');
+  const used = masterUsedCodes_(k);
+  const byKey = {};
+  db_(k.table)
+    .filter((r) => r.Status !== STATUS.DELETED)
+    .forEach((r) => (byKey[r.NameKey] = r));
+  const inFile = {};
+  const out = rows.map((x) => {
+    const row = Number(x.row) || 0;
+    const raw = cleanText(x.name);
+    const fileCode = normalizeCode(x.code);
+    const res = { row, name: raw, fileCode, status: '', code: '', message: '' };
+    if (!raw) return Object.assign(res, { status: 'failed', message: 'Nama kosong' });
+    let name;
+    try {
+      name = masterCleanName_(k, raw);
+    } catch (e) {
+      if (!(e instanceof AppError)) throw e;
+      return Object.assign(res, { status: 'failed', message: e.message });
+    }
+    const key = masterNameKey(name);
+    const ex = byKey[key];
+    if (ex) {
+      const note = fileCode && fileCode !== String(ex[k.code]).toUpperCase() ? ` Kode di file (${fileCode}) diabaikan — kode existing tidak ditimpa.` : '';
+      return Object.assign(res, { status: 'skipped', code: ex[k.code], message: `Sudah terdaftar sebagai "${ex[k.name]}" (${ex[k.code]}${ex.Status !== STATUS.ACTIVE ? ', ' + (STATUS_LABEL[ex.Status] || ex.Status) : ''}).${note}` });
+    }
+    if (inFile[key]) return Object.assign(res, { status: 'skipped', code: inFile[key].code, message: `Duplikat dengan baris ${inFile[key].row} di file ini` });
+    const code = generateMasterCode(name, (c) => !!used[c], getSettings_().master_code_length);
+    used[code] = 1;
+    inFile[key] = { row, code };
+    const similar = Object.keys(byKey)
+      .map((kk) => byKey[kk])
+      .filter((r) => nameSimilarity(name, r[k.name]) >= 0.85)
+      .slice(0, 3);
+    Object.assign(res, { status: 'new', name, code, message: (similar.length ? 'Mirip: ' + similar.map((r) => `${r[k.name]} (${r[k.code]})`).join(', ') + '. ' : '') + (fileCode && fileCode !== code ? `Kode di file (${fileCode}) tidak dipakai — kode dibuat otomatis.` : '') });
+    if (!opts.dryRun) {
+      const rec = db_(k.table).insert({ [k.id]: uuid_(), [k.code]: code, [k.name]: name, NameKey: key, Status: STATUS.ACTIVE, CreatedBy: user.email, CreatedAt: now_(), UpdatedBy: user.email, UpdatedAt: now_() });
+      byKey[key] = rec;
+      res.status = 'success';
+    }
+    return res;
+  });
+  const count = (st) => out.filter((r) => r.status === st).length;
+  const rep = { kind, label: k.label, fileName: cleanText(p.fileName), dryRun: !!opts.dryRun, rows: out, counts: { success: opts.dryRun ? count('new') : count('success'), skipped: count('skipped'), failed: count('failed') } };
+  if (!opts.dryRun) {
+    const batchId = uuid_();
+    rep.batchId = batchId;
+    db_('IMPORT_BATCHES').insert({ BatchID: batchId, ImportType: kind + '_list', FileName: rep.fileName, ContentHash: '', Status: 'COMMITTED', TotalRows: out.length, CreatedRows: rep.counts.success, SkippedRows: rep.counts.skipped, ErrorRows: rep.counts.failed, ReportJson: { counts: rep.counts }, CreatedBy: user.email, CreatedAt: now_() });
+    out
+      .filter((r) => r.status !== 'success')
+      .slice(0, 2000)
+      .forEach((r) => db_('IMPORT_ERRORS').insert({ ErrorID: uuid_(), BatchID: batchId, RowNumber: r.row, Severity: r.status === 'failed' ? 'ERROR' : 'SKIPPED', Message: (r.name ? r.name + ': ' : '') + r.message, CreatedAt: now_() }));
+    audit_(user.email, kind + '.import', kind, '', null, { file: rep.fileName, counts: rep.counts });
+  }
+  return rep;
 }

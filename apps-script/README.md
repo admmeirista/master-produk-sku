@@ -1,21 +1,21 @@
-# Master Produk & SKU — Google Apps Script (v4)
+# Master Produk & SKU — Google Apps Script (v5)
 
 Web App Apps Script dengan **Google Sheets sebagai database**, berbahasa Indonesia, tampilan mengikuti **FMS**
 (font Nunito, sidebar gelap, toast, modal). Hierarki data:
 
 ```
-Brand + Kategori → Parent SKU (PRD…, non-stockable) → Child SKU (SKU…, stockable) → Barcode (GTIN / internal 200…)
-                                         ├→ Kemasan & konversi (BOX/KARTON, satuan beli/jual, histori isi)
-                                         ├→ Kode supplier  ·  Listing kanal (Shopee/TikTok/Tokopedia/BeeCloud)
-                                         └→ Komponen multipack (MP…) / bundle (BDL…)
+Brand + Kategori → Parent SKU  HAN-PLB-0001  (non-stockable)
+                     └→ Child SKU  HAN-PLB-0001-<GTIN / barcode internal>  — nama otomatis: Brand + Parent + atribut
+                           ├→ Kemasan & konversi (BOX, KARTON) — opsional
+                           └→ Dimensi & berat kotor per satuan — opsional
 ```
 
-Menu (sidebar dapat dilipat, dengan breadcrumb): Dashboard · Data Quality · Registrasi (scan GTIN + auto-fill Open Beauty Facts, Quick Entry / Advanced, Simpan Draft) ·
-Master Produk · Scan Barcode (F2) · Master Brand · Master Kategori · Master Supplier · Supplier SKU Mapping · Packaging & Bundle ·
-Channel SKU Mapping · Registry Barcode · Import & Export · Pengguna · Settings · Audit Log. Tanpa harga, tanpa approval, tanpa transaksi stok.
+Registrasi satu alur: **Identifikasi Produk → Varian & Barcode → Kemasan & Logistik (opsional) → Simpan** (atau Simpan Draft).
+Menu: Dashboard · Data Quality · Registrasi Produk · Master Produk · Cari SKU / Scan (F2) · Master Brand · Master Kategori (keduanya bisa Upload Excel) ·
+Packaging & Bundle · Channel SKU Mapping · Registry Barcode · Import & Export · Settings · Pengguna · Audit Log. Tanpa harga, approval, supplier, atau transaksi stok.
 
-Dokumen v4 (arsitektur, ERD, skema, migrasi, deployment, panduan, test matrix, keterbatasan): **[REVISI-V4.md](REVISI-V4.md)**.
-Revisi sebelumnya: [REVISI-ANALISIS.md](REVISI-ANALISIS.md) (v3).
+Dokumen v5 (perubahan, struktur sheet, migrasi, deployment, hasil uji, keterbatasan): **[REVISI-V5.md](REVISI-V5.md)**.
+Revisi sebelumnya: [REVISI-V4.md](REVISI-V4.md) (v4), [REVISI-ANALISIS.md](REVISI-ANALISIS.md) (v3).
 
 ## Struktur kode (`src/`)
 
@@ -29,8 +29,9 @@ Revisi sebelumnya: [REVISI-ANALISIS.md](REVISI-ANALISIS.md) (v3).
 | `ProductService.gs`, `VariantService.gs`, `UnitConversionService.gs` | Registrasi/edit produk, varian, konversi kemasan |
 | `BarcodeService.gs` | Registry GTIN & barcode internal |
 | `LifecycleService.gs` | Status Draft/Aktif/Nonaktif/Discontinued/Diarsipkan, riwayat, deprecation SKU |
-| `SupplierService.gs`, `BundleService.gs` | Master supplier & kode supplier; multipack, mixed bundle, request mix (BOM) |
+| `SupplierService.gs`, `BundleService.gs` | Data supplier v4 (tanpa menu, data dipertahankan); multipack, mixed bundle, request mix (BOM) |
 | `MappingService.gs` | Channel SKU mapping (Shopee/TikTok/Tokopedia/BeeCloud/lainnya) & ekspor |
+| `DimensionService.gs` | Dimensi & berat kotor per Child SKU per satuan (opsional) |
 | `GtinLookupService.gs`, `AttributeService.gs`, `DataQualityService.gs` | Lookup GTIN + auto-fill, master nilai atribut, laporan kualitas data |
 | `AdminService.gs`, `AuthService.gs` | Pengguna, pengaturan, dashboard, audit, login |
 | `MigrationService.gs`, `ImportService.gs` | Migrasi v1/v2 → v4, import template Excel lama, listing marketplace, kode supplier |
@@ -38,7 +39,7 @@ Revisi sebelumnya: [REVISI-ANALISIS.md](REVISI-ANALISIS.md) (v3).
 
 ## Database
 
-File Google Sheets terpisah [Master Produk DB](https://docs.google.com/spreadsheets/d/11f_luP2oWDJHklnG4BjxWTjXXRA57XuO-un6tuAJbm4/edit). Struktur tab v4 lihat REVISI-V4.md §3.
+File Google Sheets terpisah [Master Produk DB](https://docs.google.com/spreadsheets/d/11f_luP2oWDJHklnG4BjxWTjXXRA57XuO-un6tuAJbm4/edit). Struktur tab: REVISI-V4.md §3 + perubahan v5 di REVISI-V5.md §2.
 
 ## Cara pasang / memperbarui
 
@@ -83,7 +84,7 @@ npm test
 ```bash
 npm run dev
 ```
-Test menjalankan file `.gs` asli di emulator layanan Apps Script (`test/harness.cjs`) — 32 tes termasuk import workbook Excel asli dan pemeriksaan statis frontend (lihat REVISI-V4.md §7).
+Test menjalankan file `.gs` asli di emulator layanan Apps Script (`test/harness.cjs`) — 47 tes termasuk import workbook Excel asli, import XLSX brand/kategori, dan pemeriksaan statis frontend (lihat REVISI-V5.md §5).
 Server pratinjau: http://localhost:8790 dengan data contoh (akun development tercantum di `dev/server.cjs`).
 
 ## Deploy otomatis dari GitHub

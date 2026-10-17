@@ -454,5 +454,18 @@ tr.open .exp{transform:rotate(90deg)}
 @media (max-width:900px){.stepper.s4{grid-template-columns:repeat(2,minmax(0,1fr))}.stp{padding:10px}.stp .v{font-size:12.5px}}
 @media (max-width:1180px){.dash2{grid-template-columns:minmax(0,1fr)}.dash2>div{min-width:0}}
 .wz-foot{flex-wrap:wrap}
+/* ---- v5: registrasi 3 tahap, pratinjau SKU, dimensi, lookup identitas ---- */
+.stepper.s3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.in.ro{display:flex;align-items:center;background:#fbfaf6;color:var(--fg)}
+.pv-card{margin-top:14px;border:1px dashed var(--line);border-radius:12px;padding:12px 14px;background:#fffdf8}
+.pv-card .pv-h{font-size:11px;letter-spacing:.12em;text-transform:uppercase;font-weight:800;color:var(--muted);display:flex;align-items:center;gap:6px;margin-bottom:8px}
+.pv-card .kv{display:grid;grid-template-columns:170px 1fr;gap:6px 12px;font-size:13.5px}
+.pv-card .kv>div:nth-child(odd){color:var(--muted)}
+.sku.big{font-size:15px;font-weight:800}
+.skuname{font-weight:800;font-size:13px;line-height:1.35}
+.t.dimt td{vertical-align:top}.t.dimt .in.sm{width:84px}
+.hit.idc .idg{display:grid;grid-template-columns:repeat(5,minmax(0,auto));gap:6px 18px;margin:6px 0 4px;font-size:13px}
+.hit.idc .idg small{display:block;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:800}
+@media (max-width:900px){.stepper.s3{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.stepper.s3 .stp{padding:8px;gap:8px;flex-direction:column;align-items:flex-start}.stepper.s3 .stp .k{display:none}.stepper.s3 .stp .v{font-size:12px;line-height:1.25}.stepper.s3 .stp .n{width:26px;height:26px}.pv-card .kv{grid-template-columns:1fr}.pv-card .kv>div:nth-child(odd){margin-top:4px}.hit.idc .idg{grid-template-columns:1fr 1fr}}
 </style>
 

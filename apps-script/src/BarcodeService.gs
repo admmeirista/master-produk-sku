@@ -2,7 +2,8 @@
  * Barcode varian & kemasan (VARIANT_BARCODES). Tiga identitas dibedakan tegas:
  *   - GTIN produsen  : diinput / dipindai dari kemasan; sistem TIDAK pernah membuat GTIN resmi.
  *   - Barcode internal: EAN-13 prefix 200 (GS1 "restricted circulation") untuk barang tanpa GTIN produsen.
- *   - SKU internal   : kode SKU000001 milik aplikasi (bukan barcode).
+ *   - Child SKU      : PARENT_SKU-BARCODE milik aplikasi (bukan barcode). Lookup barcode → Child SKU selalu lewat
+ *                      tabel ini (sumber otoritatif), tidak dengan memecah string SKU.
  *
  * Status baris: ACTIVE (terpasang ke varian/kemasan) · ALLOCATED (barcode internal dicadangkan, belum terpasang)
  *               · RETIRED (pernah dipakai, dilepas — tidak boleh dipakai barang lain) · VOID (cadangan dibatalkan).
@@ -151,7 +152,10 @@ function barcodeValidate_(p) {
 }
 
 /**
- * Scan barcode: cari kode di GTIN / barcode internal / SKU internal / SKU lama & eksternal.
+ * Lookup identitas (mis. untuk stock opname): GTIN / barcode internal → Child SKU lewat VARIANT_BARCODES,
+ * lalu Child SKU, SKU kemasan, Parent SKU, SKU lama/eksternal, dan nama produk. Hanya menampilkan identitas —
+ * tidak mencatat transaksi apa pun. Kode tidak dikenal → found:false (Unknown Barcode). Bila satu barcode aktif
+ * menunjuk lebih dari satu barang (konflik identitas), hasil TIDAK dipilih acak: dikembalikan sebagai conflict.
  * Kode yang bukan GTIN valid TIDAK pernah dianggap GTIN resmi.
  */
 function barcodeLookup_(raw) {
@@ -170,23 +174,37 @@ function barcodeLookup_(raw) {
     if (!p) return;
     const b = db_('MASTER_BRANDS').byId(p.BrandID) || {};
     const c = conversionId ? db_('UNIT_CONVERSIONS').byId(conversionId) : null;
-    matches.push(Object.assign({ via, productId: p.ProductID, productCode: p.ProductCode, productName: p.ProductName, productStatus: p.Status, brandName: b.BrandName, variantId: v.VariantID, variantName: v.IsDefault ? '' : v.VariantName, variantStatus: v.Status, sku: v.SKU, gtin: v.GTIN, internalBarcode: v.InternalBarcode, baseUnit: p.BaseUnit, conversion: c ? { unitName: c.UnitName, baseUnitEquivalent: c.BaseUnitEquivalent, sku: c.SKU } : null }, extra || {}));
+    matches.push(Object.assign({ via, productId: p.ProductID, productCode: p.ProductCode, parentSku: p.ProductCode, productName: p.ProductName, productStatus: p.Status, brandName: b.BrandName, variantId: v.VariantID, variantName: v.IsDefault ? '' : v.VariantName, skuName: variantDisplayName_(v) || cleanText(p.ProductName + ' ' + (v.IsDefault ? '' : v.VariantName)), variantStatus: v.Status, sku: v.SKU, childSku: c && c.SKU ? c.SKU : v.SKU, gtin: v.GTIN, internalBarcode: v.InternalBarcode, baseUnit: v.BaseUnit || p.BaseUnit, conversion: c ? { unitName: c.UnitName, baseUnitEquivalent: c.BaseUnitEquivalent, sku: c.SKU, gtin: c.GTIN, internalBarcode: c.InternalBarcode } : null }, extra || {}));
   };
   const bundles = [];
   const pushBundle = (via, bd) => bd && !bundles.some((x) => x.bundleId === bd.BundleID) && bundles.push({ via, bundleId: bd.BundleID, bundleSku: bd.BundleSKU, bundleName: bd.BundleName, type: bd.BundleType, stockMode: bd.StockMode, status: bd.Status });
-  const row = code ? liveBarcodeRow_(code) : null;
+  const liveRows = code ? db_('VARIANT_BARCODES').filter((b) => b.Code === code && (b.Status === 'ACTIVE' || b.Status === 'ALLOCATED')) : [];
+  const activeRows = liveRows.filter((b) => b.Status === 'ACTIVE');
+  // konflik identitas: satu barcode aktif untuk lebih dari satu barang → tampilkan error, jangan pilih salah satu
+  if (activeRows.length > 1) {
+    return { code, kind: 'conflict', found: false, conflict: true, owners: activeRows.map((b) => ownerInfo_(b)).filter(Boolean), matches: [], bundles: [], retired: [], reserved: null, validation: { ok: false, message: 'Konflik identitas barcode' } };
+  }
+  const row = activeRows[0] || liveRows[0] || null;
   if (row && row.Status === 'ACTIVE' && row.BundleID) pushBundle(row.BarcodeType === 'GTIN' ? 'GTIN produsen' : 'Barcode internal', db_('BUNDLE_MASTERS').byId(row.BundleID));
   db_('BUNDLE_MASTERS')
     .filter((b) => b.BundleSKU === up)
     .forEach((b) => pushBundle('SKU bundle', b));
-  supplierCodeLookup_(up).forEach((m) => push('Kode supplier ' + m.supplierName, m.variantId, '', { supplierCode: m.supplierProductCode }));
   if (row && row.Status === 'ACTIVE' && !row.BundleID) {
     const conv = row.ConversionID ? db_('UNIT_CONVERSIONS').byId(row.ConversionID) : null;
     push(row.BarcodeType === 'GTIN' ? 'GTIN produsen' : 'Barcode internal', row.VariantID || (conv && conv.VariantID), row.ConversionID);
   }
   db_('PRODUCT_VARIANTS')
     .filter((v) => v.SKU && v.SKU.toUpperCase() === up)
-    .forEach((v) => push('SKU internal', v.VariantID));
+    .forEach((v) => push('Child SKU', v.VariantID));
+  // Parent SKU → seluruh Child SKU di bawahnya
+  db_('MASTER_PRODUCTS')
+    .filter((p) => String(p.ProductCode).toUpperCase() === up)
+    .forEach((p) =>
+      db_('PRODUCT_VARIANTS')
+        .filter((v) => v.ProductID === p.ProductID)
+        .sort((a, b) => a.SortOrder - b.SortOrder)
+        .forEach((v) => push('Parent SKU', v.VariantID)),
+    );
   db_('UNIT_CONVERSIONS')
     .filter((c) => c.SKU && c.SKU.toUpperCase() === up)
     .forEach((c) => push('SKU kemasan', c.VariantID, c.ConversionID));
@@ -197,6 +215,21 @@ function barcodeLookup_(raw) {
       if (m.BundleID) return pushBundle(via, db_('BUNDLE_MASTERS').byId(m.BundleID));
       push(via, m.VariantID || (db_('UNIT_CONVERSIONS').byId(m.ConversionID) || {}).VariantID, m.ConversionID);
     });
+  // nama produk (semua kata harus cocok) — hanya bila kode tidak ditemukan sebagai barcode/SKU
+  const words = normalizeName(raw).split(' ').filter(Boolean);
+  if (!matches.length && !bundles.length && !/^\d+$/.test(code) && words.length && normalizeName(raw).length >= 3) {
+    const prods = indexBy_(db_('MASTER_PRODUCTS').rows(), 'ProductID');
+    const brands = indexBy_(db_('MASTER_BRANDS').rows(), 'BrandID');
+    db_('PRODUCT_VARIANTS')
+      .filter((v) => {
+        const p = prods[v.ProductID];
+        if (!p) return false;
+        const text = ' ' + normalizeName([variantDisplayName_(v), (brands[p.BrandID] || {}).BrandName, p.ProductName, v.VariantName].join(' ')) + ' ';
+        return words.every((w) => text.indexOf(w) >= 0);
+      })
+      .slice(0, 30)
+      .forEach((v) => push('Nama produk', v.VariantID));
+  }
   const gtin = validateManufacturerGtin(code);
   const anyGtin = validateGtin(code);
   const kind = gtin.ok ? 'gtin' : anyGtin.ok && /^2|^02|^04/.test(code) ? 'internal' : /^\d+$/.test(code) && code.length >= 8 ? 'invalid_numeric' : 'text';

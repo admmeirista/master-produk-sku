@@ -203,6 +203,79 @@ function variantCombinations(attrs) {
     .filter((c) => c.length);
 }
 
+// ---------------------------------------------------------------- Nama Produk SKU (v5)
+
+const ATTR_UNIT_FORMAT_ = [
+  [/^(ml|mls|mililiter|milliliter)$/i, 'ml'],
+  [/^(l|lt|ltr|liter|litre)$/i, 'L'],
+  [/^(g|gr|grs|grm|gram|grams)$/i, 'g'],
+  [/^(kg|kgs|kilogram|kilograms)$/i, 'kg'],
+  [/^(mg|miligram|milligram)$/i, 'mg'],
+  [/^(oz)$/i, 'oz'],
+  [/^(pcs|pc|pieces?)$/i, 'pcs'],
+];
+
+/** Format standar nilai atribut: "50ml" / "50 ML" / "50 ml ml" → "50 ml", "1,5L" → "1,5 L". Teks lain hanya dirapikan. */
+function formatAttrValue(v) {
+  let s = cleanText(v);
+  s = s.replace(/(\d)\s*([a-zA-Z]+)\b/g, (m, d, u) => {
+    const hit = ATTR_UNIT_FORMAT_.find((x) => x[0].test(u));
+    return hit ? d + ' ' + hit[1] : m;
+  });
+  // satuan berulang: "50 ml ml" → "50 ml"
+  s = s.replace(/\b(ml|L|g|kg|mg|oz|pcs)(\s+\1\b)+/gi, '$1');
+  return s.replace(/\s+/g, ' ').trim();
+}
+
+/** Urutkan atribut sesuai urutan jenis atribut di Pengaturan (Warna, Shade, Aroma, Ukuran, Volume, …); sisanya di belakang. */
+function orderAttributes(attrs, types) {
+  const pos = {};
+  (types || []).forEach((t, i) => (pos[normalizeName(t)] = i));
+  return (attrs || [])
+    .map((a, i) => ({ a, i, p: pos[normalizeName(a.name)] === undefined ? 1000 + i : pos[normalizeName(a.name)] }))
+    .sort((x, y) => x.p - y.p || x.i - y.i)
+    .map((x) => x.a);
+}
+
+/**
+ * Nama Produk SKU = NAMA BRAND + NAMA PARENT + NILAI ATRIBUT (urut sesuai Pengaturan).
+ * Kata/atribut yang sudah ada tidak diulang (brand di awal nama parent, "50 ml" yang sudah ada di nama, satuan ganda),
+ * tanpa spasi ganda. Contoh: Hanasui + Pelembab Wajah + [Red, 50ml] → "Hanasui Pelembab Wajah Red 50 ml".
+ */
+function buildSkuName(brandName, parentName, attrs, types) {
+  const brand = cleanText(brandName);
+  const parent = formatAttrValue(parentName);
+  const parts = [];
+  const contains = (txt) => {
+    const k = normalizeName(txt);
+    return !!k && (' ' + normalizeName(parts.join(' ')) + ' ').indexOf(' ' + k + ' ') >= 0;
+  };
+  const nb = normalizeName(brand);
+  const np = normalizeName(parent);
+  if (brand && !(np === nb || np.indexOf(nb + ' ') === 0)) parts.push(brand);
+  if (parent && !contains(parent)) parts.push(parent);
+  orderAttributes(attrs, types).forEach((a) => {
+    const val = formatAttrValue(a && a.value !== undefined ? a.value : a);
+    if (val && !contains(val)) parts.push(val);
+  });
+  return parts
+    .join(' ')
+    .replace(/\b(\S+)(\s+\1\b)+/gi, '$1')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 200);
+}
+
+/** Parent SKU dari kode brand, kode kategori, dan nomor parent (0001). */
+function buildParentSku(brandCode, categoryCode, parentNo) {
+  return [normalizeCode(brandCode), normalizeCode(categoryCode), String(parentNo).padStart(PARENT_CODE_DIGITS, '0')].join('-');
+}
+
+/** Child SKU = Parent SKU + "-" + barcode (GTIN atau barcode internal). */
+function buildChildSku(parentSku, barcode) {
+  return String(parentSku || '') + '-' + cleanBarcode(barcode);
+}
+
 // ---------------------------------------------------------------- Satuan & konversi
 
 function normalizeUnit(u) {

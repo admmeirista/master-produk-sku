@@ -7,7 +7,8 @@
  *    diubah (dilaporkan untuk diputuskan manual).
  *  - 1 barcode fisik = 1 varian. Baris template dengan GTIN yang sama (mis. VAM100 & AIM100) TIDAK membuat produk ganda —
  *    SKU lamanya dicatat sebagai legacy SKU pada varian yang sama.
- *  - Baris "Isi" 1 → varian (SKU internal baru SKU000xxx); Isi > 1 → satuan kemasan PACKn (tanpa SKU baru).
+ *  - Baris "Isi" 1 → Child SKU (Parent SKU BRAND-KATEGORI-0001, Child SKU PARENT_SKU-BARCODE; barang tanpa GTIN valid
+ *    mendapat barcode internal otomatis); Isi > 1 → multipack virtual (MP…), bukan Child SKU baru.
  *    Semua SKU lama tersimpan di EXTERNAL_SKU_MAPPINGS (system "legacy") → tetap bisa ditelusuri & dipindai.
  *  - Barcode yang bukan GTIN valid TIDAK disimpan sebagai GTIN (dilaporkan). Prefix 2xx valid → barcode internal.
  *  - Idempoten: SKU lama yang sudah tercatat dilewati; import ulang tidak menggandakan produk.
@@ -283,8 +284,9 @@ function importMaster_(user, work, rep) {
       const pkey = brand.BrandID + '|' + (legacyCode || normalizeName(v.name));
       let p = productOf[pkey];
       if (!p) {
-        const pc = allocateProductCode_();
-        p = db_('MASTER_PRODUCTS').insert({ ProductID: uuid_(), ProductNo: pc.no, BrandID: brand.BrandID, CategoryID: cat.CategoryID, ProductName: cleanText(v.name).slice(0, 120), NameKey: normalizeName(v.name), ProductCode: pc.code, BaseUnit: unit, HasVariants: false, Status: STATUS.ACTIVE, CreatedBy: user.email, CreatedAt: ts, UpdatedBy: user.email, UpdatedAt: ts, Version: 1, LegacyCode: legacyCode });
+        const pc = allocateParentSku_(brand, cat);
+        p = db_('MASTER_PRODUCTS').insert({ ProductID: uuid_(), ProductNo: pc.no, BrandID: brand.BrandID, CategoryID: cat.CategoryID, ProductName: cleanText(v.name).slice(0, 120), NameKey: normalizeName(v.name), ProductCode: pc.code, ParentCode: pc.parentCode, BaseUnit: unit, HasVariants: false, Status: STATUS.ACTIVE, CreatedBy: user.email, CreatedAt: ts, UpdatedBy: user.email, UpdatedAt: ts, Version: 1, LegacyCode: legacyCode });
+        p._brandName = brand.BrandName;
         productOf[pkey] = p;
         rep.created.products++;
       }
@@ -293,7 +295,7 @@ function importMaster_(user, work, rep) {
         // produk lama berisi lebih dari satu barcode → jadikan multi-varian dengan atribut "Varian"
         const first = siblings[0];
         const fa = [{ name: 'Varian', value: first.VariantName === 'Standar' ? p.ProductName : first.VariantName }];
-        db_('PRODUCT_VARIANTS').update(first, { VariantName: fa[0].value, VariantAttributes: fa, AttributeKey: attributeKey(fa), IsDefault: false });
+        db_('PRODUCT_VARIANTS').update(first, { VariantName: fa[0].value, VariantAttributes: fa, AttributeKey: attributeKey(fa), IsDefault: false, ProductSKUName: buildSkuName(p._brandName || (db_('MASTER_BRANDS').byId(p.BrandID) || {}).BrandName, p.ProductName, fa, S.attribute_types) });
         writeAttributes_(first, fa);
         db_('MASTER_PRODUCTS').update(p, { HasVariants: true });
       }
@@ -303,9 +305,7 @@ function importMaster_(user, work, rep) {
         if (siblings.some((x) => x.AttributeKey === attributeKey([{ name: 'Varian', value: val }]))) val = (val.slice(0, 26) + ' ' + raw.slice(-13)).trim();
         attrs = [{ name: 'Varian', value: val }];
       }
-      const newSku = allocateSku_(skuOwner);
-      skuOwner[newSku] = p.ProductName;
-      const nv = db_('PRODUCT_VARIANTS').insert({ VariantID: uuid_(), ProductID: p.ProductID, VariantCode: '', VariantName: attrs.length ? attrs[0].value : 'Standar', VariantAttributes: attrs, AttributeKey: attributeKey(attrs), SKU: newSku, GTIN: '', InternalBarcode: '', IsDefault: !attrs.length, Status: STATUS.ACTIVE, SortOrder: siblings.length + 1, CreatedBy: user.email, CreatedAt: ts, UpdatedAt: ts });
+      const nv = db_('PRODUCT_VARIANTS').insert({ VariantID: uuid_(), ProductID: p.ProductID, VariantCode: '', VariantName: attrs.length ? attrs[0].value : 'Standar', VariantAttributes: attrs, AttributeKey: attributeKey(attrs), SKU: '', GTIN: '', InternalBarcode: '', IsDefault: !attrs.length, Status: STATUS.ACTIVE, SortOrder: siblings.length + 1, CreatedBy: user.email, CreatedAt: ts, UpdatedAt: ts, Stockable: 'STOCKABLE', BaseUnit: p.BaseUnit, ProductSKUName: buildSkuName(p._brandName || (db_('MASTER_BRANDS').byId(p.BrandID) || {}).BrandName, p.ProductName, attrs, S.attribute_types) });
       writeAttributes_(nv, attrs);
       db_('UNIT_CONVERSIONS').insert({ ConversionID: uuid_(), VariantID: nv.VariantID, ProductID: p.ProductID, UnitName: p.BaseUnit, ConversionFactor: 1, ContainsUnit: p.BaseUnit, BaseUnitEquivalent: 1, IsBaseUnit: true, IsTradeItem: false, SKU: '', GTIN: '', InternalBarcode: '', Status: STATUS.ACTIVE, SortOrder: 0, CreatedAt: ts, UpdatedAt: ts });
       if (bcType) {
@@ -315,7 +315,18 @@ function importMaster_(user, work, rep) {
         db_('PRODUCT_VARIANTS').update(nv, bcType === 'GTIN' ? { GTIN: raw } : { InternalBarcode: raw });
         liveBc[raw] = { VariantID: nv.VariantID, ConversionID: '' };
         rep.created.barcodes++;
+      } else {
+        // setiap Child SKU wajib punya barcode → barcode internal otomatis (bukan GTIN resmi)
+        const ib = allocateInternal_(user, 1, null, 'Import template lama baris ' + w.row)[0];
+        db_('VARIANT_BARCODES').update(ib, { Status: 'ACTIVE', ProductID: p.ProductID, VariantID: nv.VariantID, Reason: 'import template lama (tanpa GTIN valid)' });
+        db_('PRODUCT_VARIANTS').update(nv, { InternalBarcode: ib.Code });
+        rep.warnings.push({ row: w.row, message: `Barcode ${raw} bukan GTIN valid → Child SKU memakai barcode internal ${ib.Code}` });
+        rep.created.barcodes++;
       }
+      const newSku = buildChildSku(p.ProductCode, nv.GTIN || nv.InternalBarcode);
+      if (skuOwner[newSku.toUpperCase()]) return rep.errors.push({ row: w.row, message: `SKU ${newSku} sudah dipakai ${skuOwner[newSku.toUpperCase()]}` });
+      db_('PRODUCT_VARIANTS').update(nv, { SKU: newSku });
+      skuOwner[newSku.toUpperCase()] = p.ProductName;
       variantId = nv.VariantID;
       productId = p.ProductID;
       variantOfRaw[raw] = variantId;

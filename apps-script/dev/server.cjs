@@ -43,24 +43,21 @@ save({ brandId: B('Scarlett'), categoryId: C('Parfum'), name: 'Parfum Eau de Par
   { attributes: [{ name: 'Aroma', value: 'Ocean Blue' }, { name: 'Volume', value: '50 ml' }], barcode: { mode: 'gtin', code: g13('899100000001') }, conversions: [{ unitName: 'BOX', factor: 24, isTradeItem: true, barcode: { mode: 'gtin', code: g13('899100000091') } }, { unitName: 'KARTON', factor: 6, containsUnit: 'BOX' }] },
   { attributes: [{ name: 'Aroma', value: 'Ocean Blue' }, { name: 'Volume', value: '100 ml' }], barcode: { mode: 'gtin', code: g13('899100000002') }, conversions: [{ unitName: 'BOX', factor: 12 }] },
   { attributes: [{ name: 'Aroma', value: 'Rose Garden' }, { name: 'Volume', value: '50 ml' }], barcode: { mode: 'gtin', code: g13('899100000003') }, conversions: [{ unitName: 'BOX', factor: 24 }] },
-  { attributes: [{ name: 'Aroma', value: 'Rose Garden' }, { name: 'Volume', value: '100 ml' }], barcode: { mode: 'none' }, conversions: [] },
+  { attributes: [{ name: 'Aroma', value: 'Rose Garden' }, { name: 'Volume', value: '100 ml' }], barcode: { mode: 'internal' }, conversions: [] },
 ] });
-save({ brandId: B('Viva'), categoryId: C('Toner'), name: 'Viva Air Mawar 100ml', baseUnit: 'BOTOL', hasVariants: false, variants: [{ barcode: { mode: 'gtin', code: '8992796011501' }, conversions: [{ unitName: 'LUSIN', factor: 12 }, { unitName: 'KARTON', factor: 4, containsUnit: 'LUSIN' }] }] });
+save({ brandId: B('Viva'), categoryId: C('Toner'), name: 'Viva Air Mawar 100ml', baseUnit: 'BOTOL', hasVariants: false, variants: [{ barcode: { mode: 'gtin', code: '8992796011501' }, conversions: [{ unitName: 'LUSIN', factor: 12 }, { unitName: 'KARTON', factor: 4, containsUnit: 'LUSIN' }], dimensions: [{ unit: 'BOTOL', lengthCm: 5, widthCm: 5, heightCm: 15, weight: 130 }, { unit: 'KARTON', lengthCm: 42, widthCm: 32, heightCm: 34, weight: 7.2, weightUnit: 'kg' }] }] });
 save({ brandId: B('Hanasui'), categoryId: C('Lipstick'), name: 'Hanasui Matte Lip Cream', baseUnit: 'PCS', hasVariants: true, variants: ['01 Pink Nude', '02 Rosy', '03 Brick'].map((sh) => ({ attributes: [{ name: 'Shade', value: sh }], barcode: { mode: 'internal' }, conversions: [{ unitName: 'BOX', factor: 12 }, { unitName: 'KARTON', factor: 10, containsUnit: 'BOX' }] })) });
 
-// v4: supplier, kode supplier, bundle, mapping channel, draft
+// v4/v5: bundle, mapping channel, draft
 {
   const list = call(entry, 'product.list', { status: 'all', pageSize: 50 }).data.rows;
   const det = (name) => call(entry, 'product.get', { id: list.find((p) => p.name.indexOf(name) >= 0).id }).data;
   const pf = det('Parfum'), viva = det('Viva'), lip = det('Hanasui');
-  const sa = must(call(entry, 'supplier.save', { name: 'PT Wangi Sejahtera', contactName: 'Andi', phone: '0812-0000-0001' }), 'supplier');
-  must(call(entry, 'supplier.save', { name: 'CV Aroma Nusantara' }), 'supplier 2');
-  must(call(entry, 'supplierMap.save', { supplierId: sa.id, supplierProductCode: 'PF-OB50', variantId: pf.variants[0].id, purchaseUnit: 'BOX', conversionFactor: 24, moq: 2 }), 'supplier map');
   must(call(entry, 'bundle.save', { type: 'MULTIPACK', name: 'Paket Viva Air Mawar isi 6', components: [{ variantId: viva.variants[0].id, quantity: 6 }] }), 'multipack');
   must(call(entry, 'bundle.save', { type: 'MIXED', name: 'Bundle Lip Cream 3 Shade', components: lip.variants.map((v) => ({ variantId: v.id, quantity: 1 })) }), 'mixed');
   must(call(entry, 'bundle.save', { type: 'REQUEST_MIX', name: 'Lip Cream Pilih 2', pickQuantity: 2, components: lip.variants.map((v) => ({ variantId: v.id, quantity: 1 })) }), 'request mix');
   must(call(entry, 'mapping.create', { system: 'shopee', storeAccount: 'Meirista Official', sku: pf.variants[0].sku, externalProductId: '43465728785', externalVariationId: '351267547392', externalParentSku: 'EDP-OCEAN', externalSku: 'EDP-OB50' }), 'mapping');
-  save({ brandId: B('Pixy'), categoryId: C('Powder Refill'), name: 'Pixy Two Way Cake Refill', baseUnit: 'PCS', hasVariants: false, saveAsDraft: true, variants: [{ barcode: { mode: 'none' }, conversions: [] }] });
+  save({ brandId: B('Pixy'), categoryId: C('Powder Refill'), name: 'Pixy Two Way Cake Refill', baseUnit: 'PCS', hasVariants: false, saveAsDraft: true, variants: [{ barcode: { mode: 'internal' }, conversions: [] }] });
 }
 // ----- HTML seperti HtmlService (include + scriptlet)
 function page() {

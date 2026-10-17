@@ -150,13 +150,10 @@ function migrateV1_(r, actor) {
     const cat = db_('MASTER_CATEGORIES').byId(o.category_id);
     if (!brand || !cat) return r.skipped.push(`Produk "${o.name}": brand/kategori tidak ditemukan`);
     const baseUnit = normalizeUnit(o.base_unit) || 'PCS';
-    let code = Number(o.product_no) ? padCode_(PRODUCT_CODE_PREFIX, Number(o.product_no)) : '';
-    let no = Number(o.product_no) || 0;
-    if (!code || db_('MASTER_PRODUCTS').find((p) => p.ProductCode === code)) {
-      const pc = allocateProductCode_();
-      code = pc.code;
-      no = pc.no;
-    }
+    // Parent SKU format v5 (BRAND-KATEGORI-0001); kode produk v1 disimpan sebagai LegacyCode
+    const pc = allocateParentSku_(brand, cat);
+    const code = pc.code;
+    const no = pc.no;
     const variants = oldVariants.filter((v) => v.product_id === o.id).sort((a, b) => Number(a.sort_order) - Number(b.sort_order));
     const p = db_('MASTER_PRODUCTS').insert({
       ProductID: o.id,
@@ -175,14 +172,22 @@ function migrateV1_(r, actor) {
       UpdatedAt: ts,
       Version: 1,
       LegacyCode: normalizeCode(o.product_code),
+      ParentCode: pc.parentCode,
     });
     r.products++;
     variants.forEach((ov, vi) => {
       let attrs = (legacyJson_(ov.attributes_json) || []).map((a) => ({ name: LEGACY_ATTR_LABEL_[a.type] || cleanAttrName(a.type), value: cleanText(a.value) })).filter((a) => a.value);
       if (p.HasVariants && !attrs.length) attrs = [{ name: 'Varian', value: cleanText(ov.name) || 'Varian ' + (vi + 1) }];
-      const sku = allocateSku_(skuOwner);
-      skuOwner[sku] = p.ProductName;
-      const vbc = activeBc['v:' + ov.id] || '';
+      let vbc = activeBc['v:' + ov.id] || '';
+      if (!vbc) {
+        // Child SKU wajib ber-barcode → barcode internal otomatis
+        const ib = allocateInternal_({ email: actor }, 1, null, 'Migrasi v1 ' + cleanText(o.name))[0];
+        db_('VARIANT_BARCODES').update(ib, { Status: 'ACTIVE', ProductID: p.ProductID, VariantID: ov.id, Reason: 'migrasi v1 (tanpa barcode)' });
+        bcType[ib.Code] = 'INTERNAL';
+        vbc = ib.Code;
+      }
+      const sku = buildChildSku(code, vbc);
+      skuOwner[sku.toUpperCase()] = p.ProductName;
       const v = db_('PRODUCT_VARIANTS').insert({
         VariantID: ov.id,
         ProductID: p.ProductID,
@@ -199,6 +204,9 @@ function migrateV1_(r, actor) {
         CreatedBy: ov.created_by || 'migrasi',
         CreatedAt: ov.created_at || ts,
         UpdatedAt: ts,
+        Stockable: 'STOCKABLE',
+        BaseUnit: baseUnit,
+        ProductSKUName: buildSkuName(brand.BrandName, p.ProductName, attrs, getSettings_().attribute_types),
       });
       writeAttributes_(v, attrs);
       r.variants++;

@@ -42,6 +42,8 @@ const ROUTES = {
   'brand.rename': { perm: 'master.write', write: true, fn: (u, p) => brandRename_(u, p) },
   'brand.setStatus': { perm: 'master.write', write: true, fn: (u, p) => brandSetStatus_(u, p) },
   'brand.delete': { perm: 'master.write', write: true, fn: (u, p) => brandDelete_(u, p) },
+  'brand.importPreview': { perm: 'master.write', fn: (u, p) => masterImport_(u, 'brand', p, { dryRun: true }) },
+  'brand.import': { perm: 'master.write', write: true, fn: (u, p) => masterImport_(u, 'brand', p) },
 
   'category.list': { perm: 'product.read', fn: (u, p) => categoryList_(p) },
   'category.preview': { perm: 'product.read', fn: (u, p) => categoryPreview_(p.name) },
@@ -50,11 +52,14 @@ const ROUTES = {
   'category.rename': { perm: 'master.write', write: true, fn: (u, p) => categoryRename_(u, p) },
   'category.setStatus': { perm: 'master.write', write: true, fn: (u, p) => categorySetStatus_(u, p) },
   'category.delete': { perm: 'master.write', write: true, fn: (u, p) => categoryDelete_(u, p) },
+  'category.importPreview': { perm: 'master.write', fn: (u, p) => masterImport_(u, 'category', p, { dryRun: true }) },
+  'category.import': { perm: 'master.write', write: true, fn: (u, p) => masterImport_(u, 'category', p) },
 
   'product.list': { perm: 'product.read', fn: (u, p) => productList_(p) },
   'product.search': { perm: 'product.read', fn: (u, p) => productSearch_(p.q) },
   'product.get': { perm: 'product.read', fn: (u, p) => productDetail_(p.id) },
   'product.check': { perm: 'product.read', fn: (u, p) => productCheck_(p) },
+  'product.parentPreview': { perm: 'product.read', fn: (u, p) => parentPreview_(p) },
   'product.validate': { perm: 'product.write', fn: (u, p) => productSave_(u, p.input, { dryRun: true }) },
   'product.save': { perm: 'product.write', write: true, fn: (u, p) => productSave_(u, p.input) },
   'product.setStatus': { perm: 'product.write', write: true, fn: (u, p) => productSetStatus_(u, p) },
@@ -168,7 +173,7 @@ function meInfo_(user) {
     user,
     permissions: ROLE_PERMISSIONS[user.role] || [],
     appName: APP_NAME,
-    config: { skuPrefix: SKU_PREFIX, productCodePrefix: PRODUCT_CODE_PREFIX, maxCombinations: MAX_COMBINATIONS, maxVariants: MAX_VARIANTS, channels: s.channels, channelLabel: CHANNEL_LABEL, lifecycle: LIFECYCLE, statusLabel: STATUS_LABEL, gtinLookup: !!s.gtin_lookup_enabled, baseUnits: s.base_units, packUnits: s.pack_units, attributeTypes: s.attribute_types, codeLength: s.master_code_length, roles: ROLES.map((r) => ({ id: r, label: ROLE_LABEL[r] })) },
+    config: { parentCodeDigits: PARENT_CODE_DIGITS, maxCombinations: MAX_COMBINATIONS, maxVariants: MAX_VARIANTS, channels: s.channels, channelLabel: CHANNEL_LABEL, lifecycle: LIFECYCLE, statusLabel: STATUS_LABEL, gtinLookup: !!s.gtin_lookup_enabled, baseUnits: s.base_units, packUnits: s.pack_units, attributeTypes: s.attribute_types, codeLength: s.master_code_length, roles: ROLES.map((r) => ({ id: r, label: ROLE_LABEL[r] })) },
   };
 }
 
@@ -230,7 +235,7 @@ function setup() {
     // migrasi dulu (menyalin penghitung lama), baru penghitung yang belum ada dibuat
     const migration = migrateLegacy_('setup');
     const seq = db_('SYSTEM_COUNTERS');
-    ['product_no', 'sku_no', 'internal_barcode', 'multipack_no', 'bundle_no', 'supplier_no'].forEach((n) => !seq.find((r) => r.CounterName === n) && seq.insert({ CounterName: n, Value: '1', UpdatedAt: now_() }));
+    ['parent_no', 'product_no', 'sku_no', 'internal_barcode', 'multipack_no', 'bundle_no', 'supplier_no'].forEach((n) => !seq.find((r) => r.CounterName === n) && seq.insert({ CounterName: n, Value: '1', UpdatedAt: now_() }));
     let admin = null;
     if (!db_('Users').rows().length) {
       const email = (Session.getEffectiveUser().getEmail() || 'admin@toko.local').toLowerCase();

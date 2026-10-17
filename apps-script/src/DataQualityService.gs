@@ -40,7 +40,6 @@ function dataQuality_() {
     const k = MASTER_KIND[kind];
     add('dup_' + kind, k.label + ' ganda (nama sama setelah normalisasi)', 'error', dupBy(db_(k.table).filter((r) => r.Status !== STATUS.DELETED), (r) => r.NameKey).map((d) => ({ name: d.items.map((r) => r[k.name] + ' (' + r[k.code] + ')').join(' | ') })), 'Nonaktifkan duplikat yang tidak dipakai; kode yang sudah dipakai tetap dipertahankan.');
   });
-  add('dup_supplier_map', 'Mapping supplier ganda', 'error', dupBy(db_('SUPPLIER_PRODUCT_MAPPING').filter((m) => m.Status === STATUS.ACTIVE), (m) => m.SupplierID + '|' + m.SupplierCodeKey).map((d) => ({ supplierCode: d.items[0].SupplierProductCode, skus: d.items.map((m) => (vById[m.VariantID] || {}).SKU).join(', ') })), 'Satu kode produk supplier hanya boleh menunjuk satu Child SKU. Nonaktifkan mapping yang salah.');
   const ch = db_('EXTERNAL_SKU_MAPPINGS').filter((m) => m.IsActive && m.System !== 'legacy');
   add('dup_channel_map', 'Mapping kanal ganda', 'error', dupBy(ch, (m) => (MARKETPLACES[m.System] ? m.System + '|' + String(m.StoreAccount || '').toUpperCase() + '|' + m.ExternalProductId + '|' + (m.ExternalVariationId || '') : m.System + '|' + String(m.StoreAccount || '').toUpperCase() + '|' + String(m.ExternalSku).toUpperCase())).map((d) => ({ channel: CHANNEL_LABEL[d.items[0].System], listing: d.key.split('|').slice(2).join(' / '), skus: d.items.map((m) => mappingTarget_(m).internalSku).join(', ') })), 'Satu listing/variasi hanya boleh menunjuk satu SKU internal. Nonaktifkan mapping yang salah.');
 
@@ -96,6 +95,8 @@ function dataQuality_() {
 
   // ---- kelengkapan & kemiripan
   add('variant_no_barcode', 'Child SKU aktif tanpa barcode', 'info', V.filter((v) => v.Status === STATUS.ACTIVE && !v.GTIN && !v.InternalBarcode && (pById[v.ProductID] || {}).Status === STATUS.ACTIVE).map(vLabel), 'Scan GTIN produsen di Edit produk, atau alokasikan barcode internal bila tidak ada GTIN.');
+  const dims = dimensionsByVariant_();
+  add('packaging_incomplete', 'Data kemasan belum lengkap (dimensi/berat satuan dasar)', 'info', V.filter((v) => v.Status === STATUS.ACTIVE && (pById[v.ProductID] || {}).Status === STATUS.ACTIVE && !packagingComplete_(v.BaseUnit || (pById[v.ProductID] || {}).BaseUnit, dims[v.VariantID])).map(vLabel), 'Lengkapi panjang, lebar, tinggi, dan berat di Edit produk › Kemasan & Logistik. Tidak memengaruhi SKU.');
   const threshold = Number(getSettings_().fuzzy_threshold) || 0.82;
   const pairs = [];
   Object.values(groupBy_(P.filter((p) => live(p.Status)), 'BrandID')).forEach((list) => {
@@ -107,7 +108,6 @@ function dataQuality_() {
       }
   });
   add('similar_parents', 'Kandidat Parent ganda (nama mirip)', 'warn', pairs, 'Bandingkan barcode & ukuran. Bila barang sama: pindahkan varian/mapping ke produk utama lalu deprecate duplikatnya. Tidak pernah digabung otomatis.');
-  add('supplier_spec', 'Barang supplier dengan spesifikasi berbeda', 'warn', db_('SUPPLIER_PRODUCT_MAPPING').filter((m) => m.Status === STATUS.ACTIVE && m.SpecMismatch).map((m) => Object.assign(vLabel(vById[m.VariantID] || {}), { supplierCode: m.SupplierProductCode, note: m.SpecNote })), 'Evaluasi apakah perlu Child SKU baru (isi/formula/kemasan berbeda = barang berbeda).');
 
   const summary = { error: 0, warn: 0, info: 0 };
   sections.forEach((s) => (summary[s.severity] += s.count));

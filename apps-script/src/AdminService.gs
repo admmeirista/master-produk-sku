@@ -128,8 +128,10 @@ function dashboard_() {
       drafts: P.filter((p) => p.Status === STATUS.DRAFT).length,
       discontinued: V.filter((v) => v.Status === STATUS.DISCONTINUED).length,
       bundles: db_('BUNDLE_MASTERS').filter((b) => b.Status === STATUS.ACTIVE).length,
-      suppliers: db_('MASTER_SUPPLIERS').filter((x) => x.Status === STATUS.ACTIVE).length,
-      supplierMaps: db_('SUPPLIER_PRODUCT_MAPPING').filter((x) => x.Status === STATUS.ACTIVE).length,
+      packagingComplete: (() => {
+        const dims = dimensionsByVariant_();
+        return liveV.filter((v) => packagingComplete_(v.BaseUnit || (pById[v.ProductID] || {}).BaseUnit, dims[v.VariantID])).length;
+      })(),
     },
     channels: mappingSummary_(),
     byBrand: Object.keys(byBrand)

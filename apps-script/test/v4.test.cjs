@@ -81,8 +81,8 @@ test('[AC-1][AC-4][AC-14][AC-15] Quick Entry dari hasil auto-fill: Parent non-st
   const d = ok(call(T, 'product.save', { input: { brandId: ids.Wardah, categoryId: ids['Face Mask'], name: 'Wardah Nature Daily Mineral Clarifying Clay Mask', baseUnit: 'JAR', hasVariants: false, description: 'Masker clay', imageUrl: OBF_FOUND.product.image_front_url, dataSource: 'openbeautyfacts:8993137699549', variants: [{ barcode: { mode: 'gtin', code: '8993137699549' }, batchTracking: true, expiryTracking: true, shelfLifeMonths: 36 }] } }));
   ids.mask = d.id;
   assert.equal(d.stockable, false);
-  assert.match(d.productCode, /^PRD\d{6}$/);
-  assert.match(d.variants[0].sku, /^SKU\d{6}$/);
+  assert.match(d.productCode, /^WAR-[A-Z0-9]+-\d{4}$/);
+  assert.equal(d.variants[0].sku, d.productCode + '-8993137699549');
   assert.deepEqual([d.variants[0].stockable, d.variants[0].batchTracking, d.variants[0].expiryTracking, d.variants[0].shelfLifeMonths], [true, true, true, 36]);
   assert.equal(d.dataSource, 'openbeautyfacts:8993137699549');
   // scan ulang → produk existing, bukan registrasi baru
@@ -92,11 +92,11 @@ test('[AC-1][AC-4][AC-14][AC-15] Quick Entry dari hasil auto-fill: Parent non-st
   assert.equal(inv.rows.length, 1);
   assert.equal(inv.rows[0][0], d.variants[0].sku);
   assert.notEqual(inv.rows[0][0], d.productCode);
-  assert.deepEqual([inv.rows[0][10], inv.rows[0][11], inv.rows[0][12]], ['Ya', 'Ya', 36]);
+  assert.deepEqual([inv.rows[0][6], inv.rows[0][12]], ['JAR', 'Belum lengkap'], 'v5: kolom batch/expiry diganti satuan dasar & kelengkapan data kemasan');
 });
 
 test('Save Draft: tersimpan tapi belum tersedia downstream; aktivasi mengaktifkan Child SKU', () => {
-  const d = ok(call(T, 'product.save', { input: { brandId: ids.Viva, categoryId: ids.Toner, name: 'Viva Face Tonic Bengkoang', baseUnit: 'BOTOL', saveAsDraft: true, variants: [{ barcode: { mode: 'none' } }] } }));
+  const d = ok(call(T, 'product.save', { input: { brandId: ids.Viva, categoryId: ids.Toner, name: 'Viva Face Tonic Bengkoang', baseUnit: 'BOTOL', saveAsDraft: true, variants: [{ barcode: { mode: 'internal' } }] } }));
   assert.equal(d.status, 'DRAFT');
   assert.equal(d.variants[0].status, 'DRAFT');
   assert.ok(!ok(call(T, 'export.data', { kind: 'master' })).rows.some((r) => r[1] === d.variants[0].sku), 'draft tidak diekspor sebagai aktif');
@@ -129,7 +129,7 @@ test('[AC-2][AC-3][AC-10] Parent 4 Child SKU + satuan beli BOX: 5 BOX = 120 BOTO
   // satuan beli harus kemasan yang terdefinisi
   const bad = JSON.parse(JSON.stringify(variants));
   bad[0].purchaseUnit = 'KARTON';
-  fail(call(T, 'product.save', { input: { brandId: ids.Scarlett, categoryId: ids.Parfum, name: 'Eau de Parfum Lain', baseUnit: 'BOTOL', hasVariants: true, acknowledgeSimilar: true, variants: [Object.assign(bad[0], { barcode: { mode: 'none' } })] } }), 'VALIDATION_FAILED');
+  fail(call(T, 'product.save', { input: { brandId: ids.Scarlett, categoryId: ids.Parfum, name: 'Eau de Parfum Lain', baseUnit: 'BOTOL', hasVariants: true, acknowledgeSimilar: true, variants: [Object.assign(bad[0], { barcode: { mode: 'internal' } })] } }), 'VALIDATION_FAILED');
   // ubah isi BOX varian 2 → histori dengan tanggal efektif
   const x = toInput(d);
   x.variants[1].conversions[0].factor = 12;
@@ -153,7 +153,7 @@ function toInput(x) {
   };
 }
 
-test('[AC-8] satu Child SKU dari dua supplier; cari berdasarkan kode supplier; kode supplier ganda ditolak', () => {
+test('data supplier lama (v4) tetap kompatibel: dua supplier per Child SKU, kode ganda ditolak', () => {
   const p = ok(call(T, 'product.get', { id: ids.parfum }));
   const sa = ok(call(T, 'supplier.save', { name: 'PT Wangi Sejahtera' }));
   const sb = ok(call(T, 'supplier.save', { name: 'CV Aroma Nusantara' }));
@@ -164,7 +164,8 @@ test('[AC-8] satu Child SKU dari dua supplier; cari berdasarkan kode supplier; k
   const list = ok(call(V, 'supplierMap.list', { variantId: p.variants[0].id }));
   assert.equal(list.total, 2);
   assert.equal(ok(call(V, 'supplierMap.lookup', { code: 'perf-001' }))[0].sku, p.variants[0].sku);
-  assert.equal(ok(call(V, 'barcode.lookup', { code: 'PF-OB50' })).matches[0].sku, p.variants[0].sku, 'scan kode supplier menemukan SKU internal');
+  // v5: supplier bukan bagian identitas SKU — kode supplier tidak dipakai lookup identitas (data lama tetap tersimpan)
+  assert.equal(ok(call(V, 'barcode.lookup', { code: 'PF-OB50' })).found, false);
   fail(call(T, 'supplierMap.save', { supplierId: sa.id, supplierProductCode: 'pf-ob50', variantId: p.variants[1].id, purchaseUnit: 'BOTOL', conversionFactor: 1 }), 'VALIDATION_FAILED');
   // faktor harus konsisten dengan kemasan BOX varian (24), bukan angka lain
   fail(call(T, 'supplierMap.save', { supplierId: sb.id, supplierProductCode: 'PERF-BOX', variantId: p.variants[0].id, purchaseUnit: 'BOX', conversionFactor: 20 }), 'VALIDATION_FAILED');
@@ -235,7 +236,6 @@ test('[AC-16][AC-17] Discontinued: histori tetap, tidak untuk mapping baru; rena
   const q = ok(call(V, 'quality.get', {}));
   assert.ok(q.sections.find((s) => s.key === 'inactive_in_use').rows.some((r) => r.sku === v4.sku));
   assert.ok(q.sections.find((s) => s.key === 'bundle_invalid').rows.some((r) => /DISCONTINUED|Discontinued/.test(r.problem)));
-  assert.ok(q.sections.find((s) => s.key === 'supplier_spec').count === 1);
   // inventory master tetap memuat SKU discontinued (sisa stok), bukan untuk pembelian baru
   assert.ok(ok(call(T, 'export.data', { kind: 'inventory' })).rows.some((r) => r[0] === v4.sku && r[15] === 'Discontinued'));
   ok(call(T, 'brand.rename', { id: ids.Scarlett, name: 'Scarlett Whitening' }));
@@ -250,7 +250,7 @@ test('[AC-16][AC-17] Discontinued: histori tetap, tidak untuk mapping baru; rena
 test('controlled deprecation: SKU duplikat digantikan, mapping dipindah, tanpa hapus data', () => {
   const p = ok(call(T, 'product.get', { id: ids.parfum }));
   const keep = p.variants[0];
-  const dup = ok(call(T, 'product.save', { input: { brandId: ids.Viva, categoryId: ids.Parfum, name: 'Ocean Blue EDP 50ml (salah input)', baseUnit: 'BOTOL', variants: [{ barcode: { mode: 'none' } }] } })).variants[0];
+  const dup = ok(call(T, 'product.save', { input: { brandId: ids.Viva, categoryId: ids.Parfum, name: 'Ocean Blue EDP 50ml (salah input)', baseUnit: 'BOTOL', variants: [{ barcode: { mode: 'internal' } }] } })).variants[0];
   ok(call(T, 'mapping.create', { system: 'tokopedia', sku: dup.sku, externalProductId: '123123123' }));
   const r = ok(call(T, 'variant.deprecate', { id: dup.id, replacedBy: keep.id, moveMappings: true, reason: 'Barang sama dengan ' + keep.sku }));
   assert.equal(r.moved.channel, 1);

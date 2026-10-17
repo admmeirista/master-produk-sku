@@ -7,8 +7,8 @@
  * ekuivalen satuan dasar (BaseUnitEquivalent): 1 BOX = 24 BOTOL, 1 KARTON = 6 BOX → 144 BOTOL.
  * Stok tetap dihitung dalam satuan dasar; satuan kemasan hanya pengali, sehingga tidak ada penggandaan stok.
  *
- * Konversi TIDAK otomatis membuat SKU. Hanya kemasan yang ditandai trade item (dijual / punya GTIN sendiri)
- * yang mendapat SKU internal sendiri (SKU000123) — GTIN unit dasar tidak pernah diganti.
+ * Konversi TIDAK otomatis membuat SKU dan tidak menambah stok. Hanya kemasan yang ditandai trade item (punya GTIN sendiri)
+ * yang mendapat identitas sendiri (PARENT_SKU-BARCODE_KEMASAN) — barcode Child SKU dasarnya tidak pernah diganti.
  * Status: ACTIVE · INACTIVE (kemasan ber-SKU yang tidak dipakai) · DELETED (kemasan operasional yang dihapus).
  */
 
@@ -59,12 +59,12 @@ function planConversions_(vp, ctx) {
     .map((c) => ({ j: -1, path: vp.path + '.conversions', ic: { id: c.ConversionID, unitName: c.UnitName, factor: c.ConversionFactor, containsUnit: c.ContainsUnit, isTradeItem: c.IsTradeItem, status: c.Status }, dbc: c, status: c.Status, kept: true }));
   const all = kept.concat(items);
   const active = all.filter((x) => x.status === STATUS.ACTIVE);
-  const calc = computeConversions(ctx.baseUnit, active.map((x) => ({ unitName: x.ic.unitName, factor: x.ic.factor, containsUnit: x.ic.containsUnit })));
+  const calc = computeConversions((vp.baseUnit || ctx.baseUnit), active.map((x) => ({ unitName: x.ic.unitName, factor: x.ic.factor, containsUnit: x.ic.containsUnit })));
   calc.errors.forEach((e) => err(active[e.index].path + '.' + e.field, e.message));
   active.forEach((x, k) => Object.assign(x, calc.rows[k]));
   all
     .filter((x) => x.status !== STATUS.ACTIVE)
-    .forEach((x) => Object.assign(x, { unitName: normalizeUnit(x.ic.unitName), factor: Number(x.ic.factor), containsUnit: normalizeUnit(x.ic.containsUnit) || ctx.baseUnit, baseUnitEquivalent: x.dbc ? x.dbc.BaseUnitEquivalent : null }));
+    .forEach((x) => Object.assign(x, { unitName: normalizeUnit(x.ic.unitName), factor: Number(x.ic.factor), containsUnit: normalizeUnit(x.ic.containsUnit) || (vp.baseUnit || ctx.baseUnit), baseUnitEquivalent: x.dbc ? x.dbc.BaseUnitEquivalent : null }));
   // satuan yang masih menjadi "isi" kemasan aktif lain tidak boleh dinonaktifkan / dihapus
   all
     .filter((x) => x.status !== STATUS.ACTIVE)

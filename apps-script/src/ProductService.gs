@@ -1,10 +1,10 @@
 /**
- * Product Master — registrasi Quick Entry (1 varian) & Advanced (multi-varian), edit, direktori.
+ * Registrasi produk satu alur 3 tahap: 1 Identifikasi Produk → 2 Varian & Barcode → 3 Kemasan & Logistik (opsional).
  *
- * Satu kali "Simpan Produk" menyimpan Product Master, seluruh varian + atribut, barcode, dan konversi kemasan dalam
- * SATU transaksi (withLock_ + staging + jurnal): tidak pernah tersimpan setengah. Tanpa approval — produk langsung aktif.
- * User tidak mengisi kode apa pun: Product Code (PRD000123) dan SKU (SKU000456) dialokasikan otomatis di dalam lock.
- * Identitas permanen: ProductID, ProductCode, VariantID, SKU. Nama, brand, kategori, atribut boleh dikoreksi (tercatat di audit).
+ * Satu kali simpan menyimpan Parent, seluruh Child SKU + atribut, barcode, kemasan, dan dimensi dalam SATU transaksi
+ * (withLock_ + staging + jurnal): tidak pernah tersimpan setengah. Tanpa approval. "Simpan Draft" → status DRAFT.
+ * User tidak mengisi kode: Parent SKU (BRAND-KATEGORI-0001) dan Child SKU (PARENT_SKU-BARCODE) dibentuk server
+ * di dalam lock. Identitas permanen: ProductID, VariantID (relasi), dan SKU sejak produk aktif.
  */
 
 function productRefs_(p) {
@@ -23,6 +23,7 @@ function productDetail_(id) {
     'VariantID',
   );
   const attrs = attributesByVariant_(id);
+  const dims = dimensionsByVariant_(id);
   const ext = {};
   db_('EXTERNAL_SKU_MAPPINGS')
     .filter((m) => m.ProductID === id && m.IsActive)
@@ -33,11 +34,16 @@ function productDetail_(id) {
   const variants = db_('PRODUCT_VARIANTS')
     .filter((v) => v.ProductID === id)
     .sort((a, b) => a.SortOrder - b.SortOrder)
-    .map((v) => variantView_(v, convs[v.VariantID], attrs[v.VariantID] || [], ext[v.VariantID]));
+    .map((v) => variantView_(v, convs[v.VariantID], attrs[v.VariantID] || [], ext[v.VariantID], dims[v.VariantID], p));
   const refs = productRefs_(p);
   return {
     id: p.ProductID,
     productCode: p.ProductCode,
+    parentSku: p.ProductCode,
+    parentCode: p.ParentCode || '',
+    displayName: buildSkuName(refs.brand.name, p.ProductName, [], []),
+    skuFrozen: p.Status !== STATUS.DRAFT,
+    packagingComplete: variants.filter((v) => v.status === STATUS.ACTIVE || v.status === STATUS.DRAFT).every((v) => v.packagingComplete),
     productNo: p.ProductCode,
     legacyCode: p.LegacyCode || '',
     name: p.ProductName,
@@ -70,7 +76,9 @@ function productAuditSummary_(d) {
     status: d.status,
     variants: d.variants.map((v) => ({
       sku: v.sku,
-      name: v.name,
+      name: v.skuName,
+      baseUnit: v.baseUnit,
+      dimensions: v.dimensions.map((x) => `${x.unit} ${x.lengthCm || '-'}×${x.widthCm || '-'}×${x.heightCm || '-'} cm ${x.grossWeightGrams || '-'} g`),
       attributes: v.attributes.map((a) => a.name + '=' + a.value).join(', '),
       status: v.status,
       gtin: v.gtin,
@@ -100,7 +108,7 @@ function productIndex_() {
       if (v.Status === STATUS.ACTIVE) s.active++;
       if (v.Status === STATUS.ACTIVE && (v.GTIN || v.InternalBarcode)) s.withBarcode++;
       if (v.SKU) s.skus++;
-      s.text += ' ' + [v.SKU, v.GTIN, v.InternalBarcode, v.VariantName].join(' ');
+      s.text += ' ' + [v.SKU, v.GTIN, v.InternalBarcode, v.VariantName, normalizeName(v.ProductSKUName), normalizeName(v.NameOverride)].join(' ');
     });
   db_('UNIT_CONVERSIONS')
     .rows()
@@ -174,6 +182,37 @@ function productList_(f) {
   return page;
 }
 
+/**
+ * Pratinjau Parent SKU di tahap 1 (tidak mengikat, tidak menulis apa pun). Nomor final dialokasikan di dalam lock saat
+ * disimpan, sehingga membatalkan registrasi tidak meninggalkan record Parent atau nomor terpakai.
+ */
+function parentPreview_(p) {
+  const b = p.brandId ? db_('MASTER_BRANDS').byId(p.brandId) : null;
+  const c = p.categoryId ? db_('MASTER_CATEGORIES').byId(p.categoryId) : null;
+  const no = peekSeq_('parent_no');
+  const parentCode = String(no).padStart(PARENT_CODE_DIGITS, '0');
+  return { parentCode, parentSku: b && c ? buildParentSku(b.BrandCode, c.CategoryCode, no) : '', estimated: true, displayName: b ? buildSkuName(b.BrandName, p.name, [], []) : cleanText(p.name) };
+}
+
+/** Perbarui Nama Produk SKU otomatis setelah nama brand berubah (override & SKU tidak disentuh). */
+function refreshSkuNames_(brandId) {
+  const S = getSettings_();
+  const b = db_('MASTER_BRANDS').byId(brandId);
+  if (!b) return 0;
+  const prods = indexBy_(db_('MASTER_PRODUCTS').filter((p) => p.BrandID === brandId), 'ProductID');
+  let n = 0;
+  db_('PRODUCT_VARIANTS')
+    .filter((v) => prods[v.ProductID])
+    .forEach((v) => {
+      const g = buildSkuName(b.BrandName, prods[v.ProductID].ProductName, v.VariantAttributes || [], S.attribute_types);
+      if (g !== v.ProductSKUName) {
+        db_('PRODUCT_VARIANTS').update(v, { ProductSKUName: g, UpdatedAt: now_() });
+        n++;
+      }
+    });
+  return n;
+}
+
 /** Pencarian ringkas untuk searchable dropdown produk. */
 function productSearch_(q) {
   return productList_({ search: q, status: 'all', pageSize: 20, sort: 'name', dir: 'asc' }).rows.map((r) => ({ id: r.id, name: r.name, code: r.productCode, brandName: r.brandName, status: r.status }));
@@ -236,42 +275,33 @@ function productSave_(user, input, opts) {
     }
   };
 
-  // ---------------- Tahap 1: identifikasi produk
+  // ---------------- Tahap 1: identifikasi produk (Parent)
   const name = cleanText(input.name);
-  if (name.length < 3) err('name', 'Nama produk minimal 3 karakter');
-  if (name.length > 120) err('name', 'Nama produk maksimal 120 karakter');
+  if (name.length < 3) err('name', 'Nama produk parent minimal 3 karakter');
+  if (name.length > 120) err('name', 'Nama produk parent maksimal 120 karakter');
   const brandId = input.brandId || (existing && existing.BrandID);
   const categoryId = input.categoryId || (existing && existing.CategoryID);
   const brand = existing && brandId === existing.BrandID ? db_('MASTER_BRANDS').byId(brandId) : collect(() => activeBrand_(brandId));
   const cat = existing && categoryId === existing.CategoryID ? db_('MASTER_CATEGORIES').byId(categoryId) : collect(() => activeCategory_(categoryId));
   const dbVariants = existing ? V.filter((v) => v.ProductID === existing.ProductID) : [];
-  let baseUnit = normalizeUnit(input.baseUnit) || (existing && existing.BaseUnit);
+  // satuan dasar default produk (tiap Child SKU boleh override di tahap Kemasan & Logistik)
+  const baseUnit = normalizeUnit(input.baseUnit) || (existing && existing.BaseUnit) || '';
   if (!baseUnit) err('baseUnit', 'Pilih satuan dasar');
-  else if (!existing || baseUnit !== existing.BaseUnit) {
-    if ((S.base_units || []).indexOf(baseUnit) < 0) err('baseUnit', `Satuan dasar ${baseUnit} tidak ada di daftar (tambahkan di Pengaturan)`);
-    if (existing && C.filter((c) => c.ProductID === existing.ProductID && !c.IsBaseUnit && c.Status !== STATUS.DELETED).length)
-      err('baseUnit', 'Satuan dasar tidak dapat diganti selama masih ada satuan kemasan. Hapus kemasan dulu.');
-  }
+  else if ((!existing || baseUnit !== existing.BaseUnit) && (S.base_units || []).indexOf(baseUnit) < 0) err('baseUnit', `Satuan dasar ${baseUnit} tidak ada di daftar (tambahkan di Settings)`);
 
   // ---------------- Tahap 2: varian & barcode
   const newCount = (input.variants || []).filter((v) => !v.id).length;
-  const hasVariants = !!input.hasVariants || (existing ? existing.HasVariants && input.hasVariants === undefined : false);
-  if (!dbVariants.length && !newCount) err('variants', 'Minimal satu varian');
-  if (!hasVariants && dbVariants.length + newCount !== 1) err('variants', 'Quick Entry hanya untuk produk dengan tepat satu varian. Gunakan mode Advanced untuk banyak varian.');
-  if (newCount + dbVariants.length > MAX_VARIANTS) err('variants', `Maksimal ${MAX_VARIANTS} varian per produk`);
+  if (!dbVariants.length && !newCount) err('variants', 'Minimal satu Child SKU');
+  if (newCount + dbVariants.length > MAX_VARIANTS) err('variants', `Maksimal ${MAX_VARIANTS} Child SKU per produk`);
   const newStatus = existing ? (existing.Status === STATUS.DRAFT ? STATUS.DRAFT : STATUS.ACTIVE) : input.saveAsDraft ? STATUS.DRAFT : STATUS.ACTIVE;
   if (existing && existing.Status === STATUS.ARCHIVED) err('status', 'Produk berstatus Diarsipkan hanya untuk referensi historis dan tidak dapat diubah.');
-  const description = cleanText(input.description).slice(0, 1000);
+  const description = input.description === undefined && existing ? existing.Description || '' : cleanText(input.description).slice(0, 1000);
   const imageUrl = cleanText(input.imageUrl);
   if (imageUrl && !/^https:\/\/[^\s]+$/.test(imageUrl)) err('imageUrl', 'URL gambar harus diawali https://');
-  const ctx = { err, hasVariants, dbVariants, baseUnit, newStatus };
+  const ctx = { err, dbVariants, baseUnit, newStatus, brandName: brand ? brand.BrandName : '', parentName: name, types: S.attribute_types, baseUnits: S.base_units };
   const vplans = planVariants_(input, ctx).filter(Boolean);
-  if (hasVariants)
-    dbVariants
-      .filter((v) => !vplans.some((x) => x.dbv === v) && v.Status === STATUS.ACTIVE && !v.AttributeKey)
-      .forEach((v) => err('variants', `Varian "${v.VariantName}" belum punya atribut. Lengkapi atributnya di tabel varian.`));
 
-  // ---------------- Pengaturan tambahan: kemasan & konversi (opsional)
+  // ---------------- Tahap 3: kemasan & logistik (opsional)
   vplans.forEach((vp) => (vp.convs = planConversions_(vp, ctx)));
   if (existing) {
     const activeLeft =
@@ -279,16 +309,25 @@ function productSave_(user, input, opts) {
         const vp = vplans.find((x) => x.dbv && x.dbv.VariantID === v.VariantID);
         return [STATUS.ACTIVE, STATUS.DRAFT].indexOf(vp ? vp.status : v.Status) >= 0;
       }).length + vplans.filter((x) => !x.dbv && [STATUS.ACTIVE, STATUS.DRAFT].indexOf(x.status) >= 0).length;
-    if (!activeLeft && existing.Status === STATUS.ACTIVE) err('variants', 'Minimal satu varian harus aktif. Untuk menghentikan produk, ubah status produknya.');
+    if (!activeLeft && existing.Status === STATUS.ACTIVE) err('variants', 'Minimal satu Child SKU harus aktif. Untuk menghentikan produk, ubah status produknya.');
   }
-
-  // satuan beli & jual per Child SKU: satuan dasar atau salah satu kemasan aktif
   vplans.forEach((vp) => {
-    const units = [baseUnit].concat((vp.convs || []).filter((x) => x.status === STATUS.ACTIVE).map((x) => x.unitName));
+    const units = [vp.baseUnit].concat((vp.convs || []).filter((x) => x.status === STATUS.ACTIVE).map((x) => x.unitName));
+    vp.dims = planDimensions_(vp, units, err);
+    // satuan beli/jual (data v4, tidak lagi di formulir): input eksplisit divalidasi; nilai tersimpan yang kemasannya sudah tidak ada dikosongkan
     ['purchaseUnit', 'salesUnit'].forEach((k) => {
-      const u = vp.inv[k];
-      if (u && units.indexOf(u) < 0) err(vp.path + '.' + k, `Satuan ${u} belum didefinisikan sebagai kemasan varian ini`);
+      if (!vp.inv[k] || units.indexOf(vp.inv[k]) >= 0) return;
+      if (vp.invExplicit[k]) err(vp.path + '.' + k, `Satuan ${vp.inv[k]} belum didefinisikan sebagai kemasan Child SKU ini`);
+      else vp.inv[k] = '';
     });
+    // kemasan ber-identitas sendiri wajib punya barcode kemasan (bukan barcode Child SKU)
+    (vp.convs || [])
+      .filter((x) => x.isTradeItem && x.status === STATUS.ACTIVE && !x.kept)
+      .forEach((x) => {
+        const b = x.ic.barcode || {};
+        const has = x.dbc && (x.dbc.GTIN || x.dbc.InternalBarcode);
+        if (!has && b.mode !== 'gtin' && b.mode !== 'internal') err(x.path + '.barcode', `Kemasan ${x.unitName} dengan identitas sendiri wajib punya barcode kemasan (GTIN kemasan, atau barcode internal)`);
+      });
   });
 
   // barcode yang sama dipakai dua kali di formulir
@@ -297,9 +336,9 @@ function productSave_(user, input, opts) {
     const vl = 'varian ' + (vp.i + 1) + ' (' + vp.name + ')';
     const list = [{ b: vp.iv.barcode, path: vp.path + '.barcode', label: vl }].concat((vp.convs || []).filter((x) => x.isTradeItem && !x.kept && x.status === STATUS.ACTIVE).map((x) => ({ b: x.ic.barcode, path: x.path + '.barcode', label: 'kemasan ' + x.unitName + ' ' + vl })));
     list.forEach((x) => {
-      const code = x.b && x.b.mode !== 'none' ? cleanBarcode(x.b.code) : '';
+      const code = x.b && x.b.mode === 'gtin' ? cleanBarcode(x.b.code) : '';
       if (!code) return;
-      if (formCodes[code]) err(x.path, `Barcode ${code} juga dipakai ${formCodes[code]}. Setiap varian/kemasan wajib punya barcode sendiri.`, 'DUPLICATE');
+      if (formCodes[code]) err(x.path, `Barcode ${code} juga dipakai ${formCodes[code]}. Setiap Child SKU/kemasan wajib punya barcode sendiri.`, 'DUPLICATE');
       else formCodes[code] = x.label;
     });
   });
@@ -309,21 +348,26 @@ function productSave_(user, input, opts) {
   const similar = similarProducts_(name, brand.BrandID, existing ? existing.ProductID : null);
   const nameChanged = !existing || normalizeName(name) !== existing.NameKey || brand.BrandID !== existing.BrandID;
   if (nameChanged && similar.length && !input.acknowledgeSimilar && !opts.dryRun)
-    throw new AppError('Kemungkinan produk duplikat pada brand ini. Lihat produk yang ada, atau lanjutkan bila memang berbeda.', similar.map((s) => ({ path: 'name', message: s.message, code: 'SIMILAR', data: s })), 'SIMILAR_EXISTS');
+    throw new AppError('Kemungkinan produk duplikat pada brand ini. Pilih Parent yang sudah ada untuk menambah varian, atau lanjutkan bila memang berbeda.', similar.map((s) => ({ path: 'name', message: s.message, code: 'SIMILAR', data: s })), 'SIMILAR_EXISTS');
 
   // ---------------- Terapkan (di memori; ditulis sekaligus oleh commitAll_)
   const ts = now_();
   const before = existing ? productAuditSummary_(productDetail_(existing.ProductID)) : null;
-  const skuOwner = skuOwnerMap_();
+  const hasVariants = vplans.some((vp) => vp.attrs.length) || dbVariants.some((v) => !vplans.some((x) => x.dbv === v) && v.AttributeKey);
   let p;
   if (existing) {
     p = existing;
     const patch = { ProductName: name, NameKey: normalizeName(name), BrandID: brand.BrandID, CategoryID: cat.CategoryID, BaseUnit: baseUnit, HasVariants: hasVariants, Description: description, UpdatedBy: user.email, UpdatedAt: ts, Version: (p.Version || 1) + 1 };
     if (imageUrl) patch.ImageUrl = imageUrl;
+    // Parent SKU dihitung ulang hanya selama DRAFT (brand/kategori dikoreksi); sejak aktif, Parent SKU dibekukan
+    if (p.Status === STATUS.DRAFT && p.ParentCode && (brand.BrandID !== p.BrandID || cat.CategoryID !== p.CategoryID)) {
+      const code = buildParentSku(brand.BrandCode, cat.CategoryCode, p.ParentCode);
+      if (P.find((x) => x.ProductID !== p.ProductID && String(x.ProductCode).toUpperCase() === code)) throw new AppError(`Parent SKU ${code} sudah dipakai produk lain`, [{ path: 'brandId', message: 'Parent SKU bentrok' }], 'VALIDATION_FAILED');
+      patch.ProductCode = code;
+    }
     P.update(p, patch);
-    if (baseUnit !== before.baseUnit) C.filter((c) => c.ProductID === p.ProductID && c.IsBaseUnit).forEach((c) => C.update(c, { UnitName: baseUnit, ContainsUnit: baseUnit, UpdatedAt: ts }));
   } else {
-    const pc = allocateProductCode_();
+    const pc = allocateParentSku_(brand, cat);
     p = P.insert({
       ProductID: uuid_(),
       ProductNo: pc.no,
@@ -344,41 +388,54 @@ function productSave_(user, input, opts) {
       Description: description,
       ImageUrl: imageUrl,
       DataSource: cleanText(input.dataSource).slice(0, 200),
+      ParentCode: pc.parentCode,
     });
     recordLifecycle_(user, 'product', p.ProductID, p.ProductID, '', newStatus, 'Registrasi');
   }
+  // nama brand / parent berubah → nama otomatis Child SKU yang tidak dikirim formulir ikut diperbarui
+  dbVariants
+    .filter((v) => !vplans.some((x) => x.dbv === v))
+    .forEach((v) => {
+      const g = buildSkuName(brand.BrandName, name, v.VariantAttributes || [], S.attribute_types);
+      if (g !== v.ProductSKUName) V.update(v, { ProductSKUName: g, UpdatedAt: ts });
+    });
   const bcErrs = [];
   let order = dbVariants.reduce((m, v) => Math.max(m, v.SortOrder || 0), 0);
   vplans.forEach((vp) => {
     let v = vp.dbv;
+    const named = { ProductSKUName: vp.generated, NameOverride: vp.override, NameOverrideReason: vp.overrideReason };
     if (!v) {
-      const sku = allocateSku_(skuOwner);
-      skuOwner[sku] = p.ProductName;
-      v = V.insert({
-        VariantID: uuid_(),
-        ProductID: p.ProductID,
-        VariantCode: '',
-        VariantName: vp.name,
-        VariantAttributes: vp.attrs,
-        AttributeKey: vp.key,
-        SKU: sku,
-        GTIN: '',
-        InternalBarcode: '',
-        IsDefault: !vp.attrs.length,
-        Status: vp.status,
-        SortOrder: ++order,
-        CreatedBy: user.email,
-        CreatedAt: ts,
-        UpdatedAt: ts,
-        Stockable: 'STOCKABLE',
-        BatchTracking: vp.inv.batchTracking,
-        ExpiryTracking: vp.inv.expiryTracking,
-        ShelfLifeMonths: vp.inv.shelfLifeMonths,
-        PurchaseUnit: vp.inv.purchaseUnit,
-        SalesUnit: vp.inv.salesUnit || baseUnit,
-      });
+      v = V.insert(
+        Object.assign(
+          {
+            VariantID: uuid_(),
+            ProductID: p.ProductID,
+            VariantCode: '',
+            VariantName: vp.name,
+            VariantAttributes: vp.attrs,
+            AttributeKey: vp.key,
+            SKU: '',
+            GTIN: '',
+            InternalBarcode: '',
+            IsDefault: !vp.attrs.length,
+            Status: vp.status,
+            SortOrder: ++order,
+            CreatedBy: user.email,
+            CreatedAt: ts,
+            UpdatedAt: ts,
+            Stockable: 'STOCKABLE',
+            BatchTracking: vp.inv.batchTracking,
+            ExpiryTracking: vp.inv.expiryTracking,
+            ShelfLifeMonths: vp.inv.shelfLifeMonths,
+            PurchaseUnit: vp.inv.purchaseUnit,
+            SalesUnit: vp.inv.salesUnit,
+            BaseUnit: vp.baseUnit,
+          },
+          named,
+        ),
+      );
       writeAttributes_(v, vp.attrs);
-      C.insert({ ConversionID: uuid_(), VariantID: v.VariantID, ProductID: p.ProductID, UnitName: baseUnit, ConversionFactor: 1, ContainsUnit: baseUnit, BaseUnitEquivalent: 1, IsBaseUnit: true, IsTradeItem: false, SKU: '', GTIN: '', InternalBarcode: '', Status: STATUS.ACTIVE, SortOrder: 0, CreatedAt: ts, UpdatedAt: ts });
+      C.insert({ ConversionID: uuid_(), VariantID: v.VariantID, ProductID: p.ProductID, UnitName: vp.baseUnit, ConversionFactor: 1, ContainsUnit: vp.baseUnit, BaseUnitEquivalent: 1, IsBaseUnit: true, IsTradeItem: false, SKU: '', GTIN: '', InternalBarcode: '', Status: STATUS.ACTIVE, SortOrder: 0, CreatedAt: ts, UpdatedAt: ts });
     } else {
       const patch = {};
       if (v.VariantName !== vp.name) patch.VariantName = vp.name;
@@ -386,27 +443,27 @@ function productSave_(user, input, opts) {
         patch.Status = vp.status;
         recordLifecycle_(user, 'variant', v.VariantID, p.ProductID, v.Status, vp.status, vp.iv.statusReason || 'Diubah lewat edit produk');
       }
-      const inv = { BatchTracking: vp.inv.batchTracking, ExpiryTracking: vp.inv.expiryTracking, ShelfLifeMonths: vp.inv.shelfLifeMonths, PurchaseUnit: vp.inv.purchaseUnit, SalesUnit: vp.inv.salesUnit || baseUnit };
-      Object.keys(inv).forEach((k) => (inv[k] === null ? '' : inv[k]) !== (v[k] === null ? '' : v[k]) && (patch[k] = inv[k]));
+      const inv = Object.assign({ BatchTracking: vp.inv.batchTracking, ExpiryTracking: vp.inv.expiryTracking, ShelfLifeMonths: vp.inv.shelfLifeMonths, PurchaseUnit: vp.inv.purchaseUnit, SalesUnit: vp.inv.salesUnit, BaseUnit: vp.baseUnit }, named);
+      Object.keys(inv).forEach((k) => (inv[k] === null || inv[k] === undefined ? '' : inv[k]) !== (v[k] === null || v[k] === undefined ? '' : v[k]) && (patch[k] = inv[k]));
       if ((v.AttributeKey || '') !== vp.key) Object.assign(patch, { VariantAttributes: vp.attrs, AttributeKey: vp.key, IsDefault: !vp.attrs.length });
+      const oldName = variantDisplayName_(v);
       if (Object.keys(patch).length) V.update(v, Object.assign(patch, { UpdatedAt: ts }));
       if (patch.AttributeKey !== undefined) writeAttributes_(v, vp.attrs);
+      if (patch.BaseUnit !== undefined) C.filter((c) => c.VariantID === v.VariantID && c.IsBaseUnit).forEach((c) => C.update(c, { UnitName: vp.baseUnit, ContainsUnit: vp.baseUnit, UpdatedAt: ts }));
+      if (patch.NameOverride !== undefined) audit_(user.email, 'variant.rename', 'variant', v.VariantID, { name: oldName }, { name: vp.override || vp.generated }, { reason: vp.overrideReason || 'Kembali ke nama otomatis', productId: p.ProductID, sku: v.SKU });
     }
-    const vb = applyBarcode_(user, vp.iv.barcode, { productId: p.ProductID, variantId: v.VariantID }, v, vp.iv.barcodeChangeReason, vp.path + '.barcode', 'Varian ' + name + ' ' + vp.name, bcErrs);
+    const vb = applyBarcode_(user, vp.iv.barcode, { productId: p.ProductID, variantId: v.VariantID }, v, vp.iv.barcodeChangeReason, vp.path + '.barcode', 'Child SKU ' + name + ' ' + vp.name, bcErrs);
     if (vb) V.update(v, { GTIN: vb.gtin, InternalBarcode: vb.internal, UpdatedAt: ts });
+    vp.v = v;
 
     let corder = 0;
     (vp.convs || []).forEach((x) => {
       let c = x.dbc;
-      let sku = x.sku || '';
-      if (x.needsSku) {
-        sku = allocateSku_(skuOwner);
-        skuOwner[sku] = p.ProductName + ' (kemasan ' + x.unitName + ')';
-      }
-      const fields = { UnitName: x.unitName, ConversionFactor: x.factor, ContainsUnit: x.containsUnit, BaseUnitEquivalent: x.baseUnitEquivalent, IsTradeItem: x.isTradeItem, SKU: sku, Status: x.status, SortOrder: ++corder };
+      const fields = { UnitName: x.unitName, ConversionFactor: x.factor, ContainsUnit: x.containsUnit, BaseUnitEquivalent: x.baseUnitEquivalent, IsTradeItem: x.isTradeItem, Status: x.status, SortOrder: ++corder };
       if (!c) {
         if (x.status !== STATUS.ACTIVE) return; // baris baru yang langsung dihapus di formulir
-        c = C.insert(Object.assign({ ConversionID: uuid_(), VariantID: v.VariantID, ProductID: p.ProductID, IsBaseUnit: false, GTIN: '', InternalBarcode: '', CreatedAt: ts, UpdatedAt: ts, EffectiveFrom: ts }, fields));
+        c = C.insert(Object.assign({ ConversionID: uuid_(), VariantID: v.VariantID, ProductID: p.ProductID, IsBaseUnit: false, SKU: '', GTIN: '', InternalBarcode: '', CreatedAt: ts, UpdatedAt: ts, EffectiveFrom: ts }, fields));
+        x.dbc = c;
       } else if (!x.kept) {
         const changed = Object.keys(fields).some((k) => fields[k] !== c[k]);
         if (changed && (c.ConversionFactor !== x.factor || c.ContainsUnit !== x.containsUnit) && x.status === STATUS.ACTIVE) {
@@ -422,13 +479,50 @@ function productSave_(user, input, opts) {
         if (cb) C.update(c, { GTIN: cb.gtin, InternalBarcode: cb.internal, UpdatedAt: ts });
       }
     });
+    writeDimensions_(user, v, vp.dims, ts);
   });
   if (bcErrs.length) throw new AppError('Periksa kembali barcode (' + bcErrs.length + ' masalah)', bcErrs, 'VALIDATION_FAILED');
+  syncSkus_(p, vplans, ts);
 
   const after = productDetail_(p.ProductID);
   if (opts.dryRun) return Object.assign(after, { dryRun: true, similar });
   audit_(user.email, existing ? 'product.update' : 'product.create', 'product', p.ProductID, before, productAuditSummary_(after));
   return after;
+}
+
+/**
+ * Child SKU = PARENT_SKU-BARCODE (juga kemasan ber-identitas sendiri). SKU diberikan sekali saat barcode tersedia;
+ * selama produk DRAFT dihitung ulang mengikuti barcode/Parent SKU terbaru. Sejak aktif, SKU dibekukan: koreksi GTIN
+ * hanya mengganti barcode (histori tercatat), SKU lama tetap. SKU yang pernah dialokasikan tidak dipakai barang lain.
+ */
+function syncSkus_(p, vplans, ts) {
+  const V = db_('PRODUCT_VARIANTS');
+  const C = db_('UNIT_CONVERSIONS');
+  const draft = p.Status === STATUS.DRAFT;
+  const owner = skuOwnerMap_();
+  const vars = V.filter((v) => v.ProductID === p.ProductID);
+  const convs = C.filter((c) => c.ProductID === p.ProductID && !c.IsBaseUnit && c.IsTradeItem);
+  // SKU milik produk draft ini sendiri boleh dipertukarkan (mis. GTIN dua varian ditukar)
+  if (draft) vars.concat(convs).forEach((r) => r.SKU && delete owner[String(r.SKU).toUpperCase()]);
+  const errs = [];
+  const pathOf = (variantId, conversionId) => {
+    const vp = (vplans || []).find((x) => x.v && x.v.VariantID === variantId);
+    if (!vp) return 'variants';
+    if (!conversionId) return vp.path + '.barcode';
+    const cx = (vp.convs || []).find((x) => x.dbc && x.dbc.ConversionID === conversionId);
+    return cx ? cx.path + '.barcode' : vp.path + '.barcode';
+  };
+  const assign = (T, rec, code, label, path) => {
+    if (!code || (rec.SKU && !draft)) return;
+    const sku = buildChildSku(p.ProductCode, code);
+    if (sku === rec.SKU) return (owner[sku.toUpperCase()] = label);
+    if (owner[sku.toUpperCase()]) return errs.push({ path, message: `SKU ${sku} sudah pernah dialokasikan untuk ${owner[sku.toUpperCase()]} — SKU tidak boleh dipakai ulang`, code: 'DUPLICATE' });
+    T.update(rec, { SKU: sku, UpdatedAt: ts });
+    owner[sku.toUpperCase()] = label;
+  };
+  vars.forEach((v) => assign(V, v, v.GTIN || v.InternalBarcode, `${p.ProductName} [${p.ProductCode}]`, pathOf(v.VariantID)));
+  convs.filter((c) => c.Status === STATUS.ACTIVE).forEach((c) => assign(C, c, c.GTIN || c.InternalBarcode, `${p.ProductName} (kemasan ${c.UnitName})`, pathOf(c.VariantID, c.ConversionID)));
+  if (errs.length) throw new AppError('SKU bentrok', errs, 'VALIDATION_FAILED');
 }
 
 /**

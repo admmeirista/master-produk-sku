@@ -35,13 +35,20 @@ function sellables_(opts) {
   };
   const ok = (...st) => (opts.statuses ? st.every((s) => opts.statuses[s]) : opts.includeInactive || st.every((s) => s === STATUS.ACTIVE));
   const attrText = (vid) => (attrs[vid] || []).map((a) => a.name + ': ' + a.value).join(', ');
+  const dims = dimensionsByVariant_();
+  const dimOf = (vid, unit) => (dims[vid] || []).find((d) => d.unit === unit) || {};
+  const dimCols = (vid, unit) => {
+    const d = dimOf(vid, unit);
+    return { length_cm: d.lengthCm || '', width_cm: d.widthCm || '', height_cm: d.heightCm || '', gross_weight_g: d.grossWeightGrams || '' };
+  };
   db_('PRODUCT_VARIANTS')
     .rows()
     .forEach((v) => {
       if (!v.SKU) return;
       const c = ctx(v.ProductID);
       if (!ok(c.product_status, v.Status)) return;
-      out.push(Object.assign(c, { kind: 'variant', sku: v.SKU, variant_id: v.VariantID, conversion_id: '', bundle_id: '', variant_name: v.IsDefault ? '' : v.VariantName, attributes: attrText(v.VariantID), display_name: cleanText(c.product_name + (v.IsDefault ? '' : ' ' + v.VariantName)), unit: c.base_unit, base_qty: 1, barcode: v.GTIN || v.InternalBarcode || '', barcode_type: v.GTIN ? 'GTIN' : v.InternalBarcode ? 'Internal' : '', legacy_sku: legacy[v.VariantID] || '', stockable: v.Stockable !== 'NON_STOCKABLE', batch: v.BatchTracking, expiry: v.ExpiryTracking, shelf_life: v.ShelfLifeMonths, purchase_unit: v.PurchaseUnit || '', sales_unit: v.SalesUnit || c.base_unit, status: c.product_status === STATUS.ACTIVE ? v.Status : c.product_status }));
+      const bu = v.BaseUnit || c.base_unit;
+      out.push(Object.assign(c, dimCols(v.VariantID, bu), { kind: 'variant', sku: v.SKU, variant_id: v.VariantID, conversion_id: '', bundle_id: '', variant_name: v.IsDefault ? '' : v.VariantName, attributes: attrText(v.VariantID), display_name: variantDisplayName_(v) || cleanText(c.product_name + (v.IsDefault ? '' : ' ' + v.VariantName)), base_unit: bu, unit: bu, base_qty: 1, packaging_complete: packagingComplete_(bu, dims[v.VariantID]), barcode: v.GTIN || v.InternalBarcode || '', barcode_type: v.GTIN ? 'GTIN' : v.InternalBarcode ? 'Internal' : '', legacy_sku: legacy[v.VariantID] || '', stockable: v.Stockable !== 'NON_STOCKABLE', batch: v.BatchTracking, expiry: v.ExpiryTracking, shelf_life: v.ShelfLifeMonths, status: c.product_status === STATUS.ACTIVE ? v.Status : c.product_status }));
     });
   db_('UNIT_CONVERSIONS')
     .rows()
@@ -50,7 +57,8 @@ function sellables_(opts) {
       const v = variants[u.VariantID] || {};
       const c = ctx(u.ProductID);
       if (!ok(c.product_status, v.Status, u.Status)) return;
-      out.push(Object.assign(c, { kind: 'pack', sku: u.SKU, variant_id: u.VariantID, conversion_id: u.ConversionID, bundle_id: '', variant_name: v.IsDefault ? '' : v.VariantName, attributes: attrText(u.VariantID), display_name: cleanText(c.product_name + (v.IsDefault ? '' : ' ' + v.VariantName) + ' - ' + u.UnitName + ' isi ' + u.BaseUnitEquivalent + ' ' + c.base_unit), unit: u.UnitName, base_qty: u.BaseUnitEquivalent, barcode: u.GTIN || u.InternalBarcode || '', barcode_type: u.GTIN ? 'GTIN' : u.InternalBarcode ? 'Internal' : '', legacy_sku: legacy[u.ConversionID] || '', stockable: false, status: c.product_status === STATUS.ACTIVE && v.Status === STATUS.ACTIVE ? u.Status : STATUS.INACTIVE }));
+      const bu = v.BaseUnit || c.base_unit;
+      out.push(Object.assign(c, dimCols(u.VariantID, u.UnitName), { kind: 'pack', sku: u.SKU, variant_id: u.VariantID, conversion_id: u.ConversionID, bundle_id: '', variant_name: v.IsDefault ? '' : v.VariantName, attributes: attrText(u.VariantID), display_name: cleanText((variantDisplayName_(v) || c.product_name + (v.IsDefault ? '' : ' ' + v.VariantName)) + ' - ' + u.UnitName + ' isi ' + u.BaseUnitEquivalent + ' ' + bu), base_unit: bu, unit: u.UnitName, base_qty: u.BaseUnitEquivalent, barcode: u.GTIN || u.InternalBarcode || '', barcode_type: u.GTIN ? 'GTIN' : u.InternalBarcode ? 'Internal' : '', legacy_sku: legacy[u.ConversionID] || '', stockable: false, status: c.product_status === STATUS.ACTIVE && v.Status === STATUS.ACTIVE ? u.Status : STATUS.INACTIVE }));
     });
   if (opts.withBundles !== false)
     db_('BUNDLE_MASTERS')
@@ -237,15 +245,15 @@ function exportMaster_() {
   const rows = sellables_({ statuses: INVENTORY_STATUSES });
   return {
     fileName: 'master-produk-sku-' + stamp_(),
-    headers: ['No', 'SKU', 'Jenis SKU', 'Parent SKU', 'Nama Produk', 'Varian', 'Atribut', 'Satuan', 'Isi (Satuan Dasar)', 'Satuan Dasar', 'Barcode', 'Jenis Barcode', 'Brand', 'Kode Brand', 'Kategori', 'Kode Kategori', 'Stockable', 'SKU Lama', 'Kode Produk Lama', 'Status'],
-    rows: rows.map((r, i) => [i + 1, r.sku, r.kind === 'pack' ? 'Kemasan' : r.kind === 'bundle' ? 'Bundle' : 'Child SKU', r.product_code, r.product_name, r.variant_name, r.attributes, r.unit, r.base_qty, r.base_unit, r.barcode, r.barcode_type, r.brand_name, r.brand_code, r.category_name, r.category_code, r.stockable ? 'Ya' : 'Tidak', r.legacy_sku, r.legacy_code, STATUS_LABEL[r.status] || r.status]),
+    headers: ['No', 'SKU', 'Jenis SKU', 'Parent SKU', 'Nama Produk SKU', 'Varian', 'Atribut', 'Satuan', 'Isi (Satuan Dasar)', 'Satuan Dasar', 'Barcode', 'Jenis Barcode', 'Brand', 'Kode Brand', 'Kategori', 'Kode Kategori', 'Stockable', 'SKU Lama', 'Kode Produk Lama', 'Status', 'Panjang (cm)', 'Lebar (cm)', 'Tinggi (cm)', 'Berat Kotor (g)'],
+    rows: rows.map((r, i) => [i + 1, r.sku, r.kind === 'pack' ? 'Kemasan' : r.kind === 'bundle' ? 'Bundle' : 'Child SKU', r.product_code, r.display_name, r.variant_name, r.attributes, r.unit, r.base_qty, r.base_unit, r.barcode, r.barcode_type, r.brand_name, r.brand_code, r.category_name, r.category_code, r.stockable ? 'Ya' : 'Tidak', r.legacy_sku, r.legacy_code, STATUS_LABEL[r.status] || r.status, r.length_cm, r.width_cm, r.height_cm, r.gross_weight_g]),
     textColumns: [1, 3, 10, 17, 18],
   };
 }
 
 /**
  * Master untuk sistem inventory / FMS / stock opname: hanya identitas STOCKABLE (Child SKU & bundle rakitan),
- * dengan konfigurasi batch/expiry, satuan stok/beli/jual, dan semua barcode yang dapat dipindai.
+ * dengan satuan dasar, kemasan, dimensi & berat kotor satuan dasar, dan semua barcode yang dapat dipindai.
  * Parent SKU & bundle virtual tidak pernah muncul sebagai item stok (mencegah double counting).
  */
 function exportInventoryMaster_() {
@@ -264,8 +272,8 @@ function exportInventoryMaster_() {
     .forEach((c) => (packs[c.VariantID] = (packs[c.VariantID] ? packs[c.VariantID] + '; ' : '') + c.UnitName + '=' + c.BaseUnitEquivalent));
   return {
     fileName: 'inventory-master-' + stamp_(),
-    headers: ['Child SKU', 'Jenis', 'Parent SKU', 'Nama Barang', 'Brand', 'Kategori', 'Satuan Stok', 'Satuan Beli', 'Satuan Jual', 'Kemasan (= satuan stok)', 'Batch Tracking', 'Expiry Tracking', 'Masa Simpan (bulan)', 'Semua Barcode', 'SKU Lama', 'Status'],
-    rows: rows.map((r) => [r.sku, r.kind === 'bundle' ? 'Bundle rakitan' : 'Child SKU', r.product_code, r.display_name, r.brand_name, r.category_name, r.base_unit, r.purchase_unit || r.base_unit, r.sales_unit || r.base_unit, packs[r.variant_id] || '', r.batch ? 'Ya' : 'Tidak', r.expiry ? 'Ya' : 'Tidak', r.shelf_life || '', (codes[r.bundle_id || r.variant_id] || []).join(', '), r.legacy_sku, STATUS_LABEL[r.status] || r.status]),
+    headers: ['Child SKU', 'Jenis', 'Parent SKU', 'Nama Produk SKU', 'Brand', 'Kategori', 'Satuan Dasar', 'Kemasan (= satuan dasar)', 'Panjang (cm)', 'Lebar (cm)', 'Tinggi (cm)', 'Berat Kotor (g)', 'Data Kemasan', 'Semua Barcode', 'SKU Lama', 'Status'],
+    rows: rows.map((r) => [r.sku, r.kind === 'bundle' ? 'Bundle rakitan' : 'Child SKU', r.product_code, r.display_name, r.brand_name, r.category_name, r.base_unit, packs[r.variant_id] || '', r.length_cm || '', r.width_cm || '', r.height_cm || '', r.gross_weight_g || '', r.kind === 'bundle' ? '' : r.packaging_complete ? 'Lengkap' : 'Belum lengkap', (codes[r.bundle_id || r.variant_id] || []).join(', '), r.legacy_sku, STATUS_LABEL[r.status] || r.status]),
     textColumns: [0, 2, 13, 14],
     note: 'Hanya identitas stockable. Bundle virtual & Parent SKU tidak punya saldo stok — stok bundle virtual dihitung dari komponennya (lihat ekspor Bundle & BOM).',
   };

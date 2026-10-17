@@ -323,7 +323,30 @@ function allocateProductCode_() {
   throw new AppError('Tidak menemukan kode produk kosong');
 }
 
-/** SKU internal baru: SKU000456. skuOwner = peta SKU yang sudah terpakai (UPPERCASE → label). */
+/** Nilai penghitung berikutnya TANPA menaikkannya (untuk pratinjau; tidak menulis apa pun). */
+function peekSeq_(name) {
+  const rec = db_('SYSTEM_COUNTERS').find((r) => r.CounterName === name);
+  return rec ? Number(rec.Value) || 1 : 1;
+}
+
+/**
+ * Parent SKU baru BRAND-KATEGORI-0001. Nomor parent diambil dari counter parent_no di dalam lock (tidak pernah
+ * dialokasikan ulang, termasuk bila produknya kemudian diarsipkan). Parent SKU yang sudah ada dilewati.
+ */
+function allocateParentSku_(brand, cat) {
+  const used = {};
+  db_('MASTER_PRODUCTS')
+    .rows()
+    .forEach((p) => (used[String(p.ProductCode).toUpperCase()] = 1));
+  for (let guard = 0; guard < 100000; guard++) {
+    const no = nextSeq_('parent_no');
+    const code = buildParentSku(brand.BrandCode, cat.CategoryCode, no);
+    if (!used[code]) return { no, parentCode: String(no).padStart(PARENT_CODE_DIGITS, '0'), code };
+  }
+  throw new AppError('Tidak menemukan kode parent kosong');
+}
+
+/** SKU internal format lama (SKU000456) — hanya untuk migrasi data lama. */
 function allocateSku_(skuOwner) {
   for (let guard = 0; guard < 100000; guard++) {
     const code = padCode_(SKU_PREFIX, nextSeq_('sku_no'));
@@ -334,7 +357,7 @@ function allocateSku_(skuOwner) {
 
 // ------------------------------------------------------------------ versi data (untuk cache direktori)
 
-const DATA_TABLES_ = { MASTER_BRANDS: 1, MASTER_CATEGORIES: 1, MASTER_PRODUCTS: 1, PRODUCT_VARIANTS: 1, VARIANT_ATTRIBUTES: 1, VARIANT_BARCODES: 1, UNIT_CONVERSIONS: 1, EXTERNAL_SKU_MAPPINGS: 1 };
+const DATA_TABLES_ = { PRODUCT_DIMENSIONS: 1, MASTER_BRANDS: 1, MASTER_CATEGORIES: 1, MASTER_PRODUCTS: 1, PRODUCT_VARIANTS: 1, VARIANT_ATTRIBUTES: 1, VARIANT_BARCODES: 1, UNIT_CONVERSIONS: 1, EXTERNAL_SKU_MAPPINGS: 1 };
 
 function dataVersion_() {
   const c = CacheService.getScriptCache();

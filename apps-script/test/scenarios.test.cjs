@@ -1,5 +1,5 @@
 /**
- * Pengujian skenario v3 (file .gs asli dijalankan di emulator layanan Apps Script — harness.cjs).
+ * Pengujian skenario v3, disesuaikan dengan aturan SKU v5 (file .gs asli dijalankan di emulator layanan Apps Script — harness.cjs).
  * Nomor [AC-n] merujuk ke daftar acceptance criteria pada brief revisi.
  *   npm test
  */
@@ -82,10 +82,10 @@ const quick = (o) => Object.assign({ brandId: ids.VIV, categoryId: ids.cTON, nam
 test('[AC-1][AC-6][AC-13] Quick Entry satu varian: kode produk, SKU, varian default otomatis; tanpa BOX', () => {
   const d = ok(call(entry, 'product.save', { input: quick() }));
   ids.viva = d.id;
-  assert.match(d.productCode, /^PRD\d{6}$/);
+  assert.equal(d.productCode, 'VIV-TON-0001', 'Parent SKU = BRAND-KATEGORI-0001');
   assert.equal(d.variants.length, 1);
   assert.equal(d.variants[0].isDefault, true);
-  assert.match(d.variants[0].sku, /^SKU\d{6}$/);
+  assert.equal(d.variants[0].sku, 'VIV-TON-0001-8992796011501', 'Child SKU = Parent SKU + GTIN');
   assert.equal(d.variants[0].gtin, '8992796011501');
   assert.deepEqual(d.variants[0].conversions.map((c) => c.unitName), ['BOTOL']);
   // barcode tersimpan sebagai teks
@@ -97,7 +97,7 @@ test('[AC-1][AC-6][AC-13] Quick Entry satu varian: kode produk, SKU, varian defa
 });
 
 test('deteksi duplikat otomatis: nama mirip ditandai, tidak auto-merge; lanjut bila memang berbeda', () => {
-  const e = fail(call(entry, 'product.save', { input: quick({ name: 'VIVA AIR MAWAR 100 ML', variants: [{ barcode: { mode: 'none' } }] }) }), 'SIMILAR_EXISTS');
+  const e = fail(call(entry, 'product.save', { input: quick({ name: 'VIVA AIR MAWAR 100 ML', variants: [{ barcode: { mode: 'internal' } }] }) }), 'SIMILAR_EXISTS');
   assert.ok(e.details[0].message.includes('Viva Air Mawar 100ml'));
   assert.equal(e.details[0].data.id, ids.viva);
   // GTIN sama dengan produk existing → ditolak (identitas fisik sama)
@@ -167,7 +167,7 @@ test('[AC-7][AC-8] scan barcode: produk existing, SKU, barcode baru, dan kode bu
   assert.equal(hit.matches[0].variantName, 'Rose Garden 50 ml');
   assert.equal(hit.matches[0].via, 'GTIN produsen');
   const sku = ok(call(viewer, 'product.get', { id: ids.viva })).variants[0].sku;
-  assert.equal(ok(call(viewer, 'barcode.lookup', { code: sku.toLowerCase() })).matches[0].via, 'SKU internal');
+  assert.equal(ok(call(viewer, 'barcode.lookup', { code: sku.toLowerCase() })).matches[0].via, 'Child SKU');
   const fresh = ok(call(viewer, 'barcode.lookup', { code: gtin('899123456789') }));
   assert.equal(fresh.found, false);
   assert.equal(fresh.kind, 'gtin');
@@ -253,7 +253,7 @@ test('kemasan trade item opsional: SKU kemasan sendiri + GTIN kemasan, GTIN unit
   x.variants[0].conversions = [{ unitName: 'BOX', factor: 24, isTradeItem: true, barcode: { mode: 'gtin', code: gtin('899279601159') } }, { unitName: 'LUSIN', factor: 12 }];
   const d2 = ok(call(entry, 'product.save', { input: x }));
   const box = d2.variants[0].conversions[1];
-  assert.match(box.sku, /^SKU\d{6}$/);
+  assert.equal(box.sku, d2.productCode + '-' + gtin('899279601159'), 'kemasan ber-identitas: Parent SKU + GTIN kemasan');
   assert.notEqual(box.sku, d2.variants[0].sku);
   assert.equal(box.gtin, gtin('899279601159'));
   assert.equal(d2.variants[0].gtin, '8992796011501');
@@ -277,7 +277,7 @@ test('[AC-12] duplikat produk: salin konfigurasi tanpa ID, SKU, atau GTIN', () =
     name: 'Parfum Eau de Toilette',
     baseUnit: src.baseUnit,
     hasVariants: true,
-    variants: src.variants.map((v) => ({ attributes: v.attributes, barcode: { mode: 'none' }, conversions: v.conversions.filter((c) => !c.isBaseUnit).map((c) => ({ unitName: c.unitName, factor: c.factor, containsUnit: c.containsUnit })) })),
+    variants: src.variants.map((v) => ({ attributes: v.attributes, barcode: { mode: 'internal' }, conversions: v.conversions.filter((c) => !c.isBaseUnit).map((c) => ({ unitName: c.unitName, factor: c.factor, containsUnit: c.containsUnit })) })),
   };
   const d = ok(call(entry, 'product.save', { input: dup }));
   assert.notEqual(d.id, src.id);
@@ -292,7 +292,7 @@ test('[AC-12] duplikat produk: salin konfigurasi tanpa ID, SKU, atau GTIN', () =
 
 test('[AC-15] dua user bersamaan: lock sibuk, versi basi, SKU tetap unik, GTIN sama ditolak untuk user kedua', () => {
   E.state.lockBusy = true;
-  fail(call(entry2, 'product.save', { input: quick({ name: 'Gatsby Styling Pomade 75g', brandId: ids.GAT, categoryId: ids.cHAI, variants: [{ barcode: { mode: 'none' } }] }) }), 'BUSY');
+  fail(call(entry2, 'product.save', { input: quick({ name: 'Gatsby Styling Pomade 75g', brandId: ids.GAT, categoryId: ids.cHAI, variants: [{ barcode: { mode: 'internal' } }] }) }), 'BUSY');
   E.state.lockBusy = false;
   const g = gtin('899555000001');
   const a = ok(call(entry, 'product.save', { input: quick({ name: 'Gatsby Styling Pomade 75g', brandId: ids.GAT, categoryId: ids.cHAI, baseUnit: 'JAR', variants: [{ barcode: { mode: 'gtin', code: g } }] }) }));
@@ -342,7 +342,7 @@ test('direktori: cari nama / SKU / barcode, filter, cache per versi data', () =>
   assert.equal(ok(call(viewer, 'product.list', { brandId: ids.GAT })).total, 2);
   const before = ok(call(viewer, 'product.list', { status: 'all' })).total;
   assert.ok(E.cache.get('data_ver'), 'versi data dibuat');
-  ok(call(entry, 'product.save', { input: quick({ name: 'Viva Milk Cleanser Bengkoang', variants: [{ barcode: { mode: 'none' } }] }) }));
+  ok(call(entry, 'product.save', { input: quick({ name: 'Viva Milk Cleanser Bengkoang', variants: [{ barcode: { mode: 'internal' } }] }) }));
   assert.equal(ok(call(viewer, 'product.list', { status: 'all' })).total, before + 1, 'cache basi setelah penulisan');
 });
 
@@ -388,14 +388,15 @@ test('migrasi v2 → v3: barcode, mapping, penghitung & audit dipindahkan; SKU v
   assert.equal(api('mapping.list', { system: 'shopee' }).rows[0].internalSku, 'SCA-PAR-PEDP-OB50');
   // produk baru melanjutkan penghitung lama & barcode internal tidak bentrok
   const np = api('product.save', { input: { brandId: 'b1', categoryId: 'c1', name: 'Parfum Roll On', baseUnit: 'BOTOL', variants: [{ barcode: { mode: 'internal' } }] } });
-  assert.equal(np.productCode, 'PRD000002');
+  assert.equal(np.productCode, 'SCA-PAR-0001', 'produk baru memakai format Parent SKU v5');
+  assert.equal(np.variants[0].sku, 'SCA-PAR-0001-2000000000060');
   assert.equal(np.variants[0].internalBarcode, '2000000000060');
   assert.equal(L.sheets.get('BARCODE_REGISTRY').data.length, 4, 'tab lama tetap utuh');
   const again = JSON.parse(JSON.stringify(L.ctx.setup())).migration;
   assert.deepEqual([again.barcodes, again.mappings, again.audit], [0, 0, 0], 'idempoten');
 });
 
-test('migrasi v1 → v3: SKU lama jadi legacy SKU, multipack jadi satuan kemasan, idempoten', () => {
+test('migrasi v1 → v5: SKU lama jadi legacy SKU, Child SKU = Parent SKU + GTIN, multipack virtual, idempoten', () => {
   const L = createGas();
   const put = (name, rows) => {
     const sh = L.ss.insertSheet(name);
@@ -420,9 +421,9 @@ test('migrasi v1 → v3: SKU lama jadi legacy SKU, multipack jadi satuan kemasan
   const tok = JSON.parse(JSON.stringify(L.ctx.api(null, 'auth.login', { email: out.admin.email, password: out.admin.password }))).data.token;
   const api = (a, p) => JSON.parse(JSON.stringify(L.ctx.api(tok, a, p))).data;
   const d = api('product.get', { id: 'p1' });
-  assert.equal(d.productCode, 'PRD000007');
+  assert.equal(d.productCode, 'VIV-TON-0001', 'migrasi v1 memakai Parent SKU v5; kode lama di legacyCode');
   assert.equal(d.legacyCode, 'VAM100');
-  assert.match(d.variants[0].sku, /^SKU\d{6}$/);
+  assert.equal(d.variants[0].sku, 'VIV-TON-0001-8992796011501', 'Child SKU = Parent SKU + GTIN');
   assert.deepEqual(d.variants[0].externalSkus.map((x) => x.sku), ['VIV-TON-VAM100-8992796011501-1']);
   assert.deepEqual(d.variants[0].conversions.map((c) => c.unitName), ['PCS'], 'paket jual tidak jadi konversi kemasan');
   const hit = api('barcode.lookup', { code: 'VIV-TON-VAM100-8992796011501-6' });
