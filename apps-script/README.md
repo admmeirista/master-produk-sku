@@ -1,17 +1,18 @@
-# Master Produk & SKU — Google Apps Script (v2)
+# Master Produk & SKU — Google Apps Script (v3)
 
 Web App Apps Script dengan **Google Sheets sebagai database**, berbahasa Indonesia, tampilan mengikuti **FMS**
 (font Nunito, sidebar gelap, toast, modal). Hierarki data:
 
 ```
-Brand + Kategori → Product Master → Product Variant (SKU + GTIN/barcode) → Satuan Kemasan & Konversi
+Brand + Kategori → Product Master → Product Variant (SKU internal) → Variant Barcode (GTIN / internal)
+                                                  └→ Packaging & Unit Conversion (opsional, per varian)
 ```
 
-Menu: Dashboard · **Registrasi Produk** (Identifikasi → Varian → Satuan & Konversi → Simpan Produk) · Direktori Produk ·
-**Master Brand** & **Master Kategori** (cukup isi nama, kode otomatis) · Barcode · Mapping BeeCloud/Shopee · Ekspor Data ·
+Menu: Dashboard · **Scan Barcode** (F2) · **Registrasi Produk** (Quick Entry / Advanced) · Master Produk ·
+**Master Brand** & **Master Kategori** (cukup isi nama, kode otomatis) · Barcode · Mapping SKU Eksternal · Ekspor Data · Import Data Lama ·
 Pengguna · Pengaturan · Audit Log. Tanpa harga dan tanpa approval — produk langsung aktif setelah disimpan.
 
-Analisis revisi, perbandingan struktur, risiko & rencana migrasi: [REVISI-ANALISIS.md](REVISI-ANALISIS.md).
+Analisis revisi, struktur sheet, migrasi, panduan & hasil uji: [REVISI-ANALISIS.md](REVISI-ANALISIS.md).
 
 ## Struktur kode (`src/`)
 
@@ -22,19 +23,16 @@ Analisis revisi, perbandingan struktur, risiko & rencana migrasi: [REVISI-ANALIS
 | `DatabaseService.gs` | Akses Sheets (batch), lock, staging, jurnal transaksi & rollback |
 | `Lib.gs` | Aturan murni: GTIN, normalisasi nama, kode otomatis, SKU, kombinasi varian, konversi |
 | `MasterDataService.gs`, `BrandService.gs`, `CategoryService.gs` | Master brand & kategori |
-| `ProductService.gs`, `VariantService.gs`, `UnitService.gs` | Registrasi/edit produk, varian, konversi satuan |
+| `ProductService.gs`, `VariantService.gs`, `UnitConversionService.gs` | Registrasi/edit produk, varian, konversi kemasan |
 | `BarcodeService.gs` | Registry GTIN & barcode internal |
 | `MappingService.gs` | Mapping BeeCloud/Shopee & ekspor |
 | `AdminService.gs`, `AuthService.gs` | Pengguna, pengaturan, dashboard, audit, login |
-| `MigrationService.gs` | Migrasi eksplisit data struktur v1 |
+| `MigrationService.gs`, `ImportService.gs` | Migrasi v1/v2 → v3, import template Excel lama |
 | `Index.html`, `Styles.html`, `Scripts.html`, `Pages.html`, `Wizard.html`, `Logo.html` | Antarmuka (HTML Service, vanilla JS) |
 
 ## Database
 
-File Google Sheets terpisah [Master Produk DB](https://docs.google.com/spreadsheets/d/11f_luP2oWDJHklnG4BjxWTjXXRA57XuO-un6tuAJbm4/edit)
-(`DB_SPREADSHEET_ID` di `Config.gs`). Tab utama: `MASTER_BRANDS`, `MASTER_CATEGORIES`, `MASTER_PRODUCTS`, `PRODUCT_VARIANTS`,
-`UNIT_CONVERSIONS`, `BARCODE_REGISTRY`, `BARCODE_ASSIGNMENTS`, `SKU_MAPPINGS`, plus `Settings`, `Users`, `Sequences`, `AuditLog`,
-`TX_JOURNAL`. Semua sel berformat teks; relasi memakai ID stabil (UUID), bukan nomor baris.
+File Google Sheets terpisah [Master Produk DB](https://docs.google.com/spreadsheets/d/11f_luP2oWDJHklnG4BjxWTjXXRA57XuO-un6tuAJbm4/edit). Struktur tab v3 lihat REVISI-ANALISIS.md §2.
 
 ## Cara pasang / memperbarui
 
@@ -47,13 +45,11 @@ File Google Sheets terpisah [Master Produk DB](https://docs.google.com/spreadshe
 
 ## Aturan identitas (permanen)
 
-* Kode brand/kategori dibuat otomatis (default 3 huruf), unik, tidak berubah walau nama diperbaiki.
-* Kode produk unik per brand; boleh diubah sebelum produk pertama kali disimpan.
-* SKU varian = template `{BRAND}-{CATEGORY}-{PRODUCT}-{VARIAN}` (mis. `SCA-PAR-PEDP-OB50`), unik global, permanen.
-* SKU kemasan ber-SKU = SKU varian + satuan + isi dasar (mis. `SCA-PAR-PEDP-OB50-BOX24`); GTIN unit dasar tidak diganti.
-* GTIN ada di level varian (bukan product master); satu barcode = satu varian/kemasan. Mengganti GTIN tersimpan wajib alasan;
-  barcode lama dipensiunkan dan tidak boleh dipakai barang lain.
-* Konversi berbasis kuantitas: 1 BOX = 24 BOTOL; konversi bertingkat KARTON = 6 BOX = 144 BOTOL; isi boleh beda per varian.
+* Kode brand/kategori otomatis (default 3 huruf), unik, tidak berubah walau nama diperbaiki.
+* Kode produk `PRD000123` dan SKU internal `SKU000456` dibuat otomatis, berurutan, tidak bergantung brand/kategori/GTIN.
+* SKU lama & SKU BeeCloud/Shopee disimpan terpisah di `EXTERNAL_SKU_MAPPINGS` dan tetap bisa dicari/dipindai.
+* GTIN di level varian; satu barcode = satu varian/kemasan. Ganti GTIN tersimpan wajib alasan; barcode lama dipensiunkan.
+* Konversi kemasan berbasis kuantitas, per varian, tidak otomatis membuat SKU.
 
 ## Penyimpanan aman di Google Sheets
 
@@ -79,7 +75,7 @@ npm test
 ```bash
 npm run dev
 ```
-Test menjalankan file `.gs` asli di emulator layanan Apps Script (`test/harness.cjs`) — 15 skenario (lihat REVISI-ANALISIS.md).
+Test menjalankan file `.gs` asli di emulator layanan Apps Script (`test/harness.cjs`) — 18 tes termasuk import workbook Excel asli (lihat REVISI-ANALISIS.md).
 Server pratinjau: http://localhost:8790 dengan data contoh (akun development tercantum di `dev/server.cjs`).
 
 ## Deploy otomatis dari GitHub
