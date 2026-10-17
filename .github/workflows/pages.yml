@@ -2,6 +2,7 @@
 # Server & database tetap di Google Apps Script + Google Sheets.
 # URL Web App: repository VARIABLE APPS_SCRIPT_URL bila diisi, selain itu URL deployment bawaan di bawah.
 # (URL ini memang publik karena dipanggil dari browser; data dijaga oleh login aplikasi.)
+# Pages harus aktif: Settings › Pages › Source: GitHub Actions.
 name: GitHub Pages
 
 on:
