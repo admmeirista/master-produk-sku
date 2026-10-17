@@ -423,11 +423,13 @@ test('migrasi v1 → v3: SKU lama jadi legacy SKU, multipack jadi satuan kemasan
   assert.equal(d.productCode, 'PRD000007');
   assert.equal(d.legacyCode, 'VAM100');
   assert.match(d.variants[0].sku, /^SKU\d{6}$/);
-  assert.deepEqual(d.variants[0].externalSkus.map((x) => x.sku).sort(), ['VIV-TON-VAM100-8992796011501-1', 'VIV-TON-VAM100-8992796011501-6']);
-  assert.deepEqual(d.variants[0].conversions.map((c) => [c.unitName, c.baseUnitEquivalent, c.sku]), [['PCS', 1, ''], ['PACK', 6, '']]);
+  assert.deepEqual(d.variants[0].externalSkus.map((x) => x.sku), ['VIV-TON-VAM100-8992796011501-1']);
+  assert.deepEqual(d.variants[0].conversions.map((c) => c.unitName), ['PCS'], 'paket jual tidak jadi konversi kemasan');
   const hit = api('barcode.lookup', { code: 'VIV-TON-VAM100-8992796011501-6' });
-  assert.equal(hit.matches[0].via, 'SKU lama');
-  assert.equal(hit.matches[0].conversion.unitName, 'PACK');
+  assert.equal(hit.bundles[0].via, 'SKU lama');
+  const mp = api('bundle.get', { id: hit.bundles[0].bundleId });
+  assert.equal(mp.type, 'MULTIPACK');
+  assert.deepEqual(mp.components.map((c) => [c.sku, c.quantity]), [[d.variants[0].sku, 6]]);
   const again = JSON.parse(JSON.stringify(L.ctx.setup())).migration;
   assert.deepEqual([again.products, again.variants, again.legacySkus], [0, 0, 0]);
 });

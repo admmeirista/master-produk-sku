@@ -49,6 +49,13 @@ function variantView_(v, convs, attrs, externals) {
     createdAt: v.CreatedAt,
     conversions: (convs || []).map(conversionView_),
     externalSkus: externals || [],
+    stockable: v.Stockable !== 'NON_STOCKABLE',
+    batchTracking: v.BatchTracking,
+    expiryTracking: v.ExpiryTracking,
+    shelfLifeMonths: v.ShelfLifeMonths,
+    purchaseUnit: v.PurchaseUnit || '',
+    salesUnit: v.SalesUnit || '',
+    replacedBy: v.ReplacedByVariantID || '',
   };
 }
 
@@ -76,10 +83,24 @@ function planVariants_(input, ctx) {
       return null;
     }
     if (iv.id) seenIds[iv.id] = 1;
-    const attrs = cleanAttributes_(iv.attributes);
+    const attrs = standardizeAttributes_(cleanAttributes_(iv.attributes));
     const names = attrs.map((a) => normalizeName(a.name));
     if (new Set(names).size !== names.length) err(path + '.attributes', 'Jenis atribut ganda dalam satu varian');
-    const status = iv.status === STATUS.INACTIVE ? STATUS.INACTIVE : STATUS.ACTIVE;
+    // status lifecycle: varian baru mengikuti produk (DRAFT/ACTIVE); varian tersimpan hanya boleh transisi yang sah
+    let status = dbv ? dbv.Status : ctx.newStatus;
+    if (dbv && iv.status && iv.status !== dbv.Status) {
+      try {
+        lifecycleCheck_(dbv.Status, iv.status, iv.statusReason || 'Diubah lewat edit produk', 'SKU ' + dbv.SKU);
+        status = iv.status;
+      } catch (e) {
+        if (!(e instanceof AppError)) throw e;
+        err(path + '.status', e.message);
+      }
+    }
+    // konfigurasi inventory (hanya konfigurasi — saldo & lot aktual ada di sistem inventory)
+    const shelf = iv.shelfLifeMonths === '' || iv.shelfLifeMonths === null || iv.shelfLifeMonths === undefined ? null : Number(iv.shelfLifeMonths);
+    if (shelf !== null && !(Number.isInteger(shelf) && shelf >= 1 && shelf <= 600)) err(path + '.shelfLifeMonths', 'Masa simpan 1–600 bulan (bilangan bulat)');
+    const inv = { batchTracking: !!iv.batchTracking, expiryTracking: !!iv.expiryTracking, shelfLifeMonths: shelf, purchaseUnit: normalizeUnit(iv.purchaseUnit), salesUnit: normalizeUnit(iv.salesUnit) };
     const key = attributeKey(attrs);
     const autoName = attrs.map((a) => a.value).join(' ');
     let name = (cleanText(iv.name) || autoName || 'Standar').slice(0, 120);
@@ -89,7 +110,7 @@ function planVariants_(input, ctx) {
     if (!ctx.hasVariants && attrs.length && !dbv) err(path + '.attributes', 'Mode Quick Entry tidak memakai atribut');
     if (keys[key] !== undefined) err(path + '.attributes', key ? `Kombinasi atribut ini sama dengan ${keys[key]}` : 'Varian default (tanpa atribut) sudah ada');
     keys[key] = 'baris varian ' + (i + 1);
-    return { i, path, iv, dbv, attrs, key, name, status, sku: dbv ? dbv.SKU : '' };
+    return { i, path, iv, dbv, attrs, key, name, status, inv, sku: dbv ? dbv.SKU : '' };
   });
   return plans;
 }
@@ -111,19 +132,3 @@ function skuOwnerMap_() {
   return out;
 }
 
-/** Aktif/nonaktifkan satu varian (tanpa menghapus — SKU & barcode tetap tercatat). */
-function variantSetStatus_(user, input) {
-  const v = db_('PRODUCT_VARIANTS').byId(input.id);
-  if (!v) throw new AppError('Varian tidak ditemukan', [], 'NOT_FOUND');
-  const status = input.status === STATUS.ACTIVE ? STATUS.ACTIVE : STATUS.INACTIVE;
-  if (v.Status === status) return variantView_(v, []);
-  if (status === STATUS.INACTIVE) {
-    const others = db_('PRODUCT_VARIANTS').filter((x) => x.ProductID === v.ProductID && x.VariantID !== v.VariantID && x.Status === STATUS.ACTIVE);
-    if (!others.length) throw new AppError('Varian terakhir yang aktif tidak dapat dinonaktifkan. Nonaktifkan produknya.');
-  }
-  const before = v.Status;
-  db_('PRODUCT_VARIANTS').update(v, { Status: status, UpdatedAt: now_() });
-  touchProduct_(user, v.ProductID);
-  audit_(user.email, status === STATUS.ACTIVE ? 'variant.activate' : 'variant.deactivate', 'variant', v.VariantID, { status: before }, { status, sku: v.SKU }, { productId: v.ProductID, reason: cleanText(input.reason) });
-  return variantView_(v, []);
-}

@@ -108,7 +108,7 @@ function createGas({ ownerEmail = 'owner@toko.local' } = {}) {
     copy: (name) => ({ getUrl: () => 'https://docs.google.com/copy/' + encodeURIComponent(name) }),
   };
   const cache = new Map();
-  const state = { lockBusy: false }; // simulasi user lain sedang memegang lock
+  const state = { lockBusy: false, fetch: null, fetchLog: [] }; // simulasi user lain sedang memegang lock
   const toSigned = (buf) => [...buf].map((b) => (b > 127 ? b - 256 : b));
   const ctx = {
     console: { log() {}, error: (...a) => console.error(...a) },
@@ -126,6 +126,8 @@ function createGas({ ownerEmail = 'owner@toko.local' } = {}) {
     },
     ScriptApp: { getProjectTriggers: () => [], newTrigger: () => ({}) },
     HtmlService: { XFrameOptionsMode: { DEFAULT: 'DEFAULT' } },
+    // UrlFetchApp: respons diatur per URL lewat state.fetch (fungsi url → {code, body}); default 404
+    UrlFetchApp: { fetch: (url, opt) => { state.fetchLog.push({ url, opt }); const r = state.fetch ? state.fetch(url, opt) : { code: 404, body: '{}' }; if (r.throw) throw new Error(r.throw); return { getResponseCode: () => r.code, getContentText: () => r.body }; } },
     ContentService: { MimeType: { JSON: 'application/json' }, createTextOutput: (s) => ({ content: s, setMimeType() { return this; }, getContent() { return this.content; } }) },
   };
   vm.createContext(ctx);

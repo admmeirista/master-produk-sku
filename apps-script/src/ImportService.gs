@@ -52,6 +52,34 @@ const IMPORT_TYPES = {
     },
     required: ['brand', 'category', 'barcode', 'qty', 'name'],
   },
+  channel_listing: {
+    label: 'Listing marketplace (Shopee / TikTok / Tokopedia)',
+    sheet: /performa|shopee|listing|tiktok|tokopedia/i,
+    // ekspor Shopee: kolom "Kode Variasi" muncul dua kali — pertama = ID variasi, kedua = SKU variasi (seller SKU)
+    fields: {
+      productId: ['kode produk', 'product id', 'id produk', 'item id', 'id listing'],
+      productName: ['produk', 'nama produk', 'product name', 'nama listing'],
+      variationId: ['kode variasi', 'variation id', 'id variasi', 'model id', 'sku id'],
+      variationName: ['nama variasi', 'variation name'],
+      variationSku: ['kode variasi', 'sku variasi', 'seller sku', 'variation sku', 'sku penjual', 'sku'],
+      parentSku: ['sku induk', 'parent sku'],
+    },
+    required: ['productId'],
+  },
+  supplier_mapping: {
+    label: 'Kode produk supplier',
+    sheet: /supplier/i,
+    fields: {
+      supplier: ['nama supplier', 'supplier'],
+      supplierProductCode: ['kode produk supplier', 'kode barang supplier', 'kode supplier', 'supplier sku', 'supplier code'],
+      supplierProductName: ['nama di supplier', 'nama produk supplier', 'nama barang supplier'],
+      internal: ['child sku', 'sku internal', 'sku', 'gtin', 'barcode'],
+      purchaseUnit: ['satuan beli', 'satuan'],
+      factor: ['isi (satuan stok)', 'isi', 'faktor konversi', 'konversi'],
+      moq: ['moq', 'minimum order', 'minimum order quantity'],
+    },
+    required: ['supplier', 'supplierProductCode', 'internal'],
+  },
 };
 
 const nrm_ = (s) => String(s === null || s === undefined ? '' : s).toLowerCase().replace(/\s+/g, ' ').trim();
@@ -98,19 +126,26 @@ function importRun_(user, p, opts) {
     Object.keys(m.map).forEach((k) => (v[k] = m.map[k] >= 0 ? cleanText(raw[m.map[k]]) : ''));
     work.push({ row: i + 1, v });
   });
-  const rep = { type: p.type, label: def.label, fileName: cleanText(p.fileName), totalRows: work.length, created: { brands: 0, categories: 0, products: 0, variants: 0, conversions: 0, legacySkus: 0, barcodes: 0 }, skipped: 0, errors: [], warnings: [], dryRun: !!opts.dryRun };
+  const rep = { type: p.type, label: def.label, fileName: cleanText(p.fileName), totalRows: work.length, created: { brands: 0, categories: 0, products: 0, variants: 0, conversions: 0, bundles: 0, legacySkus: 0, barcodes: 0, mappings: 0, suppliers: 0 }, skipped: 0, errors: [], warnings: [], dryRun: !!opts.dryRun };
   const hash = Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, p.type + JSON.stringify(rows), Utilities.Charset.UTF_8));
   if (p.type === 'reference') importReference_(user, work, rep);
   else if (p.type === 'internal_barcodes') importInternalBarcodes_(user, work, rep);
+  else if (p.type === 'channel_listing') importChannelListing_(user, work, rep, p);
+  else if (p.type === 'supplier_mapping') importSupplierMapping_(user, work, rep);
   else importMaster_(user, work, rep);
   const cap = (a) => a.slice(0, 300);
   rep.errorCount = rep.errors.length;
   rep.warningCount = rep.warnings.length;
+  const allIssues = rep.errors.map((e) => Object.assign({ severity: 'ERROR' }, e)).concat(rep.warnings.map((e) => Object.assign({ severity: 'WARNING' }, e)));
   rep.errors = cap(rep.errors);
   rep.warnings = cap(rep.warnings);
   if (!opts.dryRun) {
     const createdRows = Object.keys(rep.created).reduce((s, k) => s + rep.created[k], 0);
-    db_('IMPORT_BATCHES').insert({ BatchID: uuid_(), ImportType: p.type, FileName: rep.fileName, ContentHash: hash, Status: 'COMMITTED', TotalRows: rep.totalRows, CreatedRows: createdRows, SkippedRows: rep.skipped, ErrorRows: rep.errorCount, ReportJson: rep, CreatedBy: user.email, CreatedAt: now_() });
+    const batchId = uuid_();
+    rep.batchId = batchId;
+    db_('IMPORT_BATCHES').insert({ BatchID: batchId, ImportType: p.type, FileName: rep.fileName, ContentHash: hash, Status: 'COMMITTED', TotalRows: rep.totalRows, CreatedRows: createdRows, SkippedRows: rep.skipped, ErrorRows: rep.errorCount, ReportJson: rep, CreatedBy: user.email, CreatedAt: now_() });
+    // seluruh baris bermasalah (tanpa batas 300) untuk dicek manual / diunduh
+    allIssues.slice(0, 5000).forEach((e) => db_('IMPORT_ERRORS').insert({ ErrorID: uuid_(), BatchID: batchId, RowNumber: e.row, Severity: e.severity, Message: e.message, CreatedAt: now_() }));
     audit_(user.email, 'import.' + p.type, 'import', '', null, { file: rep.fileName, created: rep.created, skipped: rep.skipped, errors: rep.errorCount });
   }
   return rep;
@@ -288,27 +323,22 @@ function importMaster_(user, work, rep) {
       rep.created.variants++;
     }
 
-    // ---- isi > 1 → satuan kemasan PACKn (konversi kuantitas, tanpa SKU baru)
-    let target = { p: productId, v: variantId, c: '' };
+    // ---- isi > 1 → paket jual = MULTIPACK virtual (SKU MP…, komponen N × Child SKU). Bukan konversi kemasan
+    //      karena baris template ini adalah identitas penjualan (listing paket di Shopee), bukan satuan pembelian.
+    let target = { p: productId, v: variantId, c: '', b: '' };
     if (qty > 1) {
-      const ck = variantId + '|' + qty;
-      let convId = convOf[ck];
-      if (!convId) {
-        const ex = db_('UNIT_CONVERSIONS').find((c) => c.VariantID === variantId && !c.IsBaseUnit && c.Status !== STATUS.DELETED && c.ContainsUnit && c.BaseUnitEquivalent === qty);
-        if (ex) convId = ex.ConversionID;
-        else {
-          const prod = db_('MASTER_PRODUCTS').byId(productId);
-          const n = db_('UNIT_CONVERSIONS').filter((c) => c.VariantID === variantId && !c.IsBaseUnit).length;
-          const c = db_('UNIT_CONVERSIONS').insert({ ConversionID: uuid_(), VariantID: variantId, ProductID: productId, UnitName: ('PACK' + qty).slice(0, 12), ConversionFactor: qty, ContainsUnit: prod.BaseUnit, BaseUnitEquivalent: qty, IsBaseUnit: false, IsTradeItem: false, SKU: '', GTIN: '', InternalBarcode: '', Status: STATUS.ACTIVE, SortOrder: n + 1, CreatedAt: ts, UpdatedAt: ts });
-          convId = c.ConversionID;
-          rep.created.conversions++;
-        }
-        convOf[ck] = convId;
+      const mk = variantId + '|' + qty;
+      let bid = convOf[mk];
+      if (!bid) {
+        const before = db_('BUNDLE_MASTERS').rows().length;
+        bid = ensureMultipack_(user, variantId, qty, ts);
+        if (db_('BUNDLE_MASTERS').rows().length > before) rep.created.bundles++;
+        convOf[mk] = bid;
       }
-      target = { p: productId, v: '', c: convId };
+      target = { p: '', v: '', c: '', b: bid };
     }
     if (sku) {
-      db_('EXTERNAL_SKU_MAPPINGS').insert({ MappingID: uuid_(), System: 'legacy', ExternalSku: sku, ProductID: target.p, VariantID: target.v, ConversionID: target.c, InternalSku: '', MappingStatus: 'legacy', IsActive: true, Notes: `Import template lama baris ${w.row}`, CreatedBy: user.email, CreatedAt: ts, UpdatedAt: ts });
+      db_('EXTERNAL_SKU_MAPPINGS').insert({ MappingID: uuid_(), System: 'legacy', ExternalSku: sku, ProductID: target.p, VariantID: target.v, ConversionID: target.c, BundleID: target.b, InternalSku: '', MappingStatus: 'legacy', IsActive: true, Notes: `Import template lama baris ${w.row}`, CreatedBy: user.email, CreatedAt: ts, UpdatedAt: ts });
       legacy[sku] = 1;
       rep.created.legacySkus++;
     }
@@ -319,4 +349,85 @@ function importMaster_(user, work, rep) {
     if (rec) db_('Settings').update(rec, { value: val, updated_by: user.email, updated_at: now_() });
     else db_('Settings').insert({ key: 'base_units', value: val, updated_by: user.email, updated_at: now_() });
   }
+}
+
+/** Baris bermasalah satu batch import (untuk laporan cek manual). */
+function importErrors_(batchId) {
+  return db_('IMPORT_ERRORS')
+    .filter((e) => e.BatchID === batchId)
+    .map((e) => ({ row: e.RowNumber, severity: e.Severity, message: e.Message }));
+}
+
+// ------------------------------------------------------------------ listing marketplace (ekspor Seller Center)
+
+/**
+ * Setiap baris listing dicocokkan ke SKU internal lewat Seller SKU variasi (atau SKU induk bila listing tanpa variasi):
+ * SKU internal, SKU kemasan/bundle, SKU lama (legacy), atau mapping kanal yang sudah ada. Mapping dibuat berstatus
+ * "confirmed" karena data berasal dari kanal itu sendiri. SKU yang tidak dikenal dilaporkan, tidak ditebak.
+ */
+function importChannelListing_(user, work, rep, p) {
+  const system = p.channel || 'shopee';
+  if (!MARKETPLACES[system]) throw new AppError('Pilih kanal marketplace: Shopee, TikTok Shop, atau Tokopedia');
+  const store = cleanText(p.storeAccount);
+  const bySku = {};
+  sellables_({ includeInactive: true }).forEach((x) => (bySku[x.sku.toUpperCase()] = x.sku));
+  db_('EXTERNAL_SKU_MAPPINGS')
+    .filter((m) => m.IsActive && m.System === 'legacy')
+    .forEach((m) => {
+      const t = mappingTarget_(m);
+      if (t.internalSku) bySku[String(m.ExternalSku).toUpperCase()] = t.internalSku;
+    });
+  const clean = (x) => (/^-+$/.test(String(x).trim()) ? '' : cleanText(x));
+  work.forEach((w) => {
+    const pid = clean(w.v.productId);
+    const vid = clean(w.v.variationId);
+    const vsku = clean(w.v.variationSku).toUpperCase();
+    const psku = clean(w.v.parentSku).toUpperCase();
+    const seller = vsku || psku;
+    if (!/^\d+$/.test(pid)) return rep.errors.push({ row: w.row, message: 'ID produk listing tidak valid: ' + (pid || '(kosong)') });
+    if (!seller) return rep.warnings.push({ row: w.row, message: `Listing ${pid}${vid ? ' variasi ' + vid : ''} tanpa Seller SKU — petakan manual` });
+    const internal = bySku[seller];
+    if (!internal) return rep.warnings.push({ row: w.row, message: `Seller SKU ${seller} tidak dikenal di master — perlu dipetakan manual / disamakan di Seller Center` });
+    const dup = db_('EXTERNAL_SKU_MAPPINGS').find((m) => m.System === system && m.IsActive && String(m.StoreAccount || '').toUpperCase() === store.toUpperCase() && m.ExternalProductId === pid && (m.ExternalVariationId || '') === vid);
+    if (dup) return rep.skipped++;
+    try {
+      createMapping_(user, { system, sku: internal, storeAccount: store, externalProductId: pid, externalVariationId: vid, externalParentSku: psku, externalSku: seller, listingName: w.v.productName + (clean(w.v.variationName) ? ' — ' + w.v.variationName : ''), notes: 'Import ' + rep.fileName }, { status: 'confirmed', silentAudit: true });
+      rep.created.mappings++;
+    } catch (e) {
+      if (!(e instanceof AppError)) throw e;
+      rep.errors.push({ row: w.row, message: e.message });
+    }
+  });
+}
+
+// ------------------------------------------------------------------ kode produk supplier
+
+function importSupplierMapping_(user, work, rep) {
+  const sups = {};
+  db_('MASTER_SUPPLIERS')
+    .filter((x) => x.Status !== STATUS.DELETED)
+    .forEach((x) => (sups[x.NameKey] = x));
+  work.forEach((w) => {
+    const v = w.v;
+    const key = masterNameKey(v.supplier);
+    let sup = sups[key];
+    try {
+      if (!sup) {
+        const created = supplierSave_(user, { name: v.supplier });
+        sup = db_('MASTER_SUPPLIERS').byId(created.id);
+        sups[key] = sup;
+        rep.created.suppliers++;
+      }
+      const hit = barcodeLookup_(v.internal);
+      const m = (hit.matches || []).find((x) => !x.conversion) || (hit.matches || [])[0];
+      if (!m) return rep.errors.push({ row: w.row, message: `SKU/barcode internal ${v.internal} tidak ditemukan` });
+      const code = normalizeCode(v.supplierProductCode);
+      if (db_('SUPPLIER_PRODUCT_MAPPING').find((x) => x.SupplierID === sup.SupplierID && x.SupplierCodeKey === code && x.Status === STATUS.ACTIVE)) return rep.skipped++;
+      supplierMapSave_(user, { supplierId: sup.SupplierID, supplierProductCode: v.supplierProductCode, supplierProductName: v.supplierProductName, variantId: m.variantId, purchaseUnit: v.purchaseUnit, conversionFactor: v.factor || 1, moq: v.moq });
+      rep.created.mappings++;
+    } catch (e) {
+      if (!(e instanceof AppError)) throw e;
+      rep.errors.push({ row: w.row, message: e.message + (e.details && e.details.length ? ': ' + e.details.map((d) => d.message).join('; ') : '') });
+    }
+  });
 }

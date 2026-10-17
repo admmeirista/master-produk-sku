@@ -50,11 +50,15 @@ test('import template Excel lama: tanpa produk duplikat, SKU lama tertelusur, id
   const viva = api('product.get', { id: hit.matches[0].productId });
   const legacy = viva.variants[0].externalSkus.map((x) => x.sku);
   assert.ok(legacy.some((s) => s.indexOf('-VAM100-') > 0) && legacy.some((s) => s.indexOf('-AIM100-') > 0), legacy.join(','));
-  // SKU lama bisa dipindai → menunjuk kemasan yang tepat
-  const six = legacy.find((s) => /-VAM100-8992796011501-6$/.test(s));
-  const sixHit = api('barcode.lookup', { code: six });
-  assert.equal(sixHit.matches[0].via, 'SKU lama');
-  assert.equal(sixHit.matches[0].conversion.baseUnitEquivalent, 6);
+  // SKU lama paket 6 → multipack virtual MP… berisi 6 × Child SKU yang sama (tanpa saldo stok sendiri)
+  const sixHit = api('barcode.lookup', { code: 'VIV-TON-VAM100-8992796011501-6' });
+  assert.equal(sixHit.bundles[0].via, 'SKU lama');
+  const mp = api('bundle.get', { id: sixHit.bundles[0].bundleId });
+  assert.match(mp.sku, /^MP\d{6}$/);
+  assert.equal(mp.stockable, false);
+  assert.deepEqual(mp.components.map((c) => [c.sku, c.quantity]), [[viva.variants[0].sku, 6]]);
+  // AIM100 isi 6 juga 6 × barang yang sama → memakai multipack yang sama, bukan paket ganda
+  assert.equal(api('barcode.lookup', { code: 'VIV-TON-AIM100-8992796011501-6' }).bundles[0].bundleId, mp.id);
   // tidak ada GTIN aktif ganda, tidak ada SKU internal ganda
   const bcs = g.sheets.get('VARIANT_BARCODES').data.slice(1).filter((r) => r[4] === 'ACTIVE').map((r) => r[1]);
   assert.equal(new Set(bcs).size, bcs.length);
@@ -66,6 +70,18 @@ test('import template Excel lama: tanpa produk duplikat, SKU lama tertelusur, id
   assert.ok(rep.errorCount > 0);
   // import ulang tidak menggandakan apa pun
   const again = api('import.commit', { type: 'master', rows: masterRows, fileName: 'template.xlsx' });
-  assert.deepEqual(again.created, { brands: 0, categories: 0, products: 0, variants: 0, conversions: 0, legacySkus: 0, barcodes: 0 });
-  assert.equal(api('import.history', {}).length, 4);
+  assert.ok(Object.values(again.created).every((n) => n === 0), JSON.stringify(again.created));
+  // listing Shopee asli (sheet Data Performa): Seller SKU lama → mapping ke SKU internal, status confirmed
+  const listing = sheet(/performa/i);
+  const ch = api('import.commit', { type: 'channel_listing', channel: 'shopee', storeAccount: 'Meirista Official', rows: listing, fileName: 'template.xlsx' });
+  console.log(JSON.stringify({ channel: ch.created.mappings, skipped: ch.skipped, unknown: ch.warningCount, errors: ch.errorCount }));
+  assert.ok(ch.created.mappings >= 100, 'mapping listing dari SKU lama');
+  const ml = api('mapping.list', { system: 'shopee', search: '8999225912415' });
+  // listing "[6 PCS] Purbasari Gluta Hya" (SKU induk PRB-…-6) → multipack MP…, berstatus confirmed
+  const six = ml.rows.find((m) => m.externalParentSku === 'PRB-BSR-GH180-8999225912415-6');
+  assert.ok(six && six.status === 'confirmed' && six.targetKind === 'bundle' && /^MP\d{6}$/.test(six.internalSku), JSON.stringify(six));
+  assert.ok(api('import.errors', { batchId: ch.batchId }).length === ch.warningCount + ch.errorCount);
+  const ch2 = api('import.commit', { type: 'channel_listing', channel: 'shopee', storeAccount: 'Meirista Official', rows: listing, fileName: 'template.xlsx' });
+  assert.equal(ch2.created.mappings, 0, 'import listing ulang tidak menggandakan mapping');
+  assert.equal(api('import.history', {}).length, 6);
 });

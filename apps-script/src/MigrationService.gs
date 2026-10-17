@@ -6,7 +6,7 @@
  *            Produk, varian & SKU v2 TIDAK diubah (kode existing tidak diganti otomatis).
  *  v1 → v3 : Brands/Categories (kode lama dipertahankan), Products/Variants/SKUs → produk + varian dengan SKU internal baru;
  *            SKU lama → EXTERNAL_SKU_MAPPINGS (system "legacy") sehingga tetap bisa ditelusuri & dipindai;
- *            multipack → satuan kemasan (tanpa SKU baru, kecuali kemasan itu punya barcode sendiri).
+ *            multipack → MULTIPACK virtual (SKU MP…, komponen N × Child SKU); barcode paket dipasang ke bundle.
  *  Tab lama tidak pernah dihapus / diubah. Yang tidak punya padanan (bundle/BOM, harga, approval) dilaporkan.
  */
 
@@ -211,18 +211,12 @@ function migrateV1_(r, actor) {
         if (s.sku_type === 'bundle') return r.notMigrated.push(`Bundle ${s.sku_code || s.id} (${o.name}) — bundle/BOM tidak ada di struktur v3; data tetap di tab SKUs & Components`);
         let target = { p: p.ProductID, v: v.VariantID, c: '' };
         if (s.sku_type === 'multipack') {
+          // paket jual lama → MULTIPACK virtual (SKU MP…), bukan konversi kemasan
           const qty = Number(s.pack_qty);
-          let unit = normalizeUnit(s.sales_unit) || 'PACK';
-          if (usedUnits[unit] || unit === baseUnit) unit = ('PACK' + qty).slice(0, 12);
-          usedUnits[unit] = 1;
+          const bid = ensureMultipack_({ email: actor }, v.VariantID, qty, ts);
           const pbc = activeBc['s:' + s.id] || '';
-          let psku = '';
-          if (pbc) {
-            psku = allocateSku_(skuOwner);
-            skuOwner[psku] = p.ProductName;
-          }
-          const c = db_('UNIT_CONVERSIONS').insert({ ConversionID: s.id, VariantID: v.VariantID, ProductID: p.ProductID, UnitName: unit, ConversionFactor: qty, ContainsUnit: baseUnit, BaseUnitEquivalent: qty, IsBaseUnit: false, IsTradeItem: !!pbc, SKU: psku, GTIN: pbc && bcType[pbc] !== 'INTERNAL' ? pbc : '', InternalBarcode: pbc && bcType[pbc] === 'INTERNAL' ? pbc : '', Status: ['active', 'draft'].indexOf(s.status) >= 0 ? STATUS.ACTIVE : STATUS.INACTIVE, SortOrder: ++order, CreatedAt: s.created_at || ts, UpdatedAt: ts });
-          target = { p: p.ProductID, v: '', c: c.ConversionID };
+          if (pbc && !db_('VARIANT_BARCODES').find((x) => x.Code === pbc && x.Status === 'ACTIVE')) db_('VARIANT_BARCODES').insert({ BarcodeID: uuid_(), Code: pbc, BarcodeType: bcType[pbc] || 'GTIN', Symbology: 'EAN13', Status: 'ACTIVE', ProductID: '', VariantID: '', ConversionID: '', BundleID: bid, VerifiedOfficial: false, CreatedBy: 'migrasi', CreatedAt: ts, Reason: 'migrasi v1' });
+          target = { p: '', v: '', c: '', b: bid };
           r.packs++;
         }
         legacyTarget[s.id] = target;
@@ -235,7 +229,7 @@ function migrateV1_(r, actor) {
   oldAssign.forEach((a) => {
     if (!a.id || db_('VARIANT_BARCODES').byId(a.id)) return;
     const t = a.sku_id ? legacyTarget[a.sku_id] : { p: a.product_id, v: a.variant_id, c: '' };
-    if (!t || (!t.v && !t.c)) return;
+    if (!t || t.b || (!t.v && !t.c)) return; // barcode paket sudah dipasang ke bundle saat migrasi
     if (t.v && !db_('PRODUCT_VARIANTS').byId(t.v)) return;
     db_('VARIANT_BARCODES').insert({ BarcodeID: a.id, Code: a.code, BarcodeType: bcType[a.code] || 'GTIN', Symbology: 'EAN13', Status: a.unassigned_at ? 'RETIRED' : 'ACTIVE', ProductID: t.p, VariantID: t.v, ConversionID: t.c, VerifiedOfficial: false, CreatedBy: a.assigned_by, CreatedAt: a.assigned_at, RetiredBy: a.unassigned_by, RetiredAt: a.unassigned_at, Reason: a.reason });
     r.barcodes++;
@@ -246,7 +240,7 @@ function migrateV1_(r, actor) {
     if (!m.id || db_('EXTERNAL_SKU_MAPPINGS').byId(m.id)) return;
     const t = legacyTarget[m.sku_id];
     if (!t) return;
-    db_('EXTERNAL_SKU_MAPPINGS').insert({ MappingID: m.id, System: m.system, ExternalSku: m.external_sku, ProductID: t.p, VariantID: t.v, ConversionID: t.c, InternalSku: '', ExternalProductId: m.external_product_id, ExternalVariationId: m.external_variation_id, ListingName: m.listing_name, MappingStatus: m.mapping_status, IsActive: String(m.is_active).toUpperCase() === 'TRUE', LastExportedAt: m.last_exported_at, LastConfirmedAt: m.last_confirmed_at, LastError: m.last_error, Notes: m.notes, CreatedBy: m.created_by || actor, CreatedAt: m.created_at || ts, UpdatedAt: m.updated_at || ts });
+    db_('EXTERNAL_SKU_MAPPINGS').insert({ MappingID: m.id, System: m.system, ExternalSku: m.external_sku, ProductID: t.p, VariantID: t.v, ConversionID: t.c, BundleID: t.b || '', StoreAccount: '', InternalSku: '', ExternalProductId: m.external_product_id, ExternalVariationId: m.external_variation_id, ListingName: m.listing_name, MappingStatus: m.mapping_status, IsActive: String(m.is_active).toUpperCase() === 'TRUE', LastExportedAt: m.last_exported_at, LastConfirmedAt: m.last_confirmed_at, LastError: m.last_error, Notes: m.notes, CreatedBy: m.created_by || actor, CreatedAt: m.created_at || ts, UpdatedAt: m.updated_at || ts });
     r.mappings++;
   });
   if (legacyRows_('Prices').length) r.notMigrated.push('Histori harga (tab Prices) — fitur harga dihapus dari aplikasi; data tetap di tab lama');
@@ -257,7 +251,7 @@ function migrateV1_(r, actor) {
 function addLegacySku_(r, code, t, note) {
   if (!code) return false;
   if (db_('EXTERNAL_SKU_MAPPINGS').find((m) => m.System === 'legacy' && String(m.ExternalSku).toUpperCase() === code)) return false;
-  db_('EXTERNAL_SKU_MAPPINGS').insert({ MappingID: uuid_(), System: 'legacy', ExternalSku: code, ProductID: t.p, VariantID: t.c ? '' : t.v, ConversionID: t.c || '', InternalSku: '', MappingStatus: 'legacy', IsActive: true, Notes: note || '', CreatedBy: 'migrasi', CreatedAt: now_(), UpdatedAt: now_() });
+  db_('EXTERNAL_SKU_MAPPINGS').insert({ MappingID: uuid_(), System: 'legacy', ExternalSku: code, ProductID: t.p, VariantID: t.c || t.b ? '' : t.v, ConversionID: t.c || '', BundleID: t.b || '', InternalSku: '', MappingStatus: 'legacy', IsActive: true, Notes: note || '', CreatedBy: 'migrasi', CreatedAt: now_(), UpdatedAt: now_() });
   r.legacySkus++;
   return true;
 }

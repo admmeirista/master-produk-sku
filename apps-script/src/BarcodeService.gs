@@ -18,6 +18,10 @@ function barcodeRows_(code) {
 }
 
 function ownerInfo_(b) {
+  if (b && b.BundleID) {
+    const bd = db_('BUNDLE_MASTERS').byId(b.BundleID);
+    return bd ? { productId: '', bundleId: bd.BundleID, productCode: bd.BundleSKU, productName: bd.BundleName, variantId: '', variantName: '', conversionId: '', label: `Bundle ${bd.BundleName} [${bd.BundleSKU}]` } : null;
+  }
   if (!b || !b.ProductID) return null;
   const p = db_('MASTER_PRODUCTS').byId(b.ProductID);
   if (!p) return null;
@@ -38,6 +42,8 @@ function ownerInfo_(b) {
 /** Apakah baris barcode menunjuk target yang sama (kemasan → ConversionID, varian → VariantID). */
 function sameTarget_(b, target) {
   if (!b) return false;
+  if (target.bundleId) return b.BundleID === target.bundleId;
+  if (b.BundleID) return false;
   if (target.conversionId) return b.ConversionID === target.conversionId;
   return !b.ConversionID && !!target.variantId && b.VariantID === target.variantId;
 }
@@ -117,7 +123,7 @@ function attachBarcode_(user, input, target, path, notes, reason) {
     }
   } else throw new AppError('Jenis barcode tidak dikenal', [{ path, message: input.mode }]);
   if (row.Status !== 'ACTIVE') {
-    db_('VARIANT_BARCODES').update(row, { Status: 'ACTIVE', ProductID: target.productId, VariantID: target.conversionId ? '' : target.variantId || '', ConversionID: target.conversionId || '', Reason: reason || 'registrasi', CreatedBy: row.CreatedBy || user.email });
+    db_('VARIANT_BARCODES').update(row, { Status: 'ACTIVE', ProductID: target.productId || '', VariantID: target.conversionId || target.bundleId ? '' : target.variantId || '', ConversionID: target.conversionId || '', BundleID: target.bundleId || '', Reason: reason || 'registrasi', CreatedBy: row.CreatedBy || user.email });
   }
   return row;
 }
@@ -138,7 +144,7 @@ function retireBarcode_(user, code, reason) {
 function barcodeValidate_(p) {
   const v = p.mode === 'internal' ? validateGtin(p.code) : validateManufacturerGtin(p.code);
   const row = v.code ? liveBarcodeRow_(v.code) : null;
-  const target = { variantId: p.variantId || '', conversionId: p.conversionId || '' };
+  const target = { variantId: p.variantId || '', conversionId: p.conversionId || '', bundleId: p.bundleId || '' };
   const owner = row && row.Status === 'ACTIVE' && !sameTarget_(row, target) ? ownerInfo_(row) : null;
   const retired = !row && v.code && barcodeRows_(v.code).some((b) => b.Status === 'RETIRED' && !sameTarget_(b, target));
   return Object.assign({}, v, { registered: row ? { type: row.BarcodeType, status: row.Status } : null, owner, retired: !!retired });
@@ -166,8 +172,15 @@ function barcodeLookup_(raw) {
     const c = conversionId ? db_('UNIT_CONVERSIONS').byId(conversionId) : null;
     matches.push(Object.assign({ via, productId: p.ProductID, productCode: p.ProductCode, productName: p.ProductName, productStatus: p.Status, brandName: b.BrandName, variantId: v.VariantID, variantName: v.IsDefault ? '' : v.VariantName, variantStatus: v.Status, sku: v.SKU, gtin: v.GTIN, internalBarcode: v.InternalBarcode, baseUnit: p.BaseUnit, conversion: c ? { unitName: c.UnitName, baseUnitEquivalent: c.BaseUnitEquivalent, sku: c.SKU } : null }, extra || {}));
   };
+  const bundles = [];
+  const pushBundle = (via, bd) => bd && !bundles.some((x) => x.bundleId === bd.BundleID) && bundles.push({ via, bundleId: bd.BundleID, bundleSku: bd.BundleSKU, bundleName: bd.BundleName, type: bd.BundleType, stockMode: bd.StockMode, status: bd.Status });
   const row = code ? liveBarcodeRow_(code) : null;
-  if (row && row.Status === 'ACTIVE') {
+  if (row && row.Status === 'ACTIVE' && row.BundleID) pushBundle(row.BarcodeType === 'GTIN' ? 'GTIN produsen' : 'Barcode internal', db_('BUNDLE_MASTERS').byId(row.BundleID));
+  db_('BUNDLE_MASTERS')
+    .filter((b) => b.BundleSKU === up)
+    .forEach((b) => pushBundle('SKU bundle', b));
+  supplierCodeLookup_(up).forEach((m) => push('Kode supplier ' + m.supplierName, m.variantId, '', { supplierCode: m.supplierProductCode }));
+  if (row && row.Status === 'ACTIVE' && !row.BundleID) {
     const conv = row.ConversionID ? db_('UNIT_CONVERSIONS').byId(row.ConversionID) : null;
     push(row.BarcodeType === 'GTIN' ? 'GTIN produsen' : 'Barcode internal', row.VariantID || (conv && conv.VariantID), row.ConversionID);
   }
@@ -179,7 +192,11 @@ function barcodeLookup_(raw) {
     .forEach((c) => push('SKU kemasan', c.VariantID, c.ConversionID));
   db_('EXTERNAL_SKU_MAPPINGS')
     .filter((m) => m.IsActive && String(m.ExternalSku).toUpperCase() === up)
-    .forEach((m) => push(m.System === 'legacy' ? 'SKU lama' : 'SKU ' + (m.System === 'beecloud' ? 'BeeCloud' : 'Shopee'), m.VariantID || (db_('UNIT_CONVERSIONS').byId(m.ConversionID) || {}).VariantID, m.ConversionID));
+    .forEach((m) => {
+      const via = m.System === 'legacy' ? 'SKU lama' : 'SKU ' + (CHANNEL_LABEL[m.System] || m.System);
+      if (m.BundleID) return pushBundle(via, db_('BUNDLE_MASTERS').byId(m.BundleID));
+      push(via, m.VariantID || (db_('UNIT_CONVERSIONS').byId(m.ConversionID) || {}).VariantID, m.ConversionID);
+    });
   const gtin = validateManufacturerGtin(code);
   const anyGtin = validateGtin(code);
   const kind = gtin.ok ? 'gtin' : anyGtin.ok && /^2|^02|^04/.test(code) ? 'internal' : /^\d+$/.test(code) && code.length >= 8 ? 'invalid_numeric' : 'text';
@@ -188,9 +205,10 @@ function barcodeLookup_(raw) {
     code: kind === 'text' ? up : code,
     kind,
     validation: gtin.ok ? { ok: true, symbology: gtin.symbology } : { ok: false, message: anyGtin.ok ? anyGtin.warnings[0] || gtin.message : anyGtin.message || gtin.message },
-    found: matches.length > 0,
+    found: matches.length > 0 || bundles.length > 0,
     matches,
-    retired: !matches.length && retiredRows.length ? retiredRows.map((b) => ({ retiredAt: b.RetiredAt, reason: b.Reason, owner: ownerInfo_(b) })) : [],
+    bundles,
+    retired: !matches.length && !bundles.length && retiredRows.length ? retiredRows.map((b) => ({ retiredAt: b.RetiredAt, reason: b.Reason, owner: ownerInfo_(b) })) : [],
     reserved: row && row.Status === 'ALLOCATED' ? { type: row.BarcodeType, notes: row.Notes } : null,
   };
 }

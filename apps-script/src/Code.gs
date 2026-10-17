@@ -59,6 +59,30 @@ const ROUTES = {
   'product.save': { perm: 'product.write', write: true, fn: (u, p) => productSave_(u, p.input) },
   'product.setStatus': { perm: 'product.write', write: true, fn: (u, p) => productSetStatus_(u, p) },
   'product.audit': { perm: 'product.read', fn: (u, p) => productAudit_(p.id) },
+  'product.lifecycle': { perm: 'product.read', fn: (u, p) => lifecycleHistory_(p.id) },
+  'variant.deprecate': { perm: 'product.write', write: true, fn: (u, p) => variantDeprecate_(u, p) },
+  'gtin.lookup': { perm: 'product.write', fn: (u, p) => gtinLookup_(u, p) },
+  'gtin.cache': { perm: 'product.read', fn: () => gtinCacheList_() },
+
+  'supplier.list': { perm: 'product.read', fn: (u, p) => supplierList_(p) },
+  'supplier.save': { perm: 'master.write', write: true, fn: (u, p) => supplierSave_(u, p) },
+  'supplier.setStatus': { perm: 'master.write', write: true, fn: (u, p) => supplierSetStatus_(u, p) },
+  'supplierMap.list': { perm: 'product.read', fn: (u, p) => supplierMapList_(p) },
+  'supplierMap.lookup': { perm: 'product.read', fn: (u, p) => supplierCodeLookup_(p.code) },
+  'supplierMap.save': { perm: 'mapping.write', write: true, fn: (u, p) => supplierMapSave_(u, p) },
+  'supplierMap.setStatus': { perm: 'mapping.write', write: true, fn: (u, p) => supplierMapSetStatus_(u, p) },
+
+  'bundle.list': { perm: 'product.read', fn: (u, p) => bundleList_(p) },
+  'bundle.get': { perm: 'product.read', fn: (u, p) => bundleGet_(p.id) },
+  'bundle.validate': { perm: 'product.write', fn: (u, p) => bundleSave_(u, p, { dryRun: true }) },
+  'bundle.save': { perm: 'product.write', write: true, fn: (u, p) => bundleSave_(u, p) },
+  'bundle.setStatus': { perm: 'product.write', write: true, fn: (u, p) => bundleSetStatus_(u, p) },
+  'bundle.resolve': { perm: 'product.read', fn: (u, p) => bundleResolve_(p) },
+
+  'quality.get': { perm: 'product.read', fn: () => dataQuality_() },
+  'attribute.list': { perm: 'product.read', fn: (u, p) => attributeValues_(p) },
+  'attribute.save': { perm: 'master.write', write: true, fn: (u, p) => attributeValueSave_(u, p) },
+  'attribute.delete': { perm: 'master.write', write: true, fn: (u, p) => attributeValueDelete_(u, p) },
   'variant.setStatus': { perm: 'product.write', write: true, fn: (u, p) => variantSetStatus_(u, p) },
   'unit.convert': { perm: 'product.read', fn: (u, p) => unitConvert_(p) },
 
@@ -74,6 +98,7 @@ const ROUTES = {
   'mapping.unmapped': { perm: 'product.read', fn: (u, p) => unmappedSkus_(p.system, p.search) },
   'mapping.create': { perm: 'mapping.write', write: true, fn: (u, p) => createMapping_(u, p) },
   'mapping.action': { perm: 'mapping.write', write: true, fn: (u, p) => mappingAction_(u, p.id, p.action, p.note) },
+  'mapping.summary': { perm: 'product.read', fn: () => mappingSummary_() },
 
   'export.data': { perm: 'export.run', write: true, fn: (u, p) => exportData_(u, p) },
   'export.toSheet': { perm: 'export.run', write: true, fn: (u, p) => exportToSheet_(u, p) },
@@ -81,6 +106,7 @@ const ROUTES = {
   'import.preview': { perm: 'import.run', fn: (u, p) => importRun_(u, p, { dryRun: true }) },
   'import.commit': { perm: 'import.run', write: true, fn: (u, p) => importRun_(u, p) },
   'import.history': { perm: 'import.run', fn: () => importHistory_() },
+  'import.errors': { perm: 'import.run', fn: (u, p) => importErrors_(p.batchId) },
 
   'user.list': { perm: 'user.manage', fn: () => userList_() },
   'user.create': { perm: 'user.manage', write: true, fn: (u, p) => createUser_(p, u) },
@@ -102,8 +128,32 @@ function api(token, action, payload) {
     const route = ROUTES[action];
     if (!route) throw new AppError('Aksi tidak dikenal: ' + action);
     assertPerm_(user, route.perm);
-    const data = route.write ? withLock_(() => route.fn(user, payload || {})) : route.fn(user, payload || {});
-    return { ok: true, data: JSON.parse(JSON.stringify(data === undefined ? null : data)) };
+    const p = payload || {};
+    if (!route.write) {
+      const out = route.fn(user, p);
+      return { ok: true, data: JSON.parse(JSON.stringify(out === undefined ? null : out)) };
+    }
+    // Idempotency key: klik ganda / kirim ulang dengan requestKey yang sama → hasil pertama dikembalikan, tidak disimpan dua kali.
+    // Pengecekan & penyimpanan hasil terjadi DI DALAM lock sehingga dua permintaan bersamaan tetap aman.
+    const idem = p.requestKey ? 'idem:' + user.id + ':' + action + ':' + String(p.requestKey).slice(0, 80) : null;
+    const cache = CacheService.getScriptCache();
+    let replay = null;
+    const data = withLock_(
+      () => {
+        const hit = idem && cache.get(idem);
+        if (hit) {
+          replay = JSON.parse(hit);
+          return replay;
+        }
+        return route.fn(user, p);
+      },
+      (out) => {
+        if (!idem || replay) return;
+        const json = JSON.stringify(out === undefined ? null : out);
+        if (json.length < 90000) cache.put(idem, json, 21600);
+      },
+    );
+    return { ok: true, data: JSON.parse(JSON.stringify(data === undefined ? null : data)), replayed: !!replay };
   } catch (e) {
     if (!(e instanceof AppError)) console.error(e && e.stack ? e.stack : e);
     return { ok: false, error: { message: e instanceof AppError ? e.message : 'Terjadi kesalahan pada server: ' + (e && e.message), code: e.code || 'ERROR', details: e.details || [] } };
@@ -117,7 +167,7 @@ function meInfo_(user) {
     user,
     permissions: ROLE_PERMISSIONS[user.role] || [],
     appName: APP_NAME,
-    config: { skuPrefix: SKU_PREFIX, productCodePrefix: PRODUCT_CODE_PREFIX, maxCombinations: MAX_COMBINATIONS, maxVariants: MAX_VARIANTS, baseUnits: s.base_units, packUnits: s.pack_units, attributeTypes: s.attribute_types, codeLength: s.master_code_length, roles: ROLES.map((r) => ({ id: r, label: ROLE_LABEL[r] })) },
+    config: { skuPrefix: SKU_PREFIX, productCodePrefix: PRODUCT_CODE_PREFIX, maxCombinations: MAX_COMBINATIONS, maxVariants: MAX_VARIANTS, channels: s.channels, channelLabel: CHANNEL_LABEL, lifecycle: LIFECYCLE, statusLabel: STATUS_LABEL, gtinLookup: !!s.gtin_lookup_enabled, baseUnits: s.base_units, packUnits: s.pack_units, attributeTypes: s.attribute_types, codeLength: s.master_code_length, roles: ROLES.map((r) => ({ id: r, label: ROLE_LABEL[r] })) },
   };
 }
 
@@ -156,7 +206,7 @@ function setup() {
   const info = [
     ['Database Master Produk & SKU', ''],
     ['Isi dan ubah data HANYA melalui aplikasi web agar validasi dan audit trail tetap berjalan. Jangan mengganti nama tab atau urutan kolom.', ''],
-    ['Hierarki: Brand + Kategori → MASTER_PRODUCTS → PRODUCT_VARIANTS (SKU internal) → VARIANT_BARCODES; konversi kemasan di UNIT_CONVERSIONS', ''],
+    ['Hierarki: Brand + Kategori → Parent SKU (MASTER_PRODUCTS) → Child SKU (PRODUCT_VARIANTS) → Barcode (VARIANT_BARCODES) & Kemasan (UNIT_CONVERSIONS); Bundle (BUNDLE_*), Supplier (SUPPLIER_*), Kanal (EXTERNAL_SKU_MAPPINGS)', ''],
     ['', ''],
     ['Tab', 'Isi'],
   ]
@@ -179,7 +229,7 @@ function setup() {
     // migrasi dulu (menyalin penghitung lama), baru penghitung yang belum ada dibuat
     const migration = migrateLegacy_('setup');
     const seq = db_('SYSTEM_COUNTERS');
-    ['product_no', 'sku_no', 'internal_barcode'].forEach((n) => !seq.find((r) => r.CounterName === n) && seq.insert({ CounterName: n, Value: '1', UpdatedAt: now_() }));
+    ['product_no', 'sku_no', 'internal_barcode', 'multipack_no', 'bundle_no', 'supplier_no'].forEach((n) => !seq.find((r) => r.CounterName === n) && seq.insert({ CounterName: n, Value: '1', UpdatedAt: now_() }));
     let admin = null;
     if (!db_('Users').rows().length) {
       const email = (Session.getEffectiveUser().getEmail() || 'admin@toko.local').toLowerCase();

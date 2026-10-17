@@ -268,7 +268,7 @@ function commitAll_() {
 }
 
 /** Semua operasi tulis lewat sini: lock -> pulihkan transaksi terputus -> ubah di memori -> commit. */
-function withLock_(fn) {
+function withLock_(fn, onCommitted) {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(30000)) throw new AppError('Sistem sedang sibuk melayani pengguna lain. Coba lagi beberapa detik lagi.', [], 'BUSY');
   try {
@@ -277,6 +277,7 @@ function withLock_(fn) {
     resetDbCache_();
     const out = fn();
     commitAll_();
+    if (onCommitted) onCommitted(out); // masih di dalam lock (mis. simpan hasil untuk idempotency key)
     return out;
   } finally {
     resetDbCache_();
