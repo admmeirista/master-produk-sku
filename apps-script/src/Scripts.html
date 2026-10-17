@@ -1,0 +1,368 @@
+<script>
+/* ═════════════ Scripts — transport API, sesi, ikon, komponen UI, kerangka aplikasi (gaya FMS) ═════════════ */
+var Store = {
+  get: function (k) { try { return window.localStorage.getItem(k); } catch (e) { return Store._m[k] || null; } },
+  set: function (k, v) { try { window.localStorage.setItem(k, v); } catch (e) { Store._m[k] = v; } },
+  del: function (k) { try { window.localStorage.removeItem(k); } catch (e) { delete Store._m[k]; } },
+  _m: {}
+};
+
+/* ───────── ikon (gaya lucide, stroke — sama dengan FMS) ───────── */
+var ICONS = {
+  package: '<path d="M16.5 9.4 7.55 4.24"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.29 7 12 12 20.71 7"/><line x1="12" x2="12" y1="22" y2="12"/>',
+  scan: '<path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><line x1="7" x2="17" y1="12" y2="12"/>',
+  video: '<path d="m22 8-6 4 6 4V8Z"/><rect width="14" height="12" x="2" y="6" rx="2" ry="2"/>',
+  check: '<polyline points="20 6 9 17 4 12"/>',
+  arrowRight: '<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>',
+  arrowLeft: '<path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>',
+  chevron: '<path d="m9 18 6-6-6-6"/>',
+  eye: '<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
+  eyeOff: '<path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.53 13.53 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/>',
+  shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>',
+  grid: '<rect width="7" height="7" x="3" y="3" rx="1.5"/><rect width="7" height="7" x="14" y="3" rx="1.5"/><rect width="7" height="7" x="14" y="14" rx="1.5"/><rect width="7" height="7" x="3" y="14" rx="1.5"/>',
+  list: '<rect width="8" height="4" x="8" y="2" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/>',
+  upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/>',
+  activity: '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
+  alert: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+  alertCircle: '<circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/>',
+  users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+  sliders: '<line x1="4" x2="4" y1="21" y2="14"/><line x1="4" x2="4" y1="10" y2="3"/><line x1="12" x2="12" y1="21" y2="12"/><line x1="12" x2="12" y1="8" y2="3"/><line x1="20" x2="20" y1="21" y2="16"/><line x1="20" x2="20" y1="12" y2="3"/><line x1="2" x2="6" y1="14" y2="14"/><line x1="10" x2="14" y1="8" y2="8"/><line x1="18" x2="22" y1="16" y2="16"/>',
+  file: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/>',
+  user: '<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+  logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/>',
+  keyboard: '<rect width="20" height="16" x="2" y="4" rx="2"/><path d="M6 8h.01"/><path d="M10 8h.01"/><path d="M14 8h.01"/><path d="M18 8h.01"/><path d="M8 12h.01"/><path d="M12 12h.01"/><path d="M16 12h.01"/><path d="M7 16h10"/>',
+  x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+  clock: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+  zap: '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>',
+  search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+  refresh: '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>',
+  camera: '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>',
+  flag: '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/>',
+  undo: '<path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>',
+  truck: '<path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.62L18.3 9.38a1 1 0 0 0-.78-.38H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/>',
+  plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
+  download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>',
+  play: '<polygon points="6 3 20 12 6 21 6 3"/>',
+  lock: '<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+  printer: '<polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect width="12" height="8" x="6" y="14"/>',
+  monitor: '<rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/>',
+  tag: '<path d="M12.59 2.59A2 2 0 0 0 11.17 2H4a2 2 0 0 0-2 2v7.17a2 2 0 0 0 .59 1.42l8.7 8.7a2.43 2.43 0 0 0 3.42 0l6.58-6.58a2.43 2.43 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/>',
+  layers: '<path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/>',
+  link: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+  edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+  power: '<path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.77.04"/>',
+  copy: '<rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+  calc: '<rect width="16" height="20" x="4" y="2" rx="2"/><line x1="8" x2="16" y1="6" y2="6"/><line x1="16" x2="16" y1="14" y2="18"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/>',
+  trash: '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>',
+  chevDown: '<path d="m6 9 6 6 6-6"/>',
+  menu: '<line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="18" y2="18"/>',
+  barcode: '<path d="M3 5v14"/><path d="M8 5v14"/><path d="M12 5v14"/><path d="M17 5v14"/><path d="M21 5v14"/>',
+  boxes: '<path d="M2.97 12.92A2 2 0 0 0 2 14.63v3.24a2 2 0 0 0 .97 1.71l3 1.8a2 2 0 0 0 2.06 0L12 19v-5.5l-5-3-4.03 2.42Z"/><path d="m7 16.5-4.74-2.85"/><path d="m7 16.5 5-3"/><path d="M7 16.5v5.17"/><path d="M12 13.5V19l3.97 2.38a2 2 0 0 0 2.06 0l3-1.8a2 2 0 0 0 .97-1.71v-3.24a2 2 0 0 0-.97-1.71L17 10.5l-5 3Z"/><path d="m17 16.5-5-3"/><path d="m17 16.5 4.74-2.85"/><path d="M17 16.5v5.17"/><path d="M7.97 4.42A2 2 0 0 0 7 6.13v4.37l5 3 5-3V6.13a2 2 0 0 0-.97-1.71l-3-1.8a2 2 0 0 0-2.06 0l-3 1.8Z"/><path d="M12 8 7.26 5.15"/><path d="m12 8 4.74-2.85"/><path d="M12 13.5V8"/>',
+  sparkles: '<path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/>'
+};
+function icon(name, cls) { return '<svg class="ic ' + (cls || '') + '" viewBox="0 0 24 24" aria-hidden="true">' + (ICONS[name] || '') + '</svg>'; }
+var APP_NAME = 'Master Produk & SKU';
+var ASSET_BASE = 'https://admmeirista.github.io/fms-meirista/';
+function brandLogo() { return '<img class="brand-logo" src="' + ASSET_BASE + 'logo-full.webp" alt="Meirista Cosmetics" onerror="this.style.display=\'none\'">'; }
+function brand(cls) { return '<div class="brand ' + (cls || '') + '"><img class="mark" src="' + BRAND_MARK + '" alt=""><div class="bt"><div class="word">Meirista</div><div class="tag">Master Produk &amp; SKU</div></div></div>'; }
+function initials(name) { return String(name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(function (w) { return w[0]; }).join('').toUpperCase(); }
+
+/* ───────── util ───────── */
+function $(sel, root) { return (root || document).querySelector(sel); }
+function $$(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
+function $app() { return document.getElementById('app'); }
+function esc(s) { return String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+function fmtDate(v, withTime) {
+  if (!v) return '—';
+  try { return new Date(v).toLocaleString('id-ID', withTime === false ? { day: '2-digit', month: 'short', year: 'numeric' } : { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch (e) { return String(v); }
+}
+function fmtNum(n) { return Number(n || 0).toLocaleString('id-ID'); }
+function debounce(fn, ms) { var t; return function () { var a = arguments, s = this; clearTimeout(t); t = setTimeout(function () { fn.apply(s, a); }, ms); }; }
+function uid() { return Math.random().toString(36).slice(2, 10); }
+function normCode(s) { return String(s || '').toUpperCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^A-Z0-9]/g, ''); }
+var STATUS_TXT = { ACTIVE: 'Aktif', INACTIVE: 'Nonaktif', allocated: 'Dialokasikan', assigned: 'Dipakai', retired: 'Dipensiunkan', void: 'Void', mapped: 'Dipetakan', exported: 'Diekspor', confirmed: 'Terkonfirmasi', mismatch: 'Tidak cocok', error: 'Error', admin: 'Admin', data_entry: 'Admin Data', viewer: 'Viewer', reviewer: 'Admin Data' };
+function badge(s, txt) { return s ? '<span class="badge b-' + esc(s) + '">' + esc(txt || STATUS_TXT[s] || s) + '</span>' : ''; }
+function can(p) { return !!(App.me && App.me.permissions.indexOf(p) >= 0); }
+function cfg() { return (App.me && App.me.config) || {}; }
+function emptyBox(title, sub, ic) { return '<div class="empty">' + icon(ic || 'package') + '<b>' + esc(title) + '</b>' + (sub ? '<div>' + sub + '</div>' : '') + '</div>'; }
+function loadingBox(t) { return '<div class="loading"><span class="spinner"></span>' + esc(t || 'Memuat…') + '</div>'; }
+function errBox(msg) { return '<div class="err-box">' + icon('alertCircle') + '<span>' + esc(msg) + '</span></div>'; }
+function pager(d, onPage) {
+  var pages = Math.max(1, Math.ceil(d.total / d.pageSize));
+  var id = 'pg' + uid();
+  setTimeout(function () {
+    var el = document.getElementById(id); if (!el) return;
+    $('[data-p=prev]', el).onclick = function () { if (d.page > 1) onPage(d.page - 1); };
+    $('[data-p=next]', el).onclick = function () { if (d.page < pages) onPage(d.page + 1); };
+  });
+  return '<div class="pager" id="' + id + '"><span>' + fmtNum(d.total) + ' data · hal. ' + d.page + '/' + pages + '</span><button class="btn sm" data-p="prev"' + (d.page <= 1 ? ' disabled' : '') + '>' + icon('arrowLeft') + '</button><button class="btn sm" data-p="next"' + (d.page >= pages ? ' disabled' : '') + '>' + icon('arrowRight') + '</button></div>';
+}
+
+/* ───────── progress global, toast, modal (sama dengan FMS) ───────── */
+var Net = { pending: 0 };
+function netStart(quiet) {
+  if (quiet) return;
+  Net.pending++;
+  var b = document.getElementById('topbar');
+  if (!b) { b = document.createElement('div'); b.id = 'topbar'; document.body.appendChild(b); }
+  b.className = ''; void b.offsetWidth; b.className = 'on';
+}
+function netEnd(quiet) {
+  if (quiet) return;
+  Net.pending = Math.max(0, Net.pending - 1);
+  var b = document.getElementById('topbar');
+  if (b && !Net.pending) b.className = 'done';
+}
+function toast(msg, kind, ms) {
+  var box = document.getElementById('toasts');
+  if (!box) { box = document.createElement('div'); box.id = 'toasts'; document.body.appendChild(box); }
+  var t = document.createElement('div');
+  t.className = 'toast ' + (kind || '');
+  t.innerHTML = icon(kind === 'ok' ? 'check' : kind === 'err' ? 'alertCircle' : kind === 'warn' ? 'alert' : 'zap') + '<span>' + esc(msg) + '</span>';
+  box.appendChild(t);
+  setTimeout(function () { t.remove(); }, ms || (kind === 'err' ? 6500 : 3500));
+}
+function modal(html, opts) {
+  opts = opts || {};
+  var bg = document.createElement('div');
+  bg.className = 'modal-bg';
+  bg.innerHTML = '<div class="modal ' + (opts.wide ? 'wide' : '') + '">' + html + '</div>';
+  document.body.appendChild(bg);
+  var m = bg.firstChild;
+  m.close = function () { bg.remove(); if (opts.onClose) opts.onClose(); };
+  bg.addEventListener('mousedown', function (e) { if (e.target === bg && !opts.sticky) m.close(); });
+  $$('[data-close]', m).forEach(function (b) { b.onclick = m.close; });
+  return m;
+}
+function ask(msg, okLabel, danger) {
+  return new Promise(function (resolve) {
+    var answered = false;
+    var m = modal('<h3>Konfirmasi</h3><p style="color:#4e5751;margin:0">' + esc(msg) + '</p><div class="row" style="margin-top:20px"><button class="btn ' + (danger ? 'err' : 'pri') + '" id="ask-ok">' + esc(okLabel || 'Ya') + '</button><button class="btn" data-close>Batal</button></div>',
+      { onClose: function () { if (!answered) resolve(false); } });
+    $('#ask-ok', m).onclick = function () { answered = true; m.close(); resolve(true); };
+  });
+}
+function promptText(title, label, opts) {
+  opts = opts || {};
+  return new Promise(function (resolve) {
+    var done = false;
+    var m = modal('<h3>' + esc(title) + '</h3>' + (opts.html || '') + '<label class="f">' + esc(label) + '</label>' +
+      (opts.multiline === false ? '<input class="in w100" id="pt" value="' + esc(opts.value || '') + '">' : '<textarea class="in w100" rows="3" id="pt">' + esc(opts.value || '') + '</textarea>') +
+      '<div class="row" style="margin-top:16px"><button class="btn ' + (opts.danger ? 'err' : 'pri') + '" id="pok">' + esc(opts.ok || 'Simpan') + '</button><button class="btn" data-close>Batal</button></div>', { onClose: function () { if (!done) resolve(null); } });
+    var t = $('#pt', m); t.focus(); if (t.select) t.select();
+    var go = function () { var v = t.value.trim(); if ((opts.min || 0) > v.length) { toast('Wajib diisi (min. ' + opts.min + ' karakter).', 'err'); return; } done = true; m.close(); resolve(v); };
+    $('#pok', m).onclick = go;
+    if (opts.multiline === false) t.onkeydown = function (e) { if (e.key === 'Enter') go(); };
+  });
+}
+function busy(btn, promise) {
+  if (btn) { btn.classList.add('busy'); btn.disabled = true; }
+  var end = function () { if (btn) { btn.classList.remove('busy'); btn.disabled = false; } };
+  return promise.then(function (v) { end(); return v; }, function (e) { end(); throw e; });
+}
+
+/* ───────── transport API ─────────
+ * Di dalam Apps Script: google.script.run.api(token, action, payload).
+ * Di luar (GitHub Pages): fetch POST ke URL Web App (doPost) — window.RPM_API_URL.
+ * opts: silent (tanpa toast error), quiet (tanpa progress bar). Error: { code, message, details }. */
+function api(action, payload, opts) {
+  opts = opts || {};
+  netStart(opts.quiet);
+  return new Promise(function (resolve, reject) {
+    var done = function (r) {
+      netEnd(opts.quiet);
+      if (typeof r === 'string') { try { r = JSON.parse(r); } catch (e) { r = null; } }
+      if (r && r.ok) return resolve(r.data);
+      var e = (r && r.error) || { message: 'Respon server tidak valid.', code: 'BAD_RESPONSE' };
+      var err = { code: e.code || 'ERROR', message: e.message || 'Terjadi kesalahan.', details: e.details || [] };
+      if (err.code === 'UNAUTHENTICATED' && action !== 'auth.login') { App.forget(); App.showLogin(err.message); }
+      else if (!opts.silent) toast(err.message, 'err');
+      reject(err);
+    };
+    var fail = function (e) { done({ ok: false, error: { code: 'NETWORK', message: 'Koneksi ke server gagal: ' + (e && e.message || e) } }); };
+    var body = payload === undefined ? null : payload;
+    if (window.RPM_API_URL) {
+      fetch(window.RPM_API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ token: App.token, action: action, payload: body }), redirect: 'follow' })
+        .then(function (res) { return res.text(); }).then(done, fail);
+    } else {
+      google.script.run.withSuccessHandler(done).withFailureHandler(fail).api(App.token, action, body);
+    }
+  });
+}
+
+/* ───────── searchable dropdown ─────────
+ * combo(el, { load: (q) => Promise<items> | items, value: item|null, label(item), sub(item), code(item),
+ *             placeholder, onChange(item), disabled, empty }) */
+function combo(host, o) {
+  var cur = o.value || null, items = [], active = -1, open = false, seq = 0;
+  host.className = 'cb-wrap';
+  host.innerHTML = '<input class="in" autocomplete="off" spellcheck="false" placeholder="' + esc(o.placeholder || 'Cari…') + '"' + (o.disabled ? ' disabled' : '') + '>' +
+    (o.disabled ? '' : '<button type="button" class="cb-clear hidden" tabindex="-1" title="Kosongkan">' + icon('x') + '</button>') + '<span class="cb-caret">' + icon('chevDown') + '</span><div class="cb-list hidden"></div>';
+  var input = $('input', host), list = $('.cb-list', host), clear = $('.cb-clear', host);
+  var show = function () { input.value = cur ? o.label(cur) : ''; if (clear) clear.classList.toggle('hidden', !cur); };
+  var render = function () {
+    list.innerHTML = items.length ? items.map(function (it, i) {
+      return '<div class="cb-opt' + (i === active ? ' on' : '') + '" data-i="' + i + '"><div style="min-width:0"><div class="t">' + esc(o.label(it)) + '</div>' + (o.sub && o.sub(it) ? '<div class="s">' + esc(o.sub(it)) + '</div>' : '') + '</div>' + (o.code && o.code(it) ? '<span class="chip-code ghost">' + esc(o.code(it)) + '</span>' : '') + '</div>';
+    }).join('') : '<div class="cb-empty">' + (o.empty || 'Tidak ada hasil') + '</div>';
+    $$('.cb-opt', list).forEach(function (el) { el.onmousedown = function (e) { e.preventDefault(); pick(items[Number(el.getAttribute('data-i'))]); }; });
+    var on = $('.cb-opt.on', list); if (on && on.scrollIntoView) on.scrollIntoView({ block: 'nearest' });
+  };
+  var query = function (q) {
+    var my = ++seq;
+    Promise.resolve(o.load(q)).then(function (res) { if (my !== seq) return; items = res || []; active = items.length ? 0 : -1; render(); }).catch(function () {});
+  };
+  var openList = function () { if (o.disabled) return; open = true; list.classList.remove('hidden'); query(input.value && cur && input.value === o.label(cur) ? '' : input.value); };
+  var close = function () { open = false; list.classList.add('hidden'); show(); };
+  var pick = function (it) { cur = it; close(); if (o.onChange) o.onChange(it); };
+  input.onfocus = function () { input.select(); openList(); };
+  input.oninput = debounce(function () { if (!open) openList(); else query(input.value); }, 120);
+  input.onblur = function () { setTimeout(close, 120); };
+  input.onkeydown = function (e) {
+    if (e.key === 'ArrowDown') { e.preventDefault(); if (!open) openList(); active = Math.min(items.length - 1, active + 1); render(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); active = Math.max(0, active - 1); render(); }
+    else if (e.key === 'Enter') { if (open && items[active]) { e.preventDefault(); pick(items[active]); } }
+    else if (e.key === 'Escape') { input.blur(); }
+  };
+  if (clear) clear.onmousedown = function (e) { e.preventDefault(); cur = null; show(); if (o.onChange) o.onChange(null); };
+  show();
+  return { get: function () { return cur; }, set: function (it) { cur = it; show(); }, focus: function () { input.focus(); }, input: input };
+}
+/** Saring daftar lokal untuk combo: cocokkan nama atau kode, abaikan huruf besar/kecil. */
+function filterLocal(list, q, fields) {
+  q = String(q || '').toLowerCase().trim();
+  if (!q) return list.slice(0, 200);
+  return list.filter(function (x) { return fields.some(function (f) { return String(x[f] || '').toLowerCase().indexOf(q) >= 0; }); }).slice(0, 200);
+}
+
+/* ───────── cache referensi (brand, kategori) ───────── */
+var Ref = {
+  data: {},
+  get: function (kind, force) {
+    if (!force && Ref.data[kind]) return Promise.resolve(Ref.data[kind]);
+    return api(kind + '.list', {}, { quiet: true }).then(function (rows) { Ref.data[kind] = rows; return rows; });
+  },
+  drop: function (kind) { delete Ref.data[kind]; }
+};
+
+/* ───────── unduh XLSX (kolom SKU/barcode tetap teks) ───────── */
+function downloadTable(d, format) {
+  var aoa = [d.headers].concat(d.rows);
+  var ws = XLSX.utils.aoa_to_sheet(aoa);
+  (d.textColumns || []).forEach(function (c) { for (var r = 1; r < aoa.length; r++) { var a = XLSX.utils.encode_cell({ r: r, c: c }); if (ws[a]) { ws[a].t = 's'; ws[a].v = String(ws[a].v); ws[a].z = '@'; } } });
+  var wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Data');
+  if (d.note) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['CATATAN'], [d.note]]), 'CATATAN');
+  XLSX.writeFile(wb, d.fileName + (format === 'csv' ? '.csv' : '.xlsx'), { bookType: format === 'csv' ? 'csv' : 'xlsx' });
+}
+
+/* ═════════════ Aplikasi: login, kerangka sidebar, router ═════════════ */
+var NAV = [
+  ['MASTER DATA', [['dashboard', 'Dashboard', 'grid'], ['register', 'Registrasi Produk', 'plus', 'product.write'], ['products', 'Direktori Produk', 'package'], ['brands', 'Master Brand', 'tag'], ['categories', 'Master Kategori', 'layers']]],
+  ['IDENTITAS & INTEGRASI', [['barcodes', 'Barcode', 'barcode'], ['mapping', 'Mapping BeeCloud / Shopee', 'link'], ['export', 'Ekspor Data', 'download', 'export.run']]],
+  ['SISTEM', [['users', 'Pengguna', 'users', 'user.manage'], ['settings', 'Pengaturan', 'sliders'], ['audit', 'Audit Log', 'activity', 'audit.read']]]
+];
+var Pages = {};
+var App = {
+  token: Store.get('rpm_token'),
+  me: null,
+  page: null,
+  leaveGuard: null,
+
+  start: function () {
+    if (!App.token) { api('ping', {}, { silent: true, quiet: true }).catch(function () {}); return App.showLogin(); }
+    var cached = null;
+    try { cached = JSON.parse(Store.get('rpm_me') || 'null'); } catch (e) { cached = null; }
+    if (cached && cached.user) App.enter(cached);
+    else $app().innerHTML = '<div class="loading" style="justify-content:center;min-height:100vh"><span class="spinner"></span>Memuat ruang kerja…</div>';
+    api('auth.me', {}, { silent: true, quiet: !!cached }).then(function (me) {
+      var changed = !cached || cached.user.role !== me.user.role;
+      App.remember(me);
+      if (changed) App.enter(me);
+    }).catch(function (e) { if (e.code !== 'UNAUTHENTICATED' && !cached) App.showLogin(e.message); });
+  },
+  remember: function (me) { App.me = me; Store.set('rpm_me', JSON.stringify(me)); },
+  forget: function () { App.token = null; App.me = null; Store.del('rpm_token'); Store.del('rpm_me'); Ref.data = {}; },
+
+  authShell: function (formHtml) {
+    var flow = [['tag', 'Master brand & kategori', 'Cukup isi nama — kode dibuat otomatis & permanen'], ['package', 'Identifikasi produk', 'Product master, kode produk, satuan dasar'],
+      ['layers', 'Varian & GTIN', 'Kombinasi atribut, satu GTIN per varian fisik'], ['boxes', 'Satuan & konversi', 'BOX, KARTON, isi kemasan per varian']];
+    $app().innerHTML = '<div class="auth"><section class="auth-art"><div class="art-top">' + brand() + '</div>' +
+      '<div class="art-mid"><div class="eyebrow eb">Single source of truth produk</div>' +
+      '<h1>Satu master,<br>SKU <em>pasti.</em></h1>' +
+      '<p class="lead">Registrasi produk kosmetik yang rapi — dari brand hingga kemasan karton — siap dipakai BeeCloud dan Shopee.</p>' +
+      '<ol class="flow">' + flow.map(function (f, i) { return '<li><div class="node">' + icon(f[0]) + '</div><div><div class="k">Tahap ' + (i + 1) + '</div><div class="v">' + f[1] + '</div><div class="d">' + f[2] + '</div></div></li>'; }).join('') + '</ol></div>' +
+      '<div class="foot"><span>© ' + new Date().getFullYear() + ' Meirista</span><span class="sep"></span>' + icon('lock') + '<span>Akses individual · tercatat di audit trail</span></div></section>' +
+      '<section class="auth-form"><div class="box"><div class="auth-logo">' + brandLogo() + '</div>' + formHtml + '</div><div class="auth-tag">' + APP_NAME.toUpperCase() + '</div></section></div>';
+  },
+  showLogin: function (msg) {
+    App.page = null;
+    App.authShell('<form id="lf" autocomplete="on"><div class="mobile-brand">' + brand('dark') + '</div><div class="eyebrow">Selamat datang</div><h2>Masuk ke akun Anda</h2><div class="sub">Gunakan email dan password yang diberikan administrator.</div>' +
+      '<label class="f">Email</label><input class="in" name="email" type="email" placeholder="nama@toko.com" autocomplete="username" autocapitalize="off" spellcheck="false" required>' +
+      '<label class="f">Password</label><div class="pw"><input class="in" type="password" name="password" placeholder="Masukkan password" autocomplete="current-password" required><button type="button" class="eye" tabindex="-1" aria-label="Tampilkan password">' + icon('eye') + '</button></div>' +
+      '<div id="lerr">' + (msg ? errBox(msg) : '') + '</div>' +
+      '<button class="cta" type="submit"><span>Masuk</span>' + icon('arrowRight') + '</button>' +
+      '<div class="auth-help">' + icon('shield') + '<div>Lupa password?<b>Hubungi Admin toko untuk reset password akun Anda.</b></div></div></form>');
+    var f = document.getElementById('lf');
+    App.bindEye(f);
+    f.email.focus();
+    f.onsubmit = function (ev) {
+      ev.preventDefault();
+      var b = $('.cta', f); b.classList.add('busy'); b.disabled = true;
+      $('#lerr').innerHTML = '';
+      api('auth.login', { email: f.email.value, password: f.password.value }, { silent: true })
+        .then(function (r) {
+          App.token = r.token; Store.set('rpm_token', r.token);
+          return api('auth.me', {}, { silent: true });
+        })
+        .then(function (me) { App.remember(me); App.enter(me); })
+        .catch(function (e) { $('#lerr').innerHTML = errBox(e.message); b.classList.remove('busy'); b.disabled = false; f.password.value = ''; f.password.focus(); });
+    };
+  },
+  bindEye: function (root) {
+    $$('.pw', root).forEach(function (w) {
+      var i = $('input', w), b = $('.eye', w);
+      b.onclick = function () { var show = i.type === 'password'; i.type = show ? 'text' : 'password'; b.innerHTML = icon(show ? 'eyeOff' : 'eye'); i.focus(); };
+    });
+  },
+
+  enter: function (me) {
+    App.remember(me);
+    var u = me.user;
+    var nav = function (n) { return can(n[3] || 'product.read') ? '<a class="nv" data-nav="' + n[0] + '">' + icon(n[2]) + '<span class="grow">' + n[1] + '</span></a>' : ''; };
+    $app().innerHTML = '<div class="adm"><div class="mtop"><button class="icon-btn" id="m-open" aria-label="Menu">' + icon('menu') + '</button>' + brand('sm') + '</div>' +
+      '<div class="side-bg" id="side-bg"></div><nav class="side" id="side">' + brand() +
+      NAV.map(function (s, i) { var links = s[1].map(nav).join(''); return links ? '<div class="sec"' + (i ? ' style="margin-top:10px"' : '') + '>' + s[0] + '</div>' + links : ''; }).join('') +
+      '<div class="me"><a class="avatar" data-nav="profile" style="cursor:pointer" title="Profil & password">' + esc(initials(u.fullName)) + '</a><div style="min-width:0;cursor:pointer" data-nav="profile"><div class="n">' + esc(u.fullName) + '</div><div class="r">' + esc(STATUS_TXT[u.role] || u.role) + '</div></div><button id="adm-out" title="Keluar">' + icon('logout') + '</button></div></nav><main class="main" id="main"></main></div>';
+    $$('[data-nav]').forEach(function (a) { a.onclick = function () { App.go(a.getAttribute('data-nav')); }; });
+    $('#adm-out').onclick = function () { ask('Keluar dari aplikasi?', 'Keluar').then(function (y) { if (y) App.logout(); }); };
+    var side = $('#side'), bg = $('#side-bg');
+    $('#m-open').onclick = function () { side.classList.add('open'); bg.classList.add('open'); };
+    bg.onclick = function () { side.classList.remove('open'); bg.classList.remove('open'); };
+    App.go(App.page || 'dashboard', App.pageArg);
+  },
+  /** Pindah halaman. arg diteruskan ke halaman (mis. id produk). */
+  go: function (page, arg, opts) {
+    if (App.leaveGuard && !(opts && opts.force)) {
+      var g = App.leaveGuard;
+      if (!g()) return ask('Isian registrasi belum disimpan. Tinggalkan halaman ini? (Isian tetap tersimpan sebagai draf di perangkat ini.)', 'Tinggalkan').then(function (y) { if (y) { App.leaveGuard = null; App.go(page, arg); } });
+    }
+    App.leaveGuard = null;
+    if (!Pages[page]) page = 'dashboard';
+    App.page = page; App.pageArg = arg;
+    $$('.side a.nv').forEach(function (a) { a.classList.toggle('on', a.getAttribute('data-nav') === page || (page === 'product' && a.getAttribute('data-nav') === 'products')); });
+    var side = $('#side'); if (side) { side.classList.remove('open'); $('#side-bg').classList.remove('open'); }
+    var main = $('#main');
+    main.innerHTML = loadingBox();
+    window.scrollTo(0, 0);
+    try { Pages[page](main, arg); } catch (e) { main.innerHTML = errBox('Halaman gagal dimuat: ' + e.message); console.error(e); }
+  },
+  logout: function () {
+    api('auth.logout', {}, { silent: true }).catch(function () {});
+    App.forget(); App.page = null; App.showLogin();
+  }
+};
+/** Header halaman gaya FMS. */
+function pageHead(eyebrow, title, actions, sub) {
+  return '<div class="ph"><div><div class="eyebrow">' + esc(eyebrow) + '</div><h2>' + esc(title) + '</h2>' + (sub ? '<div class="muted" style="margin-top:4px">' + sub + '</div>' : '') + '</div><div class="act">' + (actions || '') + '</div></div>';
+}
+</script>

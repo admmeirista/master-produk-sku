@@ -22,6 +22,7 @@ class Range {
     return out;
   }
   setValues(vals) {
+    if (this.sheet.failOnWrite && this.sheet.failOnWrite()) throw new Error('Simulasi kegagalan tulis di ' + this.sheet.name);
     if (vals.length !== this.nr || vals.some((v) => v.length !== this.nc)) throw new Error('Ukuran setValues tidak cocok dengan range');
     vals.forEach((row, i) => {
       const target = (this.sheet.data[this.r - 1 + i] = this.sheet.data[this.r - 1 + i] || []);
@@ -67,6 +68,12 @@ class Sheet {
   deleteRow(r) {
     this.data.splice(r - 1, 1);
   }
+  deleteRows(r, n) {
+    this.data.splice(r - 1, n);
+  }
+  getLastColumn() {
+    return (this.data[0] || []).length;
+  }
   setFrozenRows() {}
   clear() {
     this.data = [];
@@ -84,11 +91,13 @@ class Sheet {
 }
 
 function createGas({ ownerEmail = 'owner@toko.local' } = {}) {
+  const faults = {}; // nama tab -> sisa tulisan sebelum gagal (simulasi Sheets error di tengah commit)
   const sheets = new Map();
   const ss = {
     getSheetByName: (n) => sheets.get(n) || null,
     insertSheet: (n) => {
       const s = new Sheet(n);
+      s.failOnWrite = () => faults[n] !== undefined && faults[n]-- === 0;
       sheets.set(n, s);
       return s;
     },
@@ -115,14 +124,18 @@ function createGas({ ownerEmail = 'owner@toko.local' } = {}) {
       formatDate: (d) => d.toISOString().slice(0, 16).replace(/[-:T]/g, ''),
     },
     ScriptApp: { getProjectTriggers: () => [], newTrigger: () => ({}) },
-    HtmlService: {},
+    HtmlService: { XFrameOptionsMode: { DEFAULT: 'DEFAULT' } },
     ContentService: { MimeType: { JSON: 'application/json' }, createTextOutput: (s) => ({ content: s, setMimeType() { return this; }, getContent() { return this.content; } }) },
   };
   vm.createContext(ctx);
-  const order = ['Config', 'Lib', 'Db', 'Auth', 'Barcodes', 'Products', 'Duplicates', 'Workflow', 'Mappings', 'Imports', 'Admin', 'Api'];
-  const src = order.map((f) => fs.readFileSync(path.join(__dirname, '../src', f + '.gs'), 'utf8')).join('\n;\n');
+  const dir = path.join(__dirname, '../src');
+  const first = ['Config.gs', 'Lib.gs'];
+  const files = first.concat(fs.readdirSync(dir).filter((f) => f.endsWith('.gs') && first.indexOf(f) < 0).sort());
+  const src = files.map((f) => fs.readFileSync(path.join(dir, f), 'utf8')).join('\n;\n');
   vm.runInContext(src.replace("'__DB_SPREADSHEET_ID__'", "'test-db'").replace(/const DB_SPREADSHEET_ID = '[^']*';/, "const DB_SPREADSHEET_ID = 'test-db';"), ctx, { filename: 'apps-script-bundle.js' });
-  return { ctx, ss, sheets, cache };
+  /** Gagalkan penulisan ke tab tertentu setelah n tulisan berhasil (null = matikan). */
+  const failWrites = (tab, n) => (n === null ? delete faults[tab] : (faults[tab] = n));
+  return { ctx, ss, sheets, cache, failWrites };
 }
 
 module.exports = { createGas };

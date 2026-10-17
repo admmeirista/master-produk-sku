@@ -1,94 +1,77 @@
-# Master Produk & SKU — versi Google Apps Script
+# Master Produk & SKU — Google Apps Script (v2)
 
-Web App Apps Script dengan **Google Sheets sebagai database**, berbahasa Indonesia, berisi modul:
-dashboard, registrasi produk 6 langkah, direktori & detail produk, persetujuan (maker-checker),
-brand & kategori, barcode (generator internal + registry + histori), SKU & kemasan (multipack, bundle/BOM),
-import/export Excel, kualitas data, mapping BeeCloud/Shopee, audit trail, pengguna & pengaturan.
+Web App Apps Script dengan **Google Sheets sebagai database**, berbahasa Indonesia, tampilan mengikuti **FMS**
+(font Nunito, sidebar gelap, toast, modal). Hierarki data:
 
-## Arsitektur
-
-* **Database**: file Google Sheets terpisah [Master Produk DB](https://docs.google.com/spreadsheets/d/11f_luP2oWDJHklnG4BjxWTjXXRA57XuO-un6tuAJbm4/edit)
-  di folder Drive `Master Produk Toko Kosmetik`. Skema tabelnya dirancang baru (20 tabel + tab "Tentang", lihat `SCHEMA` di `Config.gs`; sudah dibuat lengkap di Drive akun adm.meirista@gmail.com);
-  template Excel lama hanya dipakai sebagai bahan analisis.
-* **Aplikasi**: proyek Apps Script **mandiri** (tidak menempel di spreadsheet) yang membuka database lewat
-  `DB_SPREADSHEET_ID` di `Config.gs`.
-
-## Cara pasang (±10 menit, tanpa tool tambahan)
-
-Lakukan dengan akun Google pemilik file database: **adm.meirista@gmail.com**.
-
-1. Buka https://script.google.com › **Proyek baru** › beri nama "Master Produk & SKU".
-2. Buat file sesuai isi folder [`src/`](src) (nama harus sama persis):
-   * File skrip (**+ › Skrip**): `Config`, `Lib`, `Db`, `Auth`, `Barcodes`, `Products`, `Duplicates`, `Workflow`, `Mappings`, `Imports`, `Admin`, `Api` → salin isi `*.gs`.
-   * File HTML (**+ › HTML**): `Index`, `Styles`, `Core`, `Pages`, `Wizard` → salin isi `*.html`.
-   * **Setelan proyek** (ikon roda gigi) › centang *Tampilkan file manifes "appsscript.json"* › salin isi `appsscript.json`.
-   * Hapus file bawaan `Kode.gs`/`Code.gs`.
-3. Pastikan `DB_SPREADSHEET_ID` di `Config.gs` berisi ID file database (sudah terisi). Bila memakai file lain, ambil ID dari URL-nya: `docs.google.com/spreadsheets/d/<ID>/edit`.
-4. Pilih fungsi **`setup`** › **Jalankan** › izinkan akses. Struktur tab sudah ada di file database; `setup` memeriksa/melengkapinya (header, format teks, tab "Tentang",
-   pengaturan default, nomor urut) dan membuat **akun Admin pertama** (email akun Anda; password sementara ada di **Log eksekusi**).
-   Aman dijalankan ulang: tab yang sudah ada tidak dihapus.
-5. **Terapkan › Deployment baru › Jenis: Aplikasi web**:
-   * *Jalankan sebagai*: **Saya** (pemilik) — staf tidak perlu akses ke file database.
-   * *Siapa yang memiliki akses*: **Siapa saja yang memiliki Akun Google** (login aplikasi tetap wajib).
-6. Buka URL Web App → login → **Pengaturan & Profil › Ganti password** → menu **Pengguna** untuk membuat akun staf.
-7. Isi **Brand & Kategori** (menu Brand & Kategori, atau Import file berkolom Nama Brand, Kode Brand, Nama Kategori, Kode Kategori), lalu mulai registrasi produk.
-8. (Disarankan) Di editor Apps Script, jalankan fungsi **`installDailyBackup`** sekali untuk backup harian otomatis ke Drive.
-
-Setiap kali kode diubah: **Terapkan › Kelola deployment › Edit › Versi baru** (URL tetap sama).
-
-
-### Alternatif: clasp (bagi yang terbiasa command line)
-
-```bash
-npm install -g @google/clasp
 ```
-```bash
-clasp login
-```
-Lalu buat `apps-script/.clasp.json` berisi `{"scriptId":"<ID skrip dari Setelan proyek>","rootDir":"src"}` dan jalankan:
-```bash
-clasp push
+Brand + Kategori → Product Master → Product Variant (SKU + GTIN/barcode) → Satuan Kemasan & Konversi
 ```
 
-## (Opsional) Memasukkan data dari template Excel lama
+Menu: Dashboard · **Registrasi Produk** (Identifikasi → Varian → Satuan & Konversi → Simpan Produk) · Direktori Produk ·
+**Master Brand** & **Master Kategori** (cukup isi nama, kode otomatis) · Barcode · Mapping BeeCloud/Shopee · Ekspor Data ·
+Pengguna · Pengaturan · Audit Log. Tanpa harga dan tanpa approval — produk langsung aktif setelah disimpan.
 
-Database dimulai kosong. Bila suatu saat ingin memasukkan data lama: menu **Import & Export** → pilih file `Template_Master_Produk_SKU_BeeCloud Fix.xlsx` (dibaca di browser), urutan:
-1. *Referensi Brand & Kategori* (sheet Referensi Kode)
-2. *Barcode Internal Terpakai* (sheet Generator Barcode Internal)
-3. *Master Produk (template lama)*
-4. *Listing Shopee* (sheet Data Performa Produk)
+Analisis revisi, perbandingan struktur, risiko & rencana migrasi: [REVISI-ANALISIS.md](REVISI-ANALISIS.md).
 
-Hasil uji pada workbook asli (emulator): 121 brand + 76 kategori, 3 kode internal, **554 SKU** (114 produk) tersimpan,
-118 baris ditolak dengan alasan jelas (113 tidak lengkap, 5 duplikat barcode Viva Air Mawar), **125 listing Shopee**
-terpetakan. Unduh *laporan error*, perbaiki di Excel, lalu import ulang — baris yang sudah masuk otomatis dilewati.
+## Struktur kode (`src/`)
 
-## Desain penting (karena Google Sheets bukan database transaksional)
-
-| Risiko di Sheets | Pengendalian di aplikasi |
+| File | Isi |
 |---|---|
-| Dua orang menyimpan bersamaan | Semua penulisan lewat `LockService` (script lock) — diproses bergiliran |
-| Tidak ada rollback | Perubahan **di-buffer di memori** dan baru ditulis setelah seluruh validasi sukses; bila error, tidak ada yang tertulis |
-| Barcode/SKU berubah jadi angka (`8.99E+12`, nol hilang) | Semua sel berformat teks `@`; file import dibaca dengan nilai mentah lalu dikonversi utuh |
-| Data diedit langsung di sheet | Web App "Execute as me" + staf tanpa akses edit; tab diberi proteksi peringatan; file database terpisah dari kode; semua aksi tercatat di `AuditLog` |
-| Duplikasi SKU/barcode/kode | Dicek di dalam lock sebelum menulis (SKU unik selamanya, barcode satu pemilik aktif) |
-| Alokasi barcode internal ganda | Nomor urut di tab `Sequences`, dialokasikan di dalam lock, kode yang sudah ada dilewati, `requestKey` idempoten |
-| Kehilangan data | Fungsi `backupNow` + backup harian otomatis `installDailyBackup` (salinan file database di Drive) |
+| `Code.gs` | `doGet`/`doPost`, router API + hak akses, `setup()`, backup |
+| `Config.gs` | ID database, skema tab, role, pengaturan default |
+| `DatabaseService.gs` | Akses Sheets (batch), lock, staging, jurnal transaksi & rollback |
+| `Lib.gs` | Aturan murni: GTIN, normalisasi nama, kode otomatis, SKU, kombinasi varian, konversi |
+| `MasterDataService.gs`, `BrandService.gs`, `CategoryService.gs` | Master brand & kategori |
+| `ProductService.gs`, `VariantService.gs`, `UnitService.gs` | Registrasi/edit produk, varian, konversi satuan |
+| `BarcodeService.gs` | Registry GTIN & barcode internal |
+| `MappingService.gs` | Mapping BeeCloud/Shopee & ekspor |
+| `AdminService.gs`, `AuthService.gs` | Pengguna, pengaturan, dashboard, audit, login |
+| `MigrationService.gs` | Migrasi eksplisit data struktur v1 |
+| `Index.html`, `Styles.html`, `Scripts.html`, `Pages.html`, `Wizard.html`, `Logo.html` | Antarmuka (HTML Service, vanilla JS) |
 
-**Batas wajar**: nyaman untuk ribuan SKU (puluhan ribu baris) dan beberapa staf bersamaan. Batas Google: eksekusi
-maks. 6 menit per aksi, ±10 juta sel per spreadsheet. Bila sudah melewati ±30–50 ribu SKU atau banyak pengguna
-bersamaan, gunakan basis data PostgreSQL (perlu dibangun terpisah).
+## Database
 
-Login memakai akun aplikasi sendiri (email + password, hash SHA-256 ber-salt, kunci 15 menit setelah 5 kali gagal),
-karena untuk akun Gmail biasa Apps Script tidak memberikan email pengunjung saat Web App dijalankan sebagai pemilik.
+File Google Sheets terpisah [Master Produk DB](https://docs.google.com/spreadsheets/d/11f_luP2oWDJHklnG4BjxWTjXXRA57XuO-un6tuAJbm4/edit)
+(`DB_SPREADSHEET_ID` di `Config.gs`). Tab utama: `MASTER_BRANDS`, `MASTER_CATEGORIES`, `MASTER_PRODUCTS`, `PRODUCT_VARIANTS`,
+`UNIT_CONVERSIONS`, `BARCODE_REGISTRY`, `BARCODE_ASSIGNMENTS`, `SKU_MAPPINGS`, plus `Settings`, `Users`, `Sequences`, `AuditLog`,
+`TX_JOURNAL`. Semua sel berformat teks; relasi memakai ID stabil (UUID), bukan nomor baris.
+
+## Cara pasang / memperbarui
+
+1. Kode dikirim ke proyek Apps Script dengan `clasp push` (atau salin manual semua file `src/`).
+2. Di editor Apps Script pilih fungsi **`setup`** › **Jalankan** › izinkan akses. `setup` aman diulang:
+   membuat/melengkapi tab, mengisi pengaturan, **memigrasikan data struktur lama** (tab lama tidak dihapus), dan membuat
+   akun Admin pertama bila belum ada (password sementara di **Log eksekusi**).
+3. **Terapkan › Kelola deployment › Edit › Versi baru** (URL Web App tetap sama).
+4. (Disarankan) jalankan `installDailyBackup` sekali untuk backup harian otomatis ke Drive.
+
+## Aturan identitas (permanen)
+
+* Kode brand/kategori dibuat otomatis (default 3 huruf), unik, tidak berubah walau nama diperbaiki.
+* Kode produk unik per brand; boleh diubah sebelum produk pertama kali disimpan.
+* SKU varian = template `{BRAND}-{CATEGORY}-{PRODUCT}-{VARIAN}` (mis. `SCA-PAR-PEDP-OB50`), unik global, permanen.
+* SKU kemasan ber-SKU = SKU varian + satuan + isi dasar (mis. `SCA-PAR-PEDP-OB50-BOX24`); GTIN unit dasar tidak diganti.
+* GTIN ada di level varian (bukan product master); satu barcode = satu varian/kemasan. Mengganti GTIN tersimpan wajib alasan;
+  barcode lama dipensiunkan dan tidak boleh dipakai barang lain.
+* Konversi berbasis kuantitas: 1 BOX = 24 BOTOL; konversi bertingkat KARTON = 6 BOX = 144 BOTOL; isi boleh beda per varian.
+
+## Penyimpanan aman di Google Sheets
+
+| Risiko | Pengendalian |
+|---|---|
+| Dua orang menyimpan bersamaan | `LockService` script lock untuk semua penulisan; cek versi produk |
+| Tidak ada transaksi | Staging di memori → jurnal `TX_JOURNAL` → tulis batch → commit; gagal = rollback otomatis |
+| Eksekusi terputus (timeout) | Jurnal PENDING dibatalkan otomatis pada penulisan berikutnya |
+| Barcode/SKU berubah jadi angka | Semua sel teks `@`; ekspor XLSX menandai kolom SKU/barcode sebagai teks |
+| Data diedit langsung di sheet | Web App "Execute as me", staf tanpa akses file; tab diberi proteksi peringatan; Audit Log |
 
 ## Yang masih perlu Anda verifikasi
 
 * Kolom ekspor BeeCloud (`BEECLOUD_EXPORT_COLUMNS` di `Config.gs`) **belum** dicocokkan dengan template import resmi BeeCloud.
-* Batas panjang SKU BeeCloud & Seller SKU Shopee (format lama = 31 karakter).
+* Batas panjang SKU BeeCloud & Seller SKU Shopee.
 * Scanner/POS membaca barcode internal prefix `200` sebagai kode biasa.
-* Unduhan file dari Web App bisa diblokir sebagian browser — gunakan tombol **"→ Tulis ke tab spreadsheet"**.
 
-## Pengujian & pratinjau lokal (untuk developer)
+## Pengujian & pratinjau lokal (developer)
 
 ```bash
 npm test
@@ -96,10 +79,8 @@ npm test
 ```bash
 npm run dev
 ```
-Test menjalankan file `.gs` asli di emulator layanan Apps Script (`test/harness.cjs`) — 15 skenario: registrasi, varian,
-paket 1/6/12/24, bundle, barcode/SKU duplikat, alokasi barcode, GTIN tidak valid, change request + maker-checker,
-penolakan & revisi, hak akses, import sebagian bermasalah + idempoten, mapping & ekspor. Server pratinjau menyajikan UI
-di http://localhost:8790 dengan data contoh (akun development tercantum di `dev/server.cjs`).
+Test menjalankan file `.gs` asli di emulator layanan Apps Script (`test/harness.cjs`) — 15 skenario (lihat REVISI-ANALISIS.md).
+Server pratinjau: http://localhost:8790 dengan data contoh (akun development tercantum di `dev/server.cjs`).
 
 ## Deploy otomatis dari GitHub
 

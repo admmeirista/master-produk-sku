@@ -1,257 +1,401 @@
 /**
- * Pengujian skenario untuk versi Apps Script, dijalankan di emulator (harness.cjs).
- *   node --test apps-script/test/
+ * Pengujian skenario (file .gs asli dijalankan di emulator layanan Apps Script — harness.cjs).
+ *   npm test
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { createGas } = require('./harness.cjs');
 
-const { ctx, sheets } = createGas();
-const call = (token, action, payload) => JSON.parse(JSON.stringify(ctx.api(token, action, JSON.parse(JSON.stringify(payload === undefined ? null : payload)))));
+function env() {
+  const g = createGas();
+  const call = (token, action, payload) => JSON.parse(JSON.stringify(g.ctx.api(token, action, JSON.parse(JSON.stringify(payload === undefined ? null : payload)))));
+  return Object.assign(g, { call });
+}
 const ok = (r) => {
   if (!r.ok) throw new Error(`${r.error.code}: ${r.error.message} ${JSON.stringify(r.error.details)}`);
   return r.data;
 };
 const fail = (r, code) => {
   assert.equal(r.ok, false, 'seharusnya gagal');
-  if (code) assert.equal(r.error.code, code, r.error.message);
+  if (code) assert.equal(r.error.code, code, r.error.message + ' ' + JSON.stringify(r.error.details));
   return r.error;
 };
+const rowsOf = (sheets, tab) => sheets.get(tab).data.slice(1).filter((r) => r.some((x) => x !== '' && x !== undefined)).length;
 
-let admin, entry, entry2, reviewer, viewer;
+/** GTIN-13 valid dari 12 digit awal. */
+function gtin(body12) {
+  let sum = 0;
+  for (let i = 11, w = 3; i >= 0; i--, w = w === 3 ? 1 : 3) sum += Number(body12[i]) * w;
+  return body12 + ((10 - (sum % 10)) % 10);
+}
+
+const E = env();
+const { call, sheets } = E;
+let admin, entry, viewer;
 const ids = {};
 
-test('setup membuat tab, admin awal, dan login', () => {
-  const out = JSON.parse(JSON.stringify(ctx.setup()));
-  assert.ok(out.password);
-  assert.ok(sheets.get('Products'));
-  admin = ok(call(null, 'auth.login', { email: out.email, password: out.password })).token;
-  fail(call(null, 'auth.login', { email: out.email, password: 'salah-password' }), 'BAD_CREDENTIALS');
-  for (const [email, role] of [['entry@toko.local', 'data_entry'], ['entry2@toko.local', 'data_entry'], ['reviewer@toko.local', 'reviewer'], ['viewer@toko.local', 'viewer']])
-    ok(call(admin, 'user.create', { email, fullName: email.split('@')[0], role, password: 'Password#2026' }));
-  const login = (e) => ok(call(null, 'auth.login', { email: e, password: 'Password#2026' })).token;
-  entry = login('entry@toko.local');
-  entry2 = login('entry2@toko.local');
-  reviewer = login('reviewer@toko.local');
-  viewer = login('viewer@toko.local');
+test('setup membuat tab baru, admin awal, login & role', () => {
+  const out = JSON.parse(JSON.stringify(E.ctx.setup()));
+  assert.ok(out.admin.password);
+  for (const t of ['MASTER_BRANDS', 'MASTER_CATEGORIES', 'MASTER_PRODUCTS', 'PRODUCT_VARIANTS', 'UNIT_CONVERSIONS', 'BARCODE_REGISTRY', 'TX_JOURNAL']) assert.ok(sheets.get(t), t);
+  assert.deepEqual(sheets.get('PRODUCT_VARIANTS').data[0].slice(0, 9), ['VariantID', 'ProductID', 'VariantCode', 'VariantName', 'VariantAttributes', 'AttributeKey', 'SKU', 'GTIN', 'InternalBarcode']);
+  admin = ok(call(null, 'auth.login', { email: out.admin.email, password: out.admin.password })).token;
+  fail(call(null, 'auth.login', { email: out.admin.email, password: 'salah-password' }), 'BAD_CREDENTIALS');
+  ok(call(admin, 'user.create', { email: 'entry@toko.local', fullName: 'Rina', role: 'data_entry', password: 'Password#2026' }));
+  ok(call(admin, 'user.create', { email: 'viewer@toko.local', fullName: 'Budi', role: 'viewer', password: 'Password#2026' }));
+  entry = ok(call(null, 'auth.login', { email: 'entry@toko.local', password: 'Password#2026' })).token;
+  viewer = ok(call(null, 'auth.login', { email: 'viewer@toko.local', password: 'Password#2026' })).token;
+  const me = ok(call(entry, 'auth.me'));
+  assert.equal(me.config.skuTemplate, '{BRAND}-{CATEGORY}-{PRODUCT}-{VARIANT}');
+  assert.ok(me.config.baseUnits.includes('BOTOL'));
   fail(call('token-palsu', 'product.list', {}), 'UNAUTHENTICATED');
+  fail(call(viewer, 'brand.create', { name: 'Wardah' }), 'FORBIDDEN');
+  fail(call(entry, 'user.list', {}), 'FORBIDDEN');
 });
 
-test('referensi brand & kategori', () => {
-  for (const [kind, code, name] of [['brand', 'VIV', 'Viva'], ['brand', 'PXY', 'Pixy'], ['brand', 'PRB', 'Purbasari'], ['brand', 'PAK', 'Paket'], ['category', 'TON', 'Toner'], ['category', 'PWR', 'Powder Refill'], ['category', 'BSR', 'Body Serum'], ['category', 'BCP', 'Body Care Package']])
-    ids[code] = ok(call(admin, 'ref.save', { kind, input: { code, name } })).id;
-  fail(call(admin, 'ref.save', { kind: 'brand', input: { code: 'VIV', name: 'Viva Lain' } }), 'DUPLICATE');
-  const sim = fail(call(admin, 'ref.save', { kind: 'brand', input: { code: 'PXI', name: 'Pixy.' } }));
-  assert.ok(['SIMILAR_EXISTS', 'DUPLICATE'].includes(sim.code));
-  const prop = ok(call(entry, 'ref.save', { kind: 'brand', input: { code: 'HNS', name: 'Hanasui' } }));
-  assert.equal(prop.status, 'pending');
-  fail(call(entry, 'ref.status', { kind: 'brand', id: prop.id, action: 'approve' }), 'FORBIDDEN');
-  assert.equal(ok(call(reviewer, 'ref.status', { kind: 'brand', id: prop.id, action: 'approve' })).status, 'active');
+test('Master Brand: kode otomatis 3 huruf, unik, permanen', () => {
+  const expect = { Viva: 'VIV', Hanasui: 'HAN', Purbasari: 'PUR', Scarlett: 'SCA' };
+  for (const [name, code] of Object.entries(expect)) {
+    assert.equal(ok(call(entry, 'brand.preview', { name })).code, code);
+    const b = ok(call(entry, 'brand.create', { name }));
+    assert.equal(b.code, code);
+    ids[code] = b.id;
+  }
+  // konflik: VIV sudah dipakai Viva → Vivelle dapat kode lain yang unik
+  const v2 = ok(call(entry, 'brand.create', { name: 'Vivelle' }));
+  assert.notEqual(v2.code, 'VIV');
+  assert.match(v2.code, /^[A-Z0-9]{3}$/);
+  // duplikasi nama dengan beda penulisan → ditolak
+  for (const n of ['viva', '  VIVA ', 'V.I.V.A']) fail(call(entry, 'brand.create', { name: n }), 'DUPLICATE');
+  ok(call(entry, 'brand.create', { name: 'Make Over' }));
+  fail(call(entry, 'brand.create', { name: 'Makeover' }), 'DUPLICATE');
+  // nama mirip → peringatan, bisa dikonfirmasi
+  const sim = fail(call(entry, 'brand.create', { name: 'Hanasuii' }), 'SIMILAR_EXISTS');
+  assert.ok(sim.details[0].message.includes('Hanasui'));
+  const hs = ok(call(entry, 'brand.create', { name: 'Hanasuii', acknowledgeSimilar: true }));
+  assert.notEqual(hs.code, 'HAN');
+  // ganti nama → kode tetap
+  const ren = ok(call(entry, 'brand.rename', { id: ids.SCA, name: 'Scarlett Whitening' }));
+  assert.equal(ren.code, 'SCA');
+  assert.equal(ren.name, 'Scarlett Whitening');
+  fail(call(entry, 'brand.rename', { id: ids.SCA, name: 'Viva' }), 'DUPLICATE');
+  // nonaktif → tidak bisa dipakai registrasi, kode tetap tidak dipakai ulang
+  ok(call(entry, 'brand.setStatus', { id: hs.id, status: 'INACTIVE' }));
+  const again = ok(call(entry, 'brand.preview', { name: 'Hanasuii' }));
+  assert.equal(again.exact.status, 'INACTIVE');
+  // tambah banyak: duplikat dilewati dengan alasan
+  const many = ok(call(entry, 'brand.createMany', { names: ['Wardah', 'Emina', 'wardah', 'Implora'] }));
+  assert.equal(many.created.length, 3);
+  assert.equal(many.skipped.length, 1);
+  const codes = ok(call(entry, 'brand.list', {})).map((b) => b.code);
+  assert.equal(new Set(codes).size, codes.length, 'kode brand harus unik');
 });
 
-const single = (buy, sell) => ({ skuType: 'single', packQty: 1, salesUnit: 'PCS', purchasePrice: buy, sellingPrice: sell });
-const pack = (q, buy, sell) => ({ skuType: 'multipack', packQty: q, salesUnit: 'PACK', purchasePrice: buy * q, sellingPrice: sell });
-
-test('1 & 3. registrasi baru dengan paket 1/6/12/24 sampai aktif', () => {
-  const d = ok(call(entry, 'product.save', { input: { brandId: ids.VIV, categoryId: ids.TON, productCode: 'vam100', name: 'Viva Air Mawar 100ml', hasVariants: false, variants: [{ barcode: { mode: 'gtin', code: '8992796011501' }, skus: [single(4900, 7500), pack(6, 4900, 42000), pack(12, 4900, 80000), pack(24, 4900, 152000)] }] } }));
-  ids.viva = d.id;
-  assert.equal(d.status, 'draft');
-  assert.deepEqual(d.variants[0].skus.map((s) => s.sku_code), ['VIV-TON-VAM100-8992796011501-1', 'VIV-TON-VAM100-8992796011501-6', 'VIV-TON-VAM100-8992796011501-12', 'VIV-TON-VAM100-8992796011501-24']);
-  assert.equal(new Set(d.variants[0].skus.map((s) => s.variant_id)).size, 1);
-  ok(call(entry, 'product.workflow', { id: ids.viva, action: 'submit' }));
-  fail(call(entry, 'product.workflow', { id: ids.viva, action: 'approve' }), 'FORBIDDEN');
-  ok(call(reviewer, 'product.workflow', { id: ids.viva, action: 'approve', reason: 'cocok kemasan' }));
-  assert.equal(ok(call(reviewer, 'product.workflow', { id: ids.viva, action: 'activate' })).status, 'active');
-  const p = ok(call(viewer, 'product.get', { id: ids.viva }));
-  assert.ok(p.variants[0].skus.every((s) => s.status === 'active'));
-  assert.ok(p.history.some((h) => h.action === 'approve' && h.reason === 'cocok kemasan' && h.actor === 'reviewer@toko.local'));
-  // isi ganda & multipack tanpa satuan
-  fail(call(entry, 'product.save', { input: { brandId: ids.VIV, categoryId: ids.TON, productCode: 'VAM200', name: 'Viva Air Mawar 200ml', variants: [{ barcode: { mode: 'gtin', code: '8992796011518' }, skus: [single(1, 2), pack(6, 1, 2), pack(6, 1, 2)] }] } }));
-  const noSingle = ok(call(entry, 'product.save', { input: { brandId: ids.VIV, categoryId: ids.TON, productCode: 'VAM200', name: 'Viva Air Mawar 200ml', variants: [{ barcode: { mode: 'gtin', code: '8992796011518' }, skus: [pack(6, 1, 2)] }] } }));
-  const e = fail(call(entry, 'product.workflow', { id: noSingle.id, action: 'submit' }), 'VALIDATION_FAILED');
-  assert.match(JSON.stringify(e.details), /SKU satuan/);
-  ok(call(entry, 'product.workflow', { id: noSingle.id, action: 'archive', reason: 'tes' }));
+test('Master Kategori: kode otomatis', () => {
+  const expect = { Parfum: 'PAR', Lipstick: 'LIP', 'Body Lotion': 'BOD', 'Facial Wash': 'FAC', Toner: 'TON' };
+  for (const [name, code] of Object.entries(expect)) {
+    const c = ok(call(entry, 'category.create', { name }));
+    assert.equal(c.code, code);
+    ids['c' + code] = c.id;
+  }
+  // banyak nama berawalan sama tetap mendapat kode unik
+  const made = ok(call(entry, 'category.createMany', { names: ['Parfum Pria', 'Parfum Wanita', 'Parfum Anak', 'Parfum Mobil', 'Parfum Ruangan'], acknowledgeSimilar: true })).created;
+  assert.equal(made.length, 5);
+  const codes = ok(call(entry, 'category.list', {})).map((c) => c.code);
+  assert.equal(new Set(codes).size, codes.length);
 });
 
-test('2. banyak varian + kode internal otomatis + atribut ganda ditolak', () => {
-  const shade = (code, value, barcode) => ({ variantCode: code, name: value, attributes: [{ type: 'shade', value }], barcode, skus: [single(27360, 38000)] });
-  const d = ok(call(entry, 'product.save', { input: { brandId: ids.PXY, categoryId: ids.PWR, productCode: 'UPCR', name: 'Pixy UV Perfect Creamy Cake Refill', hasVariants: true, variants: [shade('NO', 'Natural Ochre', { mode: 'internal' }), shade('SY', 'Silky Yellow', { mode: 'internal' }), shade('YH', 'Yellow Honey', { mode: 'gtin', code: '8992222072045' })] } }));
-  ids.pixy = d.id;
-  const codes = d.variants.map((v) => v.barcode.code);
-  assert.equal(new Set(codes).size, 3);
-  assert.ok(codes[0].startsWith('200') && codes[1].startsWith('200'));
-  assert.equal(d.variants[2].skus[0].sku_code, 'PXY-PWR-UPCRYH-8992222072045-1');
-  const bad = fail(call(entry, 'product.save', { input: { brandId: ids.PXY, categoryId: ids.PWR, productCode: 'LIPX', name: 'Pixy Lipstick', hasVariants: true, variants: [shade('A', 'Nude Pink', { mode: 'none' }), shade('B', 'NUDE  pink', { mode: 'none' })] } }));
-  assert.match(JSON.stringify(bad.details), /Kombinasi atribut/);
-  // simpan ulang draft: kode internal yang sama dipakai kembali, tidak dialokasikan baru
-  const again = ok(call(entry, 'product.save', { id: ids.pixy, input: { version: d.version, brandId: ids.PXY, categoryId: ids.PWR, productCode: 'UPCR', name: 'Pixy UV Perfect Creamy Cake Refill', hasVariants: true, variants: d.variants.map((v) => ({ variantCode: v.variant_code, name: v.name, attributes: v.attributes, barcode: { mode: v.barcode.type, code: v.barcode.code }, skus: [single(27360, 38000)] })) } }));
-  assert.deepEqual(again.variants.map((v) => v.barcode.code), codes);
-  fail(call(entry, 'product.save', { id: ids.pixy, input: { version: d.version, brandId: ids.PXY, categoryId: ids.PWR, productCode: 'UPCR', name: 'X', variants: [] } }));
-  ok(call(entry, 'product.workflow', { id: ids.pixy, action: 'submit' }));
-  ok(call(reviewer, 'product.workflow', { id: ids.pixy, action: 'approve' }));
-  ok(call(reviewer, 'product.workflow', { id: ids.pixy, action: 'activate' }));
+const parfumInput = () => ({
+  brandId: ids.SCA,
+  categoryId: ids.cPAR,
+  name: 'Parfum Eau de Parfum',
+  productCode: '',
+  baseUnit: 'BOTOL',
+  hasVariants: true,
+  variants: [
+    { attributes: [{ name: 'Aroma', value: 'Ocean Blue' }, { name: 'Volume', value: '50 ml' }], barcode: { mode: 'gtin', code: gtin('899000000001') }, conversions: [{ unitName: 'BOX', factor: 24, containsUnit: 'BOTOL', isTradeItem: true, barcode: { mode: 'gtin', code: gtin('899000000091') } }, { unitName: 'KARTON', factor: 6, containsUnit: 'BOX' }] },
+    { attributes: [{ name: 'Aroma', value: 'Ocean Blue' }, { name: 'Volume', value: '100 ml' }], barcode: { mode: 'gtin', code: gtin('899000000002') }, conversions: [{ unitName: 'BOX', factor: 12, containsUnit: 'BOTOL' }] },
+    { attributes: [{ name: 'Aroma', value: 'Rose Garden' }, { name: 'Volume', value: '50 ml' }], barcode: { mode: 'gtin', code: gtin('899000000003') }, conversions: [] },
+    { attributes: [{ name: 'Aroma', value: 'Rose Garden' }, { name: 'Volume', value: '100 ml' }], barcode: { mode: 'internal' }, conversions: [] },
+  ],
 });
 
-test('3b. bundle campuran dengan BOM', () => {
-  const sku = (code) => ok(call(viewer, 'sku.list', { search: code }))[0].id;
-  const d = ok(call(entry, 'product.save', { input: { brandId: ids.PAK, categoryId: ids.BCP, productCode: 'PKT1', name: 'Paket Viva + Pixy', productType: 'bundle', baseUnit: 'SET', variants: [{ barcode: { mode: 'internal' }, skus: [{ skuType: 'bundle', packQty: 1, salesUnit: 'SET', sellingPrice: 44000, components: [{ skuId: sku('VIV-TON-VAM100-8992796011501-1'), quantity: 2 }, { skuId: sku('PXY-PWR-UPCRYH-8992222072045-1'), quantity: 1 }] }] }] } }));
-  const comps = d.variants[0].skus[0].components;
-  assert.equal(comps.reduce((a, c) => a + c.purchasePrice * c.quantity, 0), 4900 * 2 + 27360);
+test('dry-run (pratinjau) memvalidasi penuh tanpa menulis apa pun', () => {
+  const before = ['MASTER_PRODUCTS', 'PRODUCT_VARIANTS', 'UNIT_CONVERSIONS', 'BARCODE_REGISTRY', 'AuditLog'].map((t) => rowsOf(sheets, t));
+  const d = ok(call(entry, 'product.validate', { input: parfumInput() }));
+  assert.equal(d.dryRun, true);
+  assert.equal(d.variants.length, 4);
+  const after = ['MASTER_PRODUCTS', 'PRODUCT_VARIANTS', 'UNIT_CONVERSIONS', 'BARCODE_REGISTRY', 'AuditLog'].map((t) => rowsOf(sheets, t));
+  assert.deepEqual(after, before);
 });
 
-test('4 & 5. barcode duplikat & SKU duplikat ditolak', () => {
-  fail(call(entry, 'product.save', { input: { brandId: ids.VIV, categoryId: ids.TON, productCode: 'VAMX', name: 'Viva Air Mawar Botol Baru', variants: [{ barcode: { mode: 'gtin', code: '8992796011501' }, skus: [single(1, 2)] }] } }), 'BARCODE_IN_USE');
-  fail(call(entry, 'product.save', { input: { brandId: ids.VIV, categoryId: ids.TON, productCode: 'VFT100', name: 'Viva Face Tonic', variants: [{ barcode: { mode: 'gtin', code: '8992796011341' }, skus: [{ ...single(1, 2), skuCodeOverride: 'viv-ton-vam100-8992796011501-1' }] }] } }), 'SKU_IN_USE');
-  fail(call(entry, 'product.save', { input: { brandId: ids.VIV, categoryId: ids.TON, productCode: 'VAM100', name: 'Produk lain', variants: [{ barcode: { mode: 'none' }, skus: [single(1, 2)] }] } }), 'DUPLICATE');
-  const prev = ok(call(entry, 'sku.preview', { brandId: ids.VIV, categoryId: ids.TON, productCode: 'VAM100', items: [{ key: 'a', barcode: '8992796011501', qty: 6 }] }));
-  assert.match(prev.items[0].conflict, /Sudah dipakai/);
-  // tidak ada data setengah jadi saat gagal (buffer dibuang)
-  assert.equal(ok(call(viewer, 'product.list', { search: 'Botol Baru' })).total, 0);
+test('registrasi parfum: 2 aroma × 2 volume, GTIN per varian, konversi bertingkat, kemasan ber-SKU', () => {
+  const d = ok(call(entry, 'product.save', { input: parfumInput() }));
+  ids.parfum = d.id;
+  assert.equal(d.status, 'ACTIVE');
+  assert.equal(d.productCode, 'PEDP');
+  assert.deepEqual(
+    d.variants.map((v) => v.sku),
+    ['SCA-PAR-PEDP-OB50', 'SCA-PAR-PEDP-OB100', 'SCA-PAR-PEDP-RG50', 'SCA-PAR-PEDP-RG100'],
+  );
+  assert.equal(new Set(d.variants.map((v) => v.id)).size, 4);
+  assert.equal(d.variants[0].gtin, gtin('899000000001'));
+  assert.equal(d.variants[3].gtin, '');
+  assert.match(d.variants[3].internalBarcode, /^200\d{10}$/);
+  const v1 = d.variants[0].conversions;
+  assert.deepEqual(
+    v1.map((c) => [c.unitName, c.factor, c.containsUnit, c.baseUnitEquivalent]),
+    [['BOTOL', 1, 'BOTOL', 1], ['BOX', 24, 'BOTOL', 24], ['KARTON', 6, 'BOX', 144]],
+  );
+  assert.equal(v1[1].sku, 'SCA-PAR-PEDP-OB50-BOX24');
+  assert.equal(v1[1].gtin, gtin('899000000091'));
+  assert.equal(v1[2].sku, '');
+  // varian lain boleh punya isi BOX berbeda
+  assert.equal(d.variants[1].conversions[1].baseUnitEquivalent, 12);
+  // GTIN tidak disimpan di level product master
+  assert.equal(sheets.get('MASTER_PRODUCTS').data[0].indexOf('GTIN'), -1);
+  // langsung muncul di direktori
+  const list = ok(call(viewer, 'product.list', { search: 'ocean' }));
+  assert.equal(list.total, 1);
+  assert.equal(list.rows[0].skuCount, 5);
+  assert.equal(list.rows[0].complete, true);
+  // pencarian dengan GTIN & SKU
+  assert.equal(ok(call(viewer, 'product.list', { search: gtin('899000000003') })).total, 1);
+  assert.equal(ok(call(viewer, 'product.list', { search: 'SCA-PAR-PEDP-RG100' })).total, 1);
 });
 
-test('6. alokasi barcode internal beruntun dari dua pengguna tidak pernah ganda + idempoten', () => {
-  const all = [];
-  for (let i = 0; i < 4; i++) all.push(...ok(call(i % 2 ? entry2 : entry, 'barcode.allocate', { count: 5 })).map((b) => b.code));
-  assert.equal(new Set(all).size, 20);
-  const a = ok(call(entry, 'barcode.allocate', { count: 1, requestKey: 'form-1' }));
-  const b = ok(call(entry2, 'barcode.allocate', { count: 1, requestKey: 'form-1' }));
-  assert.equal(a[0].code, b[0].code);
-  fail(call(viewer, 'barcode.allocate', { count: 1 }), 'FORBIDDEN');
+test('kalkulator konversi: 3 BOX = 72 BOTOL, 1 KARTON = 144 BOTOL', () => {
+  const v = ok(call(viewer, 'product.get', { id: ids.parfum })).variants[0];
+  assert.equal(ok(call(viewer, 'unit.convert', { variantId: v.id, qty: 3, unit: 'BOX' })).baseQty, 72);
+  assert.equal(ok(call(viewer, 'unit.convert', { variantId: v.id, qty: 1, unit: 'karton' })).baseQty, 144);
+  fail(call(viewer, 'unit.convert', { variantId: v.id, qty: 1, unit: 'LUSIN' }));
 });
 
-test('7. barcode resmi tidak valid', () => {
-  const e = fail(call(entry, 'product.save', { input: { brandId: ids.VIV, categoryId: ids.TON, productCode: 'VAM250', name: 'Viva Air Mawar 250ml', variants: [{ barcode: { mode: 'gtin', code: '8992796011519' }, skus: [single(1, 2)] }] } }));
-  assert.match(JSON.stringify(e.details), /seharusnya 8/);
-  assert.equal(ok(call(entry, 'barcode.validate', { code: '2000000000015', mode: 'gtin' })).errorCode, 'RESTRICTED_PREFIX');
-  assert.equal(ok(call(entry, 'barcode.validate', { code: '9917348265012', mode: 'gtin' })).ok, false);
-  fail(call(entry, 'product.save', { input: { brandId: ids.VIV, categoryId: ids.TON, productCode: 'VZZ1', name: 'Viva Contoh', variants: [{ barcode: { mode: 'internal', code: '2009999999993' }, skus: [single(1, 2)] }] } }));
+test('validasi integritas: kombinasi ganda, GTIN ganda/terpakai/salah, konversi tidak valid, kode produk ganda', () => {
+  const base = () => ({ brandId: ids.VIV, categoryId: ids.cTON, name: 'Viva Air Mawar', baseUnit: 'BOTOL', hasVariants: true });
+  // kombinasi atribut identik (urutan & huruf berbeda) + GTIN sama di dua baris
+  const e1 = fail(
+    call(entry, 'product.save', {
+      input: Object.assign(base(), {
+        variants: [
+          { attributes: [{ name: 'Volume', value: '100 ml' }], barcode: { mode: 'gtin', code: gtin('899111000001') } },
+          { attributes: [{ name: 'volume', value: '100ML' }], barcode: { mode: 'gtin', code: gtin('899111000001') } },
+        ],
+      }),
+    }),
+    'VALIDATION_FAILED',
+  );
+  const paths = e1.details.map((d) => d.path);
+  assert.ok(paths.includes('variants.1.attributes'), JSON.stringify(e1.details));
+  assert.ok(paths.includes('variants.1.barcode'));
+  // GTIN yang sudah dipakai produk lain → ditolak dengan info pemilik
+  const e2 = fail(call(entry, 'product.save', { input: Object.assign(base(), { variants: [{ attributes: [{ name: 'Volume', value: '100 ml' }], barcode: { mode: 'gtin', code: gtin('899000000002') } }] }) }), 'VALIDATION_FAILED');
+  assert.equal(e2.details[0].code, 'BARCODE_IN_USE');
+  assert.ok(e2.details[0].message.includes('Parfum Eau de Parfum'));
+  // check digit salah & prefix internal sebagai GTIN produsen
+  const e3 = fail(call(entry, 'product.save', { input: Object.assign(base(), { variants: [{ attributes: [{ name: 'Volume', value: '1' }], barcode: { mode: 'gtin', code: '8991110000020' } }, { attributes: [{ name: 'Volume', value: '2' }], barcode: { mode: 'gtin', code: gtin('200000000777') } }] }) }), 'VALIDATION_FAILED');
+  assert.equal(e3.details.length, 2);
+  // konversi: satuan = satuan dasar, isi < 2, satuan isi belum didefinisikan (urutan), satuan ganda
+  const e4 = fail(
+    call(entry, 'product.save', {
+      input: Object.assign(base(), {
+        variants: [{ attributes: [{ name: 'Volume', value: '100 ml' }], barcode: { mode: 'none' }, conversions: [{ unitName: 'BOTOL', factor: 2 }, { unitName: 'KARTON', factor: 6, containsUnit: 'BOX' }, { unitName: 'BOX', factor: 1 }, { unitName: 'BOX', factor: 12 }] }],
+      }),
+    }),
+    'VALIDATION_FAILED',
+  );
+  const p4 = e4.details.map((d) => d.path);
+  for (const p of ['variants.0.conversions.0.unitName', 'variants.0.conversions.1.containsUnit', 'variants.0.conversions.2.factor', 'variants.0.conversions.3.unitName']) assert.ok(p4.includes(p), p + ' ' + JSON.stringify(e4.details));
+  // kode produk ganda dalam satu brand
+  ok(call(entry, 'product.save', { input: Object.assign(base(), { productCode: 'VAM', variants: [{ attributes: [{ name: 'Volume', value: '100 ml' }], barcode: { mode: 'none' } }] }) }));
+  const e5 = fail(call(entry, 'product.save', { input: Object.assign(base(), { name: 'Viva Toner Lemon', productCode: 'vam', variants: [{ attributes: [{ name: 'Volume', value: '100 ml' }] }] }) }), 'VALIDATION_FAILED');
+  assert.equal(e5.details[0].path, 'productCode');
+  // brand nonaktif tidak boleh dipakai
+  const inactive = ok(call(entry, 'brand.list', {})).find((b) => b.status === 'INACTIVE');
+  const e6 = fail(call(entry, 'product.save', { input: Object.assign(base(), { brandId: inactive.id, productCode: 'X1', variants: [{ attributes: [{ name: 'Volume', value: '1' }] }] }) }), 'VALIDATION_FAILED');
+  assert.equal(e6.details[0].path, 'brandId');
+  // tidak ada yang tersimpan setengah
+  assert.equal(ok(call(viewer, 'product.list', { brandId: ids.VIV })).total, 1);
 });
 
-test('8. perubahan setelah approval lewat change request + maker-checker', () => {
-  fail(call(entry, 'product.save', { id: ids.viva, input: { brandId: ids.VIV, categoryId: ids.TON, productCode: 'VAM100', name: 'Ubah langsung', variants: [{ barcode: { mode: 'none' }, skus: [single(1, 2)] }] } }));
-  const p = ok(call(entry, 'product.get', { id: ids.viva }));
-  const sku6 = p.variants[0].skus.find((s) => s.pack_qty === 6);
-  ok(call(entry, 'mapping.create', { skuId: sku6.id, system: 'beecloud' }));
-  const cr = ok(call(entry, 'product.changeRequest', { id: ids.viva, input: { reason: 'Tambah paket 3 & koreksi nama', operations: [{ op: 'update_product', name: 'Viva Air Mawar Penyegar 100ml' }, { op: 'add_sku', variantId: p.variants[0].id, sku: pack(3, 4900, 21000) }, { op: 'change_sku_code', skuId: sku6.id, newCode: 'VIV-TON-VAM100-6PK' }] } }));
-  // dry-run tidak menulis apa pun
-  assert.equal(ok(call(viewer, 'product.get', { id: ids.viva })).name, 'Viva Air Mawar 100ml');
-  fail(call(entry, 'product.changeRequest', { id: ids.viva, input: { reason: 'kedua kalinya', operations: [{ op: 'update_product', name: 'XYZ abc' }] } }), 'DUPLICATE');
-  fail(call(entry, 'request.decide', { id: cr.id, decision: 'approve' }), 'FORBIDDEN');
-  ok(call(reviewer, 'request.decide', { id: cr.id, decision: 'approve' }));
-  const after = ok(call(viewer, 'product.get', { id: ids.viva }));
-  assert.equal(after.name, 'Viva Air Mawar Penyegar 100ml');
-  assert.deepEqual(after.variants[0].skus.map((s) => s.pack_qty), [1, 3, 6, 12, 24]);
-  const s6 = after.variants[0].skus.find((s) => s.pack_qty === 6);
-  assert.equal(s6.sku_code, 'VIV-TON-VAM100-6PK');
-  assert.equal(s6.mappings[0].status, 'mismatch');
-  assert.equal(ok(call(viewer, 'sku.history', { id: sku6.id })).codeHistory[0].old_code, 'VIV-TON-VAM100-8992796011501-6');
-  // change request tidak valid ditolak saat diajukan
-  fail(call(entry, 'product.changeRequest', { id: ids.viva, input: { reason: 'tambah 12 lagi', operations: [{ op: 'add_sku', variantId: p.variants[0].id, sku: pack(12, 1, 1) }] } }), 'DUPLICATE');
-  // histori harga
-  const s1 = after.variants[0].skus[0];
-  ok(call(entry, 'sku.setPrice', { id: s1.id, priceType: 'selling', amount: 8000, reason: 'naik harga distributor' }));
-  const h = ok(call(viewer, 'sku.history', { id: s1.id })).prices.filter((x) => x.price_type === 'selling');
-  assert.equal(h.length, 2);
-  assert.equal(h.filter((x) => !x.effective_to).length, 1);
+test('produk tanpa varian: satu varian default, SKU tanpa segmen varian, barcode internal otomatis', () => {
+  const d = ok(call(entry, 'product.save', { input: { brandId: ids.PUR, categoryId: ids.cBOD, name: 'Purbasari Hand Body Lotion 250ml', baseUnit: 'BOTOL', hasVariants: false, variants: [{ barcode: { mode: 'internal' }, conversions: [{ unitName: 'LUSIN', factor: 12 }] }] } }));
+  assert.equal(d.productCode, 'PHBL250');
+  assert.equal(d.variants.length, 1);
+  assert.equal(d.variants[0].isDefault, true);
+  assert.equal(d.variants[0].sku, 'PUR-BOD-PHBL250');
+  const code = d.variants[0].internalBarcode;
+  assert.match(code, /^200\d{10}$/);
+  assert.equal(ok(call(viewer, 'barcode.validate', { mode: 'internal', code })).ok, true);
+  // kemiripan nama → peringatan, perlu konfirmasi
+  const sim = fail(call(entry, 'product.save', { input: { brandId: ids.PUR, categoryId: ids.cBOD, name: 'Purbasari Hand & Body Lotion 250 ml', productCode: 'PHB2', baseUnit: 'BOTOL', variants: [{}] } }), 'SIMILAR_EXISTS');
+  assert.ok(sim.details[0].message.includes('Purbasari Hand Body Lotion'));
+  // produk tanpa varian tidak boleh dua varian default
+  fail(call(entry, 'product.save', { input: { brandId: ids.PUR, categoryId: ids.cBOD, name: 'Purbasari Sabun', baseUnit: 'PCS', variants: [{}, {}] } }), 'VALIDATION_FAILED');
 });
 
-test('11. penolakan, revisi, optimistic lock & peringatan nama mirip', () => {
-  const d = ok(call(entry, 'product.save', { input: { brandId: ids.VIV, categoryId: ids.TON, productCode: 'AIM100', name: 'VIVA Air Mawar Penyegar 100 ML', variants: [{ barcode: { mode: 'gtin', code: '8992796011907' }, skus: [single(4900, 7500)] }] } }));
-  fail(call(entry, 'product.workflow', { id: d.id, action: 'submit' }), 'DUPLICATE_WARNING');
-  ok(call(entry, 'product.workflow', { id: d.id, action: 'submit', acknowledgeWarnings: true }));
-  const req = ok(call(reviewer, 'request.list', { status: 'pending_review' })).find((r) => r.product_id === d.id);
-  assert.equal(req.payload_json.duplicateWarnings[0].kind, 'same_name');
-  fail(call(reviewer, 'product.workflow', { id: d.id, action: 'reject' }), 'VALIDATION_FAILED');
-  assert.equal(ok(call(reviewer, 'product.workflow', { id: d.id, action: 'reject', reason: 'Duplikat Viva Air Mawar' })).status, 'rejected');
-  assert.equal(ok(call(entry, 'product.workflow', { id: d.id, action: 'revise' })).status, 'draft');
-  const cur = ok(call(entry, 'product.get', { id: d.id }));
-  ok(call(entry, 'product.save', { id: d.id, input: { version: cur.version, brandId: ids.VIV, categoryId: ids.TON, productCode: 'AIM100', name: 'Viva Air Mawar Botol Kaca 100ml', variants: [{ barcode: { mode: 'gtin', code: '8992796011907' }, skus: [single(4900, 7500)] }] } }));
-  fail(call(entry2, 'product.save', { id: d.id, input: { version: cur.version, brandId: ids.VIV, categoryId: ids.TON, productCode: 'AIM100', name: 'Lama', variants: [{ barcode: { mode: 'none' }, skus: [single(1, 2)] }] } }), 'STALE_VERSION');
+test('edit produk: tambah varian, identitas permanen, ganti GTIN wajib alasan, kemasan ber-SKU terkunci', () => {
+  const d = ok(call(entry, 'product.get', { id: ids.parfum }));
+  const toInput = (x) => ({
+    productId: x.id,
+    version: x.version,
+    name: x.name,
+    variants: x.variants.map((v) => ({ id: v.id, name: v.name, attributes: v.attributes, variantCode: v.code, status: v.status, barcode: { mode: v.barcodeType, code: v.gtin || v.internalBarcode }, conversions: v.conversions.filter((c) => !c.isBaseUnit).map((c) => ({ id: c.id, unitName: c.unitName, factor: c.factor, containsUnit: c.containsUnit, isTradeItem: c.isTradeItem, status: c.status, barcode: { mode: c.gtin ? 'gtin' : c.internalBarcode ? 'internal' : 'none', code: c.gtin || c.internalBarcode } })) })),
+  });
+  // tambah varian baru (Vanilla 50 ml)
+  const inp = toInput(d);
+  inp.variants.push({ attributes: [{ name: 'Aroma', value: 'Vanilla' }, { name: 'Volume', value: '50 ml' }], barcode: { mode: 'gtin', code: gtin('899000000004') }, conversions: [{ unitName: 'BOX', factor: 24 }] });
+  const d2 = ok(call(entry, 'product.save', { input: inp }));
+  assert.equal(d2.variants.length, 5);
+  assert.equal(d2.variants[4].sku, 'SCA-PAR-PEDP-VA50');
+  assert.equal(d2.version, d.version + 1);
+  // versi lama → ditolak (perubahan bersamaan)
+  fail(call(entry, 'product.save', { input: inp }), 'STALE_VERSION');
+  // atribut tersimpan tidak boleh diubah, brand terkunci
+  let x = toInput(d2);
+  x.variants[0].attributes = [{ name: 'Aroma', value: 'Ocean Breeze' }, { name: 'Volume', value: '50 ml' }];
+  x.brandId = ids.VIV;
+  const e1 = fail(call(entry, 'product.save', { input: x }), 'VALIDATION_FAILED');
+  assert.deepEqual(e1.details.map((e) => e.path).sort(), ['brandId', 'variants.0.attributes']);
+  // ganti GTIN tanpa alasan → ditolak; dengan alasan → GTIN lama dipensiunkan
+  x = toInput(d2);
+  x.variants[2].barcode = { mode: 'gtin', code: gtin('899000000013') };
+  const e2 = fail(call(entry, 'product.save', { input: x }), 'VALIDATION_FAILED');
+  assert.equal(e2.details[0].code, 'REASON_REQUIRED');
+  x.variants[2].barcodeChangeReason = 'Salah input barcode saat registrasi';
+  const d3 = ok(call(entry, 'product.save', { input: x }));
+  assert.equal(d3.variants[2].gtin, gtin('899000000013'));
+  assert.equal(ok(call(viewer, 'barcode.history', { code: gtin('899000000003') })).barcode.status, 'retired');
+  // barcode yang sudah dipensiunkan tidak boleh dipakai barang lain
+  const e3 = fail(call(entry, 'product.save', { input: { brandId: ids.VIV, categoryId: ids.cTON, name: 'Viva Milk Cleanser', baseUnit: 'BOTOL', variants: [{ barcode: { mode: 'gtin', code: gtin('899000000003') } }] } }), 'VALIDATION_FAILED');
+  assert.equal(e3.details[0].code, 'BARCODE_RETIRED');
+  // isi kemasan ber-SKU tidak boleh diubah; kemasan operasional boleh
+  x = toInput(d3);
+  x.variants[0].conversions[0].factor = 20;
+  const e4 = fail(call(entry, 'product.save', { input: x }), 'VALIDATION_FAILED');
+  assert.ok(e4.details[0].message.includes('SKU-nya permanen'));
+  x = toInput(d3);
+  x.variants[1].conversions[0].factor = 10;
+  const d4 = ok(call(entry, 'product.save', { input: x }));
+  assert.equal(d4.variants[1].conversions[1].baseUnitEquivalent, 10);
+  // satuan yang masih menjadi isi kemasan lain tidak boleh dinonaktifkan
+  x = toInput(d4);
+  x.variants[0].conversions[0].status = 'INACTIVE';
+  const e5 = fail(call(entry, 'product.save', { input: x }), 'VALIDATION_FAILED');
+  assert.ok(e5.details.some((e) => e.message.includes('masih dipakai sebagai isi')));
+  // audit log mencatat perubahan
+  const log = ok(call(entry, 'product.audit', { id: ids.parfum }));
+  assert.ok(log.some((a) => a.action === 'barcode.change'));
+  assert.ok(log.filter((a) => a.action === 'product.update').length >= 3);
 });
 
-test('12. akses tanpa hak', () => {
-  fail(call(viewer, 'product.save', { input: {} }), 'FORBIDDEN');
-  fail(call(viewer, 'user.list', {}), 'FORBIDDEN');
-  fail(call(entry, 'audit.list', {}), 'FORBIDDEN');
-  const d = ok(call(admin, 'product.save', { input: { brandId: ids.PRB, categoryId: ids.BSR, productCode: 'GH180', name: 'Purbasari Gluta Hya Body Serum 180ml', variants: [{ barcode: { mode: 'gtin', code: '8999225912415' }, skus: [single(29000, 42000)] }] } }));
-  ok(call(admin, 'product.workflow', { id: d.id, action: 'submit' }));
-  assert.match(fail(call(admin, 'product.workflow', { id: d.id, action: 'approve' }), 'FORBIDDEN').message, /Maker-checker/);
-  assert.ok(ok(call(admin, 'audit.list', { entityType: 'product' })).total > 5);
+test('nonaktifkan varian & produk', () => {
+  const d = ok(call(entry, 'product.get', { id: ids.parfum }));
+  ok(call(entry, 'variant.setStatus', { id: d.variants[4].id, status: 'INACTIVE' }));
+  fail(call(entry, 'product.setStatus', { id: ids.parfum, status: 'INACTIVE' }), 'VALIDATION_FAILED');
+  ok(call(entry, 'product.setStatus', { id: ids.parfum, status: 'INACTIVE', reason: 'Tidak dijual lagi' }));
+  assert.equal(ok(call(viewer, 'product.list', { status: 'ACTIVE', search: 'parfum' })).total, 0);
+  ok(call(entry, 'product.setStatus', { id: ids.parfum, status: 'ACTIVE' }));
 });
 
-test('9. import Excel sebagian bermasalah + idempoten', () => {
-  const headers = ['No', 'Nama Brand', 'Kode Brand', 'Nama Kategori', 'Kode Kategori', 'Kode Produk', 'GTIN/Barcode', 'Isi', 'SKU (Otomatis)', 'Nama Produk Master', 'Satuan', 'Harga Beli', 'Harga Jual'];
-  const r = (b, c, code, g, q, n, buy) => ['', b, '', c, '', code, g, q, '', n, q === 1 ? 'PCS' : 'PACK', buy || '', ''];
-  const rows = [['MASTER DATA PRODUK & SKU'], headers,
-    r('Purbasari', 'Body Serum', 'WG180', '8999225911258', 1, 'Purbasari White Glow 180ml', 29000),
-    r('Purbasari', 'Body Serum', 'WG180', '8999225911258', 6, 'Purbasari White Glow 180ml - 6 PCS', 174000),
-    r('Purbasari', 'Body Serum', 'SF180', '8999225911402', 1, 'Check digit salah'),
-    r('', 'Body Serum', '', '8999225911401', 1, 'Tanpa brand'),
-    r('Merek Antah', 'Body Serum', 'XX1', '8999225912224', 1, 'Brand tak dikenal'),
-    r('Purbasari', 'Body Serum', 'WG999', '8999225911258', 1, 'Barcode sama kode beda'),
-    r('Viva', 'Toner', 'AIM900', '8992796011501', 1, 'Viva Air Mawar 100ml')];
-  const prep = ok(call(entry, 'import.prepare', { type: 'legacy_master', rows }));
-  assert.equal(prep.headerIndex, 1);
-  assert.equal(prep.mapping.barcode, 6);
-  const payload = { type: 'legacy_master', rows, headerIndex: prep.headerIndex, mapping: prep.mapping, fileName: 'master.xlsx', sheetName: 'Master Produk' };
-  const v = ok(call(entry, 'import.validate', payload));
-  assert.equal(v.summary.valid + v.summary.warning, 2);
-  assert.equal(v.summary.error, 5);
-  const msgs = JSON.stringify(v.rows.map((x) => x.issues));
-  for (const re of [/Check digit salah/, /Data tidak lengkap/, /belum terdaftar/, /sudah dipakai kode produk WG180/, /BARCODE_TAKEN/]) assert.match(msgs, re);
-  const c = ok(call(entry, 'import.commit', payload));
-  assert.equal(c.committed, 2);
-  fail(call(entry, 'import.commit', payload), 'ALREADY_IMPORTED');
-  const p = ok(call(viewer, 'product.list', { search: 'WG180' }));
-  assert.equal(p.rows[0].sku_count, 2);
-  assert.equal(p.rows[0].status, 'active');
+test('mapping BeeCloud/Shopee & ekspor memakai SKU varian + kemasan', () => {
+  const master = ok(call(entry, 'export.data', { kind: 'master' }));
+  const skus = master.rows.map((r) => r[1]);
+  assert.ok(skus.includes('SCA-PAR-PEDP-OB50'));
+  assert.ok(skus.includes('SCA-PAR-PEDP-OB50-BOX24'));
+  const conv = ok(call(entry, 'export.data', { kind: 'conversions' }));
+  assert.ok(conv.rows.some((r) => r[4] === 'KARTON' && r[7] === 144));
+  const un = ok(call(entry, 'mapping.unmapped', { system: 'shopee', search: 'OB50' }));
+  assert.equal(un.length, 2);
+  const m = ok(call(entry, 'mapping.create', { system: 'shopee', sku: 'SCA-PAR-PEDP-OB50', externalProductId: '123456', externalVariationId: '1', externalSku: 'SCA-PAR-PEDP-OB50' }));
+  fail(call(entry, 'mapping.create', { system: 'shopee', sku: 'SCA-PAR-PEDP-OB100', externalProductId: '123456', externalVariationId: '1' }), 'DUPLICATE');
+  ok(call(entry, 'mapping.action', { id: m.id, action: 'confirm', note: 'dicek di Seller Centre' }));
+  const bee = ok(call(entry, 'export.data', { kind: 'beecloud', markExported: true }));
+  assert.ok(bee.rows.length >= 5);
+  assert.equal(ok(call(entry, 'mapping.list', { system: 'beecloud' })).total, bee.rows.length);
+  fail(call(viewer, 'mapping.create', { system: 'beecloud', sku: 'PUR-BOD-PHBL250' }), 'FORBIDDEN');
 });
 
-test('10. mapping & ekspor BeeCloud, import listing Shopee', () => {
-  const sid = ok(call(viewer, 'sku.list', { search: 'PXY-PWR-UPCRYH' }))[0].id;
-  const m = ok(call(entry, 'mapping.create', { skuId: sid, system: 'beecloud' }));
-  assert.equal(m.mapping_status, 'mapped');
-  const ex = ok(call(entry, 'export.beecloud', { markExported: true }));
-  assert.ok(ex.rows.some((r) => r[0] === 'PXY-PWR-UPCRYH-8992222072045-1'));
-  const listed = ok(call(entry, 'mapping.list', { system: 'beecloud', search: 'UPCRYH' })).rows[0];
-  assert.equal(listed.mapping_status, 'exported');
-  fail(call(entry, 'mapping.action', { id: listed.id, action: 'confirm' }));
-  assert.equal(ok(call(entry, 'mapping.action', { id: listed.id, action: 'confirm', note: 'cek di BeeCloud ok' })).mapping_status, 'confirmed');
-  const s6 = ok(call(viewer, 'sku.list', { search: 'PRB-BSR-WG180-8999225911258-6' }))[0].id;
-  ok(call(entry, 'mapping.create', { skuId: s6, system: 'shopee', externalProductId: '57851847712' }));
-  fail(call(entry, 'mapping.create', { skuId: s6, system: 'shopee', externalProductId: '57851847712' }), 'DUPLICATE');
-  const rows = [['Kode Produk', 'Produk', 'Status Produk Saat Ini', 'Kode Variasi', 'Nama Variasi', 'Status Variasi Saat Ini', 'Kode Variasi', 'SKU Induk'],
-    ['43465728785', 'PURBASARI WHITE GLOW', 'Normal', '-', '-', '-', '-', 'PRB-BSR-WG180-8999225911258-1'],
-    ['24262725866', 'PAKET TANCHO', 'Normal', '351267547392', 'BLACK', 'Normal', 'TCH-HDY-HDH6-8992222010214-12', ''],
-    ['11111111111', 'Tanpa SKU', 'Normal', '-', '-', '-', '-', '-'],
-    ['22222222222', 'Dihapus', 'Dihapus', '-', '-', '-', '-', 'ABC']];
-  const prep = ok(call(entry, 'import.prepare', { type: 'shopee_listing', rows }));
-  assert.equal(prep.mapping.variationId, 3);
-  assert.equal(prep.mapping.variationSku, 6);
-  const res = ok(call(entry, 'import.commit', { type: 'shopee_listing', rows, headerIndex: prep.headerIndex, mapping: prep.mapping }));
-  assert.equal(res.committed, 1);
-  assert.equal(res.summary.error, 2);
+test('pengaturan: template SKU tervalidasi, satuan dasar yang dipakai tidak bisa dihapus', () => {
+  fail(call(admin, 'settings.save', { sku_template: '{BRAND}-{PRODUCT}' }));
+  fail(call(admin, 'settings.save', { base_units: ['PCS', 'TUBE'] }));
+  const s = ok(call(admin, 'settings.save', { pack_units: 'box, karton, inner, display' }));
+  assert.deepEqual(s.pack_units, ['BOX', 'KARTON', 'INNER', 'DISPLAY']);
+  fail(call(entry, 'settings.save', { pack_units: ['BOX'] }), 'FORBIDDEN');
 });
 
-test('dashboard, kualitas data, ekspor master', () => {
-  const d = ok(call(viewer, 'dashboard.get', {}));
-  assert.ok(d.counts.skus_active >= 8);
-  const q = ok(call(viewer, 'quality.get', {}));
-  assert.ok(q.summary.internalOnly >= 2);
-  assert.ok(ok(call(viewer, 'export.master', {})).rows.length >= 8);
+test('rollback: penulisan gagal di tengah commit → tidak ada data tersimpan setengah', () => {
+  const tabs = ['MASTER_PRODUCTS', 'PRODUCT_VARIANTS', 'UNIT_CONVERSIONS', 'BARCODE_REGISTRY', 'BARCODE_ASSIGNMENTS', 'AuditLog', 'Sequences'];
+  const snap = () => tabs.map((t) => JSON.stringify(sheets.get(t).data.slice(0, rowsOf(sheets, t) + 1)));
+  const before = snap();
+  E.failWrites('UNIT_CONVERSIONS', 0); // tulisan pertama ke UNIT_CONVERSIONS gagal (setelah tabel lain sudah tertulis)
+  const input = { brandId: ids.HAN, categoryId: ids.cLIP, name: 'Hanasui Matte Lip Cream', baseUnit: 'TUBE', hasVariants: true, variants: [1, 2, 3].map((n) => ({ attributes: [{ name: 'Shade', value: 'Shade 0' + n }], barcode: { mode: 'internal' }, conversions: [{ unitName: 'BOX', factor: 12 }] })) };
+  fail(call(entry, 'product.save', { input }), 'WRITE_FAILED');
+  E.failWrites('UNIT_CONVERSIONS', null);
+  assert.deepEqual(snap(), before);
+  const j = sheets.get('TX_JOURNAL').data.slice(1);
+  assert.ok(j.length && j.every((r) => r[2] === 'ROLLED_BACK'));
+  // setelah gangguan selesai, simpan ulang berhasil normal
+  const d = ok(call(entry, 'product.save', { input }));
+  assert.deepEqual(d.variants.map((v) => v.sku), ['HAN-LIP-HMLC-S01', 'HAN-LIP-HMLC-S02', 'HAN-LIP-HMLC-S03']);
 });
 
-test('ekspor ke tab spreadsheet (alternatif unduhan)', () => {
-  const r = ok(call(entry, 'export.toSheet', { kind: 'beecloud' }));
-  assert.ok(r.rows > 0);
-  assert.ok(sheets.get(r.sheetName));
-  fail(call(viewer, 'export.toSheet', { kind: 'beecloud', markExported: true }), 'FORBIDDEN');
+test('pemulihan: transaksi yang terputus total (PENDING) dibatalkan pada penulisan berikutnya', () => {
+  const c = E.ctx;
+  const brandRows = rowsOf(sheets, 'MASTER_BRANDS');
+  // simulasi eksekusi yang mati setelah sebagian data tertulis (jurnal masih PENDING)
+  c.resetDbCache_();
+  c.db_('MASTER_BRANDS').insert({ BrandID: 'crash-1', BrandCode: 'ZZZ', BrandName: 'Brand Setengah', NameKey: 'brandsetengah', Status: 'ACTIVE' });
+  const plan = [c.db_('MASTER_BRANDS').plan()];
+  c.journalAppend_('tx-crash', plan);
+  c.db_('MASTER_BRANDS').flush();
+  c.resetDbCache_();
+  assert.equal(rowsOf(sheets, 'MASTER_BRANDS'), brandRows + 1);
+  ok(call(entry, 'brand.create', { name: 'Somethinc' }));
+  const names = ok(call(entry, 'brand.list', {})).map((b) => b.name);
+  assert.ok(!names.includes('Brand Setengah'));
+  assert.ok(names.includes('Somethinc'));
+  assert.ok(sheets.get('TX_JOURNAL').data.some((r) => r[0] === 'tx-crash' && r[2] === 'ROLLED_BACK'));
 });
 
-test('doPost: API JSON untuk frontend GitHub Pages', () => {
-  const post = (o) => JSON.parse(ctx.doPost({ postData: { contents: JSON.stringify(o) } }).getContent());
-  assert.equal(post({ action: 'product.list', payload: {} }).error.code, 'UNAUTHENTICATED');
-  assert.equal(post({ token: viewer, action: 'dashboard.get', payload: {} }).ok, true);
-  assert.equal(post({ token: viewer, action: 'user.list' }).error.code, 'FORBIDDEN');
-  assert.equal(JSON.parse(ctx.doPost({ postData: { contents: 'bukan json' } }).getContent()).error.code, 'BAD_REQUEST');
+test('migrasi eksplisit dari struktur lama: SKU lama dipertahankan, idempoten', () => {
+  const L = createGas();
+  const put = (name, rows) => {
+    const sh = L.ss.insertSheet(name);
+    sh.data = rows.map((r) => r.map((x) => (x === undefined ? '' : String(x))));
+  };
+  put('Brands', [['id', 'code', 'name', 'name_norm', 'manufacturer', 'notes', 'status'], ['b1', 'VIV', 'Viva', 'viva', '', '', 'active'], ['b2', 'ASDAS', 'asda', 'asda', '', '', 'pending']]);
+  put('Categories', [['id', 'code', 'name', 'name_norm', 'notes', 'status'], ['c1', 'TON', 'Toner', 'toner', '', 'active']]);
+  put('Products', [['id', 'product_no', 'brand_id', 'category_id', 'product_code', 'name', 'name_norm', 'token_key', 'product_type', 'description', 'base_unit', 'has_variants', 'status'], ['p1', '7', 'b1', 'c1', 'VAM100', 'Viva Air Mawar 100ml', '', '', 'standard', '', 'PCS', 'FALSE', 'active']]);
+  put('Variants', [['id', 'variant_no', 'product_id', 'variant_code', 'name', 'attributes_json', 'signature', 'is_default', 'status', 'sort_order'], ['v1', '1', 'p1', '', '', '[]', '', 'TRUE', 'active', '0']]);
+  put('SKUs', [
+    ['id', 'sku_no', 'sku_code', 'product_id', 'variant_id', 'sku_type', 'pack_qty', 'sales_unit', 'display_name', 'status'],
+    ['s1', '1', 'VIV-TON-VAM100-8992796011501-1', 'p1', 'v1', 'single', '1', 'PCS', 'Viva Air Mawar', 'active'],
+    ['s6', '2', 'VIV-TON-VAM100-8992796011501-6', 'p1', 'v1', 'multipack', '6', 'PACK', 'Viva Air Mawar - 6', 'active'],
+    ['s12', '3', 'VIV-TON-VAM100-8992796011501-12', 'p1', 'v1', 'multipack', '12', 'PACK', 'Viva Air Mawar - 12', 'active'],
+    ['sb', '4', 'PAK-BND-01', 'p1', 'v1', 'bundle', '1', 'SET', 'Bundle', 'active'],
+  ]);
+  put('Barcodes', [['code', 'barcode_type', 'symbology', 'status', 'verified_official'], ['8992796011501', 'gtin', 'EAN13', 'assigned', 'FALSE']]);
+  put('BarcodeAssignments', [['id', 'code', 'product_id', 'variant_id', 'sku_id', 'assigned_by', 'assigned_at', 'unassigned_by', 'unassigned_at', 'reason'], ['a1', '8992796011501', 'p1', 'v1', '', 'x', '2026-01-01', '', '', '']]);
+  put('Mappings', [['id', 'sku_id', 'system', 'external_sku', 'external_product_id', 'external_variation_id', 'listing_name', 'mapping_status', 'is_active'], ['m1', 's6', 'shopee', 'VIV-TON-VAM100-8992796011501-6', '999', '', 'Viva', 'confirmed', 'TRUE']]);
+  const out = JSON.parse(JSON.stringify(L.ctx.setup()));
+  const m = out.migration;
+  assert.deepEqual([m.brands, m.categories, m.products, m.variants, m.packs, m.barcodes, m.assignments, m.mappings], [2, 1, 1, 1, 2, 1, 1, 1]);
+  assert.ok(m.notMigrated.some((s) => s.includes('PAK-BND-01')));
+  const tok = JSON.parse(JSON.stringify(L.ctx.api(null, 'auth.login', { email: out.admin.email, password: out.admin.password }))).data.token;
+  const d = JSON.parse(JSON.stringify(L.ctx.api(tok, 'product.get', { id: 'p1' }))).data;
+  assert.equal(d.productNo, 'PRD-000007');
+  assert.equal(d.variants[0].sku, 'VIV-TON-VAM100-8992796011501-1');
+  assert.equal(d.variants[0].gtin, '8992796011501');
+  assert.deepEqual(d.variants[0].conversions.map((c) => [c.unitName, c.baseUnitEquivalent, c.sku]), [['PCS', 1, ''], ['PACK', 6, 'VIV-TON-VAM100-8992796011501-6'], ['PACK12', 12, 'VIV-TON-VAM100-8992796011501-12']]);
+  const brands = JSON.parse(JSON.stringify(L.ctx.api(tok, 'brand.list', {}))).data;
+  assert.equal(brands.find((b) => b.code === 'ASDAS').status, 'INACTIVE');
+  // tab lama tetap utuh
+  assert.equal(L.sheets.get('SKUs').data.length, 5);
+  // dijalankan ulang → tidak ada duplikasi
+  const again = JSON.parse(JSON.stringify(L.ctx.setup())).migration;
+  assert.deepEqual([again.brands, again.products, again.variants, again.packs, again.mappings], [0, 0, 0, 0, 0]);
+  // nomor produk baru melanjutkan nomor lama
+  const np = JSON.parse(JSON.stringify(L.ctx.api(tok, 'product.save', { input: { brandId: 'b1', categoryId: 'c1', name: 'Viva Face Tonic', baseUnit: 'BOTOL', variants: [{}] } }))).data;
+  assert.equal(np.productNo, 'PRD-000008');
 });

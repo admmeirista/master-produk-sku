@@ -1,530 +1,465 @@
 <script>
-/* ============================================================================ Dashboard */
-route('', async (main) => {
-  const d = await call('dashboard.get');
-  const c = d.counts;
-  const stat = (l, v, h, tone, to) => `<div class="stat ${tone || ''}" onclick="go('${to}')"><div class="l">${l}</div><div class="v">${Number(v).toLocaleString('id-ID')}</div>${h ? `<div class="tiny muted">${h}</div>` : ''}</div>`;
-  const max = Math.max(1, ...d.byBrand.map((b) => b.n));
-  main.innerHTML = head(`Halo, ${esc(S.user.fullName.split(' ')[0])}`, 'Ringkasan kondisi master produk hari ini', can('product.write') ? `<button class="btn" onclick="go('registrasi')">+ Registrasi Produk</button>` : '') +
-    `<div class="grid g4">
-      ${stat('Brand aktif', c.brands, c.brands_pending ? c.brands_pending + ' usulan referensi menunggu' : '', '', 'referensi')}
-      ${stat('Product master', c.products, `${c.products_active} aktif · ${c.products_draft} draft`, '', 'produk')}
-      ${stat('Varian', c.variants, '', '', 'produk')}
-      ${stat('SKU aktif', c.skus_active, '', 'indigo', 'sku')}
-      ${stat('Menunggu persetujuan', c.pending_registrations + c.pending_changes, `${c.pending_registrations} registrasi · ${c.pending_changes} perubahan`, c.pending_registrations + c.pending_changes ? 'amber' : '', 'persetujuan')}
-      ${stat('Varian tanpa GTIN resmi', c.variants_without_gtin, 'memakai barcode internal / belum ada', c.variants_without_gtin ? 'amber' : '', 'kualitas')}
-      ${stat('Indikasi duplikasi', c.duplicate_candidates, 'nama produk mirip / identik', c.duplicate_candidates ? 'red' : 'green', 'kualitas')}
-      ${stat('SKU belum sinkron BeeCloud', c.skus_not_synced_beecloud, c.mapping_problems ? c.mapping_problems + ' mapping bermasalah' : 'belum terkonfirmasi', c.skus_not_synced_beecloud ? 'amber' : 'green', 'mapping')}
-    </div>
-    <div class="grid g3 mt2">
-      ${card('Menunggu persetujuan', d.pending.length ? d.pending.map((r) => `<div style="padding:6px 0;border-bottom:1px solid #f1f2f4"><a onclick="go('produk/${r.product_id}')">${esc(r.product_name)}</a><div class="tiny muted">${r.request_type === 'change' ? 'Perubahan' : 'Registrasi baru'} · ${esc(r.submitted_by)} · ${fmtDate(r.submitted_at)}</div></div>`).join('') : empty('Tidak ada antrian'), `<a onclick="go('persetujuan')" class="small">Lihat semua</a>`)}
-      ${card('SKU aktif per brand', d.byBrand.length ? d.byBrand.map((b) => `<div class="small mb"><div class="row between"><span>${esc(b.name)}</span><span>${b.n}</span></div><div class="bar"><i style="width:${(b.n / max) * 100}%"></i></div></div>`).join('') + `<div class="tiny muted">${d.byStatus.map((s) => `${esc(s.label)}: <b>${s.n}</b>`).join(' · ')}</div>` : empty('Belum ada SKU aktif'))}
-      ${card('Aktivitas terbaru', d.recent.map((a) => `<div class="small" style="padding:5px 0;border-bottom:1px solid #f1f2f4"><b>${esc(a.actor)}</b> ${esc(auditLabel(a.action))}<div class="tiny muted">${fmtDate(a.created_at)}</div></div>`).join(''))}
-    </div>`;
-});
+/* ═════════════ Halaman: dashboard, direktori, detail, master brand/kategori, barcode, mapping, ekspor, sistem ═════════════ */
 
-const AUDIT_LABEL = { 'product.create_draft': 'membuat draft', 'product.update_draft': 'mengubah draft', 'product.submit': 'mengajukan review', 'product.approve': 'menyetujui registrasi', 'product.reject': 'menolak registrasi', 'product.activate': 'mengaktifkan produk', 'product.revise': 'merevisi', 'product.deactivate': 'menonaktifkan produk', 'product.archive': 'mengarsipkan', 'product.change_applied': 'menerapkan perubahan', 'change_request.create': 'mengajukan perubahan', 'change_request.approve': 'menyetujui perubahan', 'change_request.reject': 'menolak perubahan', 'barcode.allocate_internal': 'alokasi barcode internal', 'price.set': 'mengubah harga', 'mapping.create': 'membuat mapping', 'import.commit': 'import data', 'export.beecloud': 'ekspor BeeCloud', 'auth.login': 'login', 'user.create': 'membuat pengguna', 'settings.update': 'mengubah pengaturan' };
-const auditLabel = (a) => AUDIT_LABEL[a] || a;
+/* ───────── Dashboard ───────── */
+Pages.dashboard = function (main) {
+  api('dashboard.get').then(function (d) {
+    var c = d.counts;
+    var kpi = function (ic, label, v, sub, cls) { return '<div class="kpi ' + (cls || '') + '"><div class="top"><span class="chip">' + icon(ic) + '</span>' + esc(label) + '</div><div class="v">' + fmtNum(v) + '</div><div class="s">' + sub + '</div></div>'; };
+    var max = Math.max.apply(null, d.byBrand.map(function (b) { return b.n; }).concat([1]));
+    var pct = c.variants ? Math.round((c.withGtin + c.withInternal) / c.variants * 100) : 0;
+    main.innerHTML = pageHead('Ringkasan', 'Dashboard', can('product.write') ? '<button class="btn pri" data-go="register">' + icon('plus') + 'Registrasi Produk</button>' : '') +
+      '<div class="kpi4">' + kpi('package', 'Produk aktif', c.products, fmtNum(c.brands) + ' brand · ' + fmtNum(c.categories) + ' kategori', 'dark') +
+      kpi('layers', 'Varian aktif', c.variants, fmtNum(c.skus) + ' SKU (varian + kemasan)') +
+      kpi('barcode', 'Kelengkapan barcode', pct, '% varian · ' + fmtNum(c.withGtin) + ' GTIN, ' + fmtNum(c.withInternal) + ' internal') +
+      kpi('alert', 'Varian tanpa barcode', c.withoutBarcode, 'Lengkapi lewat Edit produk', c.withoutBarcode ? 'alert' : '') + '</div>' +
+      '<div class="dash2"><div class="panel"><div class="panel-h"><h3>Produk terbaru</h3><span class="sub">langsung tersedia di direktori</span><button class="btn sm ghost right" data-go="products">Lihat semua ' + icon('arrowRight') + '</button></div>' +
+      (d.recentProducts.length ? '<table class="t"><thead><tr><th>Produk</th><th>Brand</th><th class="num">Varian</th><th>Dibuat</th></tr></thead><tbody>' + d.recentProducts.map(function (p) {
+        return '<tr class="click" data-id="' + esc(p.id) + '"><td><b>' + esc(p.name) + '</b><div class="muted" style="font-size:11.5px">' + esc(p.productNo) + '</div></td><td>' + esc(p.brandName) + '</td><td class="num">' + p.variants + '</td><td class="nowrap">' + fmtDate(p.createdAt) + '</td></tr>';
+      }).join('') + '</tbody></table>' : emptyBox('Belum ada produk', 'Mulai dari Master Brand & Kategori, lalu Registrasi Produk.')) + '</div>' +
+      '<div style="display:flex;flex-direction:column;gap:16px"><div class="panel"><div class="panel-h"><h3>Varian aktif per brand</h3></div>' +
+      (d.byBrand.length ? '<div class="bars">' + d.byBrand.map(function (b) { return '<div class="bar"><span>' + esc(b.name) + '</span><span class="t"><i style="width:' + Math.round(b.n / max * 100) + '%"></i></span><b class="num">' + b.n + '</b></div>'; }).join('') + '</div>' : '<div class="muted">Belum ada data.</div>') + '</div>' +
+      '<div class="panel"><div class="panel-h"><h3>Aktivitas terbaru</h3></div><ul class="feed">' + (d.recent.length ? d.recent.map(function (a) { return '<li><span class="dot"></span><div><b>' + esc(actionLabel(a.action)) + '</b><div class="muted">' + esc(a.actor) + ' · ' + fmtDate(a.createdAt) + '</div></div></li>'; }).join('') : '<li class="muted">Belum ada aktivitas.</li>') + '</ul></div></div></div>';
+    $$('[data-go]', main).forEach(function (b) { b.onclick = function () { App.go(b.getAttribute('data-go')); }; });
+    $$('tr[data-id]', main).forEach(function (r) { r.onclick = function () { App.go('product', r.getAttribute('data-id')); }; });
+  }).catch(function (e) { main.innerHTML = errBox(e.message); });
+};
 
-/* ============================================================================ Direktori */
-const DIR = { search: '', brandId: '', categoryId: '', status: '', barcode: '', sort: 'updated_at', dir: 'desc', page: 1 };
-route('produk', async (main, args) => {
-  if (args[0]) return renderProduct(main, args[0]);
-  const [brands, cats] = await Promise.all([call('ref.list', { kind: 'brand' }), call('ref.list', { kind: 'category' })]);
-  main.innerHTML = head('Direktori Produk', 'Cari nama, kode produk, SKU, barcode, atau PRD-xxxxxx', `${can('export.run') ? `<button class="btn sec" id="exp">Ekspor Excel</button>` : ''}${can('product.write') ? `<button class="btn" onclick="go('registrasi')">+ Registrasi</button>` : ''}`) +
-    `<section class="card"><div class="cb grid g4" style="grid-template-columns:2fr 1fr 1fr 1fr 1fr">
-      <input id="q" placeholder="Cari…" value="${esc(DIR.search)}">
-      ${combo('fb', [{ value: '', label: 'Semua brand' }].concat(brands.map((b) => ({ value: b.id, label: b.name, hint: b.code }))), DIR.brandId, 'Semua brand', (v) => { DIR.brandId = v; DIR.page = 1; load(); })}
-      ${combo('fc', [{ value: '', label: 'Semua kategori' }].concat(cats.map((b) => ({ value: b.id, label: b.name, hint: b.code }))), DIR.categoryId, 'Semua kategori', (v) => { DIR.categoryId = v; DIR.page = 1; load(); })}
-      <select id="st"><option value="">Semua status (tanpa arsip)</option>${Object.keys(LABELS).slice(0, 7).map((s) => `<option value="${s}" ${DIR.status === s ? 'selected' : ''}>${LABELS[s][0]}</option>`).join('')}<option value="all">Termasuk arsip</option></select>
-      <select id="bf"><option value="">Semua barcode</option><option value="internal_only" ${DIR.barcode === 'internal_only' ? 'selected' : ''}>Memakai barcode internal</option><option value="none" ${DIR.barcode === 'none' ? 'selected' : ''}>Ada varian tanpa barcode</option></select>
-    </div><div id="tbl">${spinner()}</div></section>`;
-  initCombos(main);
-  $('#q').oninput = debounce(() => { DIR.search = $('#q').value; DIR.page = 1; load(); }, 400);
-  $('#st').onchange = () => { DIR.status = $('#st').value; DIR.page = 1; load(); };
-  $('#bf').onchange = () => { DIR.barcode = $('#bf').value; DIR.page = 1; load(); };
-  if ($('#exp')) $('#exp').onclick = async () => downloadTable(await call('export.master'), 'xlsx');
-  async function load() {
-    const d = await call('product.list', DIR);
-    const sortTh = (k, l) => `<th><a data-sort="${k}">${l}${DIR.sort === k ? (DIR.dir === 'asc' ? ' ▲' : ' ▼') : ''}</a></th>`;
-    $('#tbl').innerHTML = d.rows.length ? `<div class="tw"><table><thead><tr>${sortTh('product_no', 'ID')}${sortTh('name', 'Produk')}${sortTh('brand', 'Brand')}${sortTh('category', 'Kategori')}<th>Barcode</th>${sortTh('sku_count', 'Varian/SKU')}${sortTh('status', 'Status')}${sortTh('updated_at', 'Diubah')}</tr></thead><tbody>
-      ${d.rows.map((r) => `<tr class="click" onclick="go('produk/${r.id}')"><td class="mono small muted">${r.productNo}</td><td><b>${esc(r.name)}</b><div class="row tiny"><span class="mono muted">${esc(r.product_code)}</span>${r.product_type === 'bundle' ? B('Bundle', 'b-violet') : ''}${r.is_legacy ? B('Migrasi') : ''}</div></td><td>${esc(r.brand_name)}</td><td>${esc(r.category_name)}</td><td class="mono small">${r.barcodes ? esc(r.barcodes.slice(0, 40)) : B('Belum ada', 'b-amber')} ${r.has_internal_barcode ? B('internal', 'b-blue') : ''}</td><td>${r.variant_count} / ${r.sku_count}</td><td>${badge(r.status)}</td><td class="tiny muted">${fmtDate(r.updated_at)}</td></tr>`).join('')}
-      </tbody></table></div>` + pager(d, (p) => { DIR.page = p; load(); }) : empty('Produk tidak ditemukan', 'Ubah kata kunci atau filter.');
-    $$('[data-sort]', $('#tbl')).forEach((a) => (a.onclick = () => { DIR.dir = DIR.sort === a.dataset.sort && DIR.dir === 'asc' ? 'desc' : 'asc'; DIR.sort = a.dataset.sort; load(); }));
-  }
-  load();
-});
+var ACTION_LABEL = {
+  'product.create': 'Produk baru disimpan', 'product.update': 'Produk diubah', 'product.activate': 'Produk diaktifkan', 'product.deactivate': 'Produk dinonaktifkan',
+  'variant.activate': 'Varian diaktifkan', 'variant.deactivate': 'Varian dinonaktifkan', 'barcode.change': 'Barcode diganti', 'barcode.allocate_internal': 'Barcode internal dialokasikan',
+  'barcode.void': 'Barcode di-void', 'barcode.verify': 'GTIN diverifikasi', 'brand.create': 'Brand ditambahkan', 'brand.rename': 'Nama brand diubah', 'brand.activate': 'Brand diaktifkan', 'brand.deactivate': 'Brand dinonaktifkan',
+  'category.create': 'Kategori ditambahkan', 'category.rename': 'Nama kategori diubah', 'category.activate': 'Kategori diaktifkan', 'category.deactivate': 'Kategori dinonaktifkan',
+  'auth.login': 'Login', 'user.create': 'Pengguna dibuat', 'user.update': 'Pengguna diubah', 'user.change_password': 'Password diganti', 'settings.update': 'Pengaturan diubah',
+  'mapping.create': 'Mapping dibuat', 'export.beecloud': 'Ekspor BeeCloud', 'export.to_sheet': 'Ekspor ke tab spreadsheet', 'migration.legacy': 'Migrasi data versi lama'
+};
+function actionLabel(a) { return ACTION_LABEL[a] || a; }
 
-/* ============================================================================ Detail produk */
-const WF_LABEL = { submit: 'Ajukan Review', approve: 'Setujui', reject: 'Tolak', activate: 'Aktifkan', revise: 'Revisi', deactivate: 'Nonaktifkan', reactivate: 'Aktifkan Kembali', archive: 'Arsipkan' };
-const WF = { draft: ['submit', 'archive'], pending_review: ['approve', 'reject'], approved: ['activate', 'reject'], active: ['deactivate'], rejected: ['revise', 'archive'], inactive: ['reactivate', 'archive'], archived: [] };
-const WF_PERM = { submit: 'product.submit', revise: 'product.write', approve: 'product.review', reject: 'product.review', activate: 'product.review', deactivate: 'product.lifecycle', reactivate: 'product.lifecycle', archive: 'product.lifecycle' };
-
-async function renderProduct(main, id) {
-  const p = await call('product.get', { id });
-  const pending = p.requests.find((r) => r.status === 'pending_review');
-  const actions = WF[p.status].filter((a) => can(WF_PERM[a]) || (a === 'archive' && ['draft', 'rejected'].indexOf(p.status) >= 0 && can('product.write')));
-  const lastReject = p.history.find((h) => h.action === 'reject');
-  const allSkus = [].concat(...p.variants.map((v) => v.skus));
-  main.innerHTML = `<a onclick="history.back()" class="small">← Kembali</a>` +
-    head(`${esc(p.name)} ${badge(p.status)} ${p.product_type === 'bundle' ? B('Bundle', 'b-violet') : ''} ${p.is_legacy ? B('Migrasi template lama') : ''}`,
-      `<span class="mono">${p.productNo} · ${esc(p.brand_name)} (${esc(p.brand_code)}) · ${esc(p.category_name)} (${esc(p.category_code)}) · kode ${esc(p.product_code)}</span>`,
-      `${p.status === 'draft' && can('product.write') ? `<button class="btn sec" onclick="go('registrasi/${p.id}')">Edit draft</button>` : ''}
-       ${['approved', 'active', 'inactive'].indexOf(p.status) >= 0 && can('product.write') ? `<button class="btn sec" id="cr" ${pending ? 'disabled title="Masih ada permintaan yang menunggu review"' : ''}>Ajukan perubahan</button>` : ''}
-       ${actions.map((a) => `<button class="btn ${['approve', 'activate', 'reactivate'].indexOf(a) >= 0 ? 'ok' : a === 'reject' ? 'danger' : a === 'submit' ? '' : 'sec'}" data-wf="${a}">${WF_LABEL[a]}</button>`).join('')}`) +
-    (p.status === 'rejected' && lastReject ? alertBox('error', 'Registrasi ditolak', `${esc(lastReject.reason)} — ${esc(lastReject.actor)}, ${fmtDate(lastReject.created_at)}. Klik "Revisi" untuk memperbaiki lalu ajukan ulang.`) + '<div class="mt"></div>' : '') +
-    (pending ? alertBox('warn', pending.request_type === 'change' ? `Perubahan #${pending.request_no} menunggu review` : 'Registrasi menunggu review', `Diajukan ${esc(pending.submitted_by)} pada ${fmtDate(pending.submitted_at)}.${(pending.payload_json && pending.payload_json.duplicateWarnings || []).length ? ' ⚠ Pengaju mengabaikan peringatan nama mirip.' : ''}`) + '<div class="mt"></div>' : '') +
-    (p.brand_status !== 'active' || p.category_status !== 'active' ? alertBox('warn', null, 'Brand/kategori produk ini belum aktif — produk belum dapat diajukan/disetujui.') + '<div class="mt"></div>' : '') +
-    `<div class="tabs"><a class="on" data-tab="ov">Varian, SKU & Barcode</a><a data-tab="hi">Riwayat & Audit</a></div><div id="tab"></div>`;
-  const ov = () => `<div class="grid g4 mb">
-      ${[['Varian', p.variants.length], ['SKU', allSkus.length], ['SKU aktif', allSkus.filter((s) => s.status === 'active').length], ['BeeCloud terkonfirmasi', allSkus.filter((s) => s.mappings.some((m) => m.system === 'beecloud' && m.status === 'confirmed')).length]].map((x) => `<div class="soft"><div class="tiny muted">${x[0]}</div><div style="font-size:18px;font-weight:600">${x[1]}</div></div>`).join('')}
-    </div>` + p.variants.map((v) => card(`${p.has_variants ? esc(v.name || '(tanpa nama)') : 'Varian default'} ${v.variant_code ? `<span class="mono tiny muted">${esc(v.variant_code)}</span>` : ''} ${(v.attributes || []).map((a) => B(a.type + ': ' + a.value, 'b-indigo')).join(' ')}`,
-      `<div class="row" style="padding:12px 16px;border-bottom:1px solid #f1f2f4">${v.barcode ? `${barcodeSvg(v.barcode.code)}<div class="small"><b class="mono">${esc(v.barcode.code)}</b><div class="muted">${v.barcode.type === 'gtin' ? 'GTIN produsen' : 'Barcode internal (bukan GTIN resmi)'}${v.barcode.type === 'gtin' ? (v.barcode.verifiedOfficial ? ' · terverifikasi' : ' · belum diverifikasi fisik') : ''}</div><a onclick="barcodeHistoryModal('${v.barcode.code}')">Riwayat barcode</a></div>` : B('Belum ada barcode', 'b-amber')}</div>
-       <div class="tw"><table><thead><tr><th>Kemasan</th><th>SKU</th><th>Harga beli</th><th>Harga jual</th><th>BeeCloud</th><th>Shopee</th><th>Status</th><th></th></tr></thead><tbody>
-       ${v.skus.map((s) => { const bee = s.mappings.find((m) => m.system === 'beecloud'); const shp = s.mappings.filter((m) => m.system === 'shopee'); return `<tr>
-         <td>${s.sku_type === 'bundle' ? 'Bundle' : s.pack_qty === 1 ? 'Satuan' : 'Isi ' + s.pack_qty} <span class="tiny muted">${esc(s.sales_unit)}</span>${s.components.length ? `<div class="tiny muted">${s.components.map((c) => `${c.quantity}× <span class="mono">${esc(c.skuCode)}</span>`).join('<br>')}<br><b>Biaya komponen: ${fmtRp(s.components.reduce((a, c) => a + (c.purchasePrice || 0) * c.quantity, 0))}</b></div>` : ''}</td>
-         <td class="mono small">${s.sku_code ? esc(s.sku_code) : '<span class="warnt">belum terbentuk</span>'}${s.sku_source === 'legacy_import' ? '<div class="tiny muted">SKU lama dipertahankan</div>' : s.sku_source === 'manual' ? '<div class="tiny muted">override manual</div>' : ''}</td>
-         <td>${fmtRp(s.purchase_price)}</td><td>${fmtRp(s.selling_price)} ${s.purchase_price !== null && s.selling_price !== null && s.selling_price < s.purchase_price ? B('rugi', 'b-red') : ''}</td>
-         <td>${bee ? badge(bee.status) : '—'}</td><td>${shp.length ? shp.map((m) => badge(m.status)).join(' ') : '—'}</td><td>${badge(s.status)}</td>
-         <td><button class="btn ghost sm" onclick="priceModal('${s.id}','${esc(s.sku_code || s.display_name)}','${s.status}')">Harga & histori</button></td></tr>`; }).join('')}
-       </tbody></table></div>`, '', true) + '<div class="mt"></div>').join('');
-  const hi = async () => {
-    const audit = await call('product.audit', { id });
-    return `<div class="grid g2">${card('Riwayat persetujuan', p.history.length ? p.history.map((h) => `<div class="small" style="padding:6px 0;border-bottom:1px solid #f1f2f4"><b>${esc(h.action)}</b> ${h.from_status ? `· ${esc(h.from_status)} → ${esc(h.to_status)}` : ''}<div class="tiny muted">${esc(h.actor)} · ${fmtDate(h.created_at)}</div>${h.reason ? `<div class="soft tiny">"${esc(h.reason)}"</div>` : ''}</div>`).join('') : empty('Belum ada riwayat'))}
-      ${card('Permintaan', p.requests.length ? p.requests.map((r) => `<div class="small" style="padding:6px 0;border-bottom:1px solid #f1f2f4"><div class="row between"><b>#${r.request_no} ${r.request_type === 'change' ? 'Perubahan' : 'Registrasi baru'}</b>${badge(r.status)}</div><div class="tiny muted">${esc(r.submitted_by)} · ${fmtDate(r.submitted_at)} ${r.reviewed_by ? '· diputuskan ' + esc(r.reviewed_by) : ''}</div>${r.reason ? `<div class="tiny">Alasan: ${esc(r.reason)}</div>` : ''}${r.review_reason ? `<div class="tiny">Catatan reviewer: ${esc(r.review_reason)}</div>` : ''}${r.payload_json && r.payload_json.operations ? opsList(r.payload_json.operations) : ''}</div>`).join('') : empty('Belum ada permintaan'))}</div>
-      <div class="mt">${card('Audit log', audit.map((a) => `<div class="row between small" style="padding:5px 0;border-bottom:1px solid #f1f2f4"><span><b>${esc(a.actor)}</b> — ${esc(auditLabel(a.action))}${a.meta_json && a.meta_json.reason ? ` ("${esc(a.meta_json.reason)}")` : ''}</span><span class="tiny muted">${fmtDate(a.created_at)}</span></div>`).join('') || empty('Kosong'))}</div>`;
+/* ───────── Direktori produk ───────── */
+Pages.products = function (main) {
+  var f = { search: '', brandId: '', categoryId: '', status: 'ACTIVE', completeness: '', page: 1, sort: 'updatedAt', dir: 'desc' };
+  main.innerHTML = pageHead('Master data', 'Direktori Produk', can('product.write') ? '<button class="btn pri" id="np">' + icon('plus') + 'Registrasi Produk</button>' : '') +
+    '<div class="filters"><div class="search">' + icon('search') + '<input class="in" id="fq" placeholder="Cari nama, kode, SKU, GTIN…"></div><div id="fb" style="width:200px"></div><div id="fc" style="width:200px"></div>' +
+    '<select class="in" id="fs"><option value="ACTIVE">Aktif</option><option value="INACTIVE">Nonaktif</option><option value="all">Semua status</option></select>' +
+    '<select class="in" id="fk"><option value="">Semua kelengkapan</option><option value="incomplete">Barcode belum lengkap</option><option value="complete">Barcode lengkap</option></select></div><div id="pl"></div>';
+  if ($('#np', main)) $('#np', main).onclick = function () { App.go('register'); };
+  var load = function () {
+    var box = $('#pl', main);
+    box.innerHTML = loadingBox();
+    api('product.list', f).then(function (d) {
+      if (!d.rows.length) { box.innerHTML = '<div class="tablewrap">' + emptyBox('Tidak ada produk', f.search ? 'Coba kata kunci lain.' : 'Produk yang disimpan langsung muncul di sini.') + '</div>'; return; }
+      var th = function (k, t, cls) { return '<th class="' + (cls || '') + '" data-sort="' + k + '" style="cursor:pointer">' + t + (f.sort === k ? (f.dir === 'asc' ? ' ↑' : ' ↓') : '') + '</th>'; };
+      box.innerHTML = '<div class="tablewrap"><table class="t"><thead><tr>' + th('name', 'Produk') + th('brand', 'Brand') + th('category', 'Kategori') + '<th>Kode</th><th>Satuan</th>' + th('skus', 'SKU', 'num') + '<th>Barcode</th><th>Status</th></tr></thead><tbody>' +
+        d.rows.map(function (r) {
+          return '<tr class="click' + (r.status !== 'ACTIVE' ? ' off' : '') + '" data-id="' + esc(r.id) + '"><td><b>' + esc(r.name) + '</b><div class="muted" style="font-size:11.5px">' + esc(r.productNo) + ' · ' + r.variantCount + ' varian</div></td>' +
+            '<td>' + esc(r.brandName) + ' <span class="chip-code ghost">' + esc(r.brandCode) + '</span></td><td>' + esc(r.categoryName) + '</td><td class="code">' + esc(r.productCode) + '</td><td>' + esc(r.baseUnit) + '</td>' +
+            '<td class="num">' + r.skuCount + '</td><td>' + (r.complete ? badge('GTIN', r.withBarcode + '/' + r.activeVariants + ' lengkap') : badge('NONE', r.withBarcode + '/' + r.activeVariants + ' varian')) + '</td><td>' + badge(r.status) + '</td></tr>';
+        }).join('') + '</tbody></table></div>' + pager(d, function (p) { f.page = p; load(); });
+      $$('tr[data-id]', box).forEach(function (tr) { tr.onclick = function () { App.go('product', tr.getAttribute('data-id')); }; });
+      $$('th[data-sort]', box).forEach(function (h) { h.onclick = function () { var k = h.getAttribute('data-sort'); f.dir = f.sort === k && f.dir === 'asc' ? 'desc' : 'asc'; f.sort = k; load(); }; });
+    }).catch(function (e) { box.innerHTML = errBox(e.message); });
   };
-  const showTab = async (t) => { $$('[data-tab]').forEach((x) => x.classList.toggle('on', x.dataset.tab === t)); $('#tab').innerHTML = t === 'ov' ? ov() : spinner(); if (t === 'hi') $('#tab').innerHTML = await hi(); };
-  $$('[data-tab]').forEach((a) => (a.onclick = () => showTab(a.dataset.tab)));
-  showTab('ov');
-  $$('[data-wf]').forEach((b) => (b.onclick = () => workflowDialog(p, b.dataset.wf)));
-  if ($('#cr')) $('#cr').onclick = () => changeRequestModal(p);
-}
+  $('#fq', main).oninput = debounce(function (e) { f.search = e.target.value; f.page = 1; load(); }, 300);
+  $('#fs', main).onchange = function (e) { f.status = e.target.value; f.page = 1; load(); };
+  $('#fk', main).onchange = function (e) { f.completeness = e.target.value; f.page = 1; load(); };
+  refCombo($('#fb', main), 'brand', null, function (it) { f.brandId = it ? it.id : ''; f.page = 1; load(); }, 'Semua brand', true);
+  refCombo($('#fc', main), 'category', null, function (it) { f.categoryId = it ? it.id : ''; f.page = 1; load(); }, 'Semua kategori', true);
+  load();
+};
 
-function workflowDialog(p, action, acknowledgeWarnings) {
-  const needReason = ['reject', 'deactivate', 'archive', 'reactivate'].indexOf(action) >= 0;
-  confirmDialog({
-    title: `${WF_LABEL[action]} — ${p.name}`,
-    message: { approve: 'Pastikan data, barcode (cocok dengan kemasan fisik), dan harga sudah benar.', archive: 'Produk diarsipkan (soft delete). SKU & barcode tetap tercatat dan tidak dapat dipakai ulang.', deactivate: 'Semua SKU produk ini dinonaktifkan dan tidak ikut ekspor.' }[action] || '',
-    confirmLabel: WF_LABEL[action],
-    tone: ['reject', 'archive', 'deactivate'].indexOf(action) >= 0 ? 'danger' : ['approve', 'activate', 'reactivate'].indexOf(action) >= 0 ? 'ok' : '',
-    reason: needReason,
-    reasonLabel: action === 'reject' ? 'Alasan penolakan (dilihat pengaju)' : 'Alasan / catatan',
-    onConfirm: async (reason) => {
-      try {
-        const r = await call('product.workflow', { id: p.id, action, reason, version: p.version, acknowledgeWarnings: !!acknowledgeWarnings });
-        toast('success', `${WF_LABEL[action]} berhasil`, 'Status: ' + (LABELS[r.status] || [r.status])[0]);
-        refreshPending(); router();
-      } catch (e) {
-        if (e.code === 'DUPLICATE_WARNING') { setTimeout(() => duplicateWarnModal(e.details.map((d) => d.data), () => workflowDialog(p, action, true))); return; }
-        throw e;
-      }
-    },
+/** Searchable dropdown brand/kategori. includeInactive untuk filter. */
+function refCombo(host, kind, value, onChange, placeholder, includeInactive, disabled) {
+  return combo(host, {
+    value: value, placeholder: placeholder, disabled: disabled,
+    load: function (q) { return Ref.get(kind).then(function (rows) { return filterLocal(rows.filter(function (r) { return includeInactive || r.status === 'ACTIVE'; }), q, ['name', 'code']); }); },
+    label: function (it) { return it.name; }, code: function (it) { return it.code; },
+    sub: function (it) { return it.status !== 'ACTIVE' ? 'Nonaktif' : it.productCount ? it.productCount + ' produk' : ''; },
+    empty: 'Tidak ditemukan. Tambahkan di Master ' + (kind === 'brand' ? 'Brand' : 'Kategori') + '.', onChange: onChange
   });
 }
 
-function duplicateList(items) {
-  return items.map((d) => `<div class="box mb" style="border-color:${d.severity === 'block' ? '#fecdd3' : '#fde68a'}"><b>${d.severity === 'block' ? '⛔' : '⚠'} ${esc(d.message)}</b>
-    ${d.existing ? `<div class="grid g2 mt small"><div class="soft"><div class="tiny muted">Sudah ada — ${esc(d.existing.productNo)} (${esc(d.existing.status)})</div>${esc(d.existing.name)}<div class="mono tiny muted">${esc(d.existing.brandName)} · ${esc(d.existing.productCode)}<br>${esc(d.existing.barcodes.join(', '))}<br>${esc(d.existing.skuCodes.slice(0, 3).join(', '))}</div><a onclick="go('produk/${d.existing.id}')">buka</a></div><div class="soft tiny">💡 ${esc(d.recommendation)}</div></div>` : `<div class="tiny mt">💡 ${esc(d.recommendation)}</div>`}</div>`).join('');
+/* ───────── Detail produk ───────── */
+Pages.product = function (main, id) {
+  api('product.get', { id: id }).then(function (p) {
+    var act = '';
+    if (can('product.write')) act = '<button class="btn pri" id="ed">' + icon('edit') + 'Edit / Tambah varian</button>' +
+      (p.status === 'ACTIVE' ? '<button class="btn" id="st">' + icon('power') + 'Nonaktifkan</button>' : '<button class="btn ok" id="st">' + icon('power') + 'Aktifkan</button>');
+    var unit = p.baseUnit;
+    main.innerHTML = '<button class="back" id="bk">' + icon('arrowLeft') + 'Direktori Produk</button>' +
+      '<div class="dt-head"><div class="grow"><div class="eyebrow">' + esc(p.productNo) + '</div><h2>' + esc(p.name) + '</h2><div class="dt-meta">' + badge(p.status) +
+      '<span class="chip-code ghost">' + esc(p.brand.code) + '</span>' + esc(p.brand.name) + ' · <span class="chip-code ghost">' + esc(p.category.code) + '</span>' + esc(p.category.name) + '</div></div><div class="row">' + act + '</div></div>' +
+      '<div class="grid2" style="margin-bottom:16px"><div class="panel"><div class="panel-h"><h3>Identifikasi produk</h3></div><div class="kv">' +
+      '<div>Kode produk</div><div class="code">' + esc(p.productCode) + '</div><div>Satuan dasar</div><div><b>' + esc(unit) + '</b></div>' +
+      '<div>Jumlah varian</div><div>' + p.variants.length + ' (' + p.variants.filter(function (v) { return v.status === 'ACTIVE'; }).length + ' aktif)</div>' +
+      '<div>Dibuat</div><div>' + fmtDate(p.createdAt) + ' · ' + esc(p.createdBy) + '</div><div>Terakhir diubah</div><div>' + fmtDate(p.updatedAt) + ' · ' + esc(p.updatedBy) + '</div></div></div>' +
+      '<div class="panel"><div class="panel-h"><h3>Kalkulator konversi</h3><span class="sub">kuantitas ekuivalen dalam ' + esc(unit) + '</span></div>' + calcHtml(p.variants) + '</div></div>' +
+      '<div class="sect">Varian, SKU & barcode</div><div class="tablewrap" style="max-height:none"><table class="t"><thead><tr><th>Varian</th><th>SKU</th><th>Barcode</th><th>Satuan kemasan</th><th>Status</th>' + (can('product.write') ? '<th></th>' : '') + '</tr></thead><tbody>' +
+      p.variants.map(function (v) {
+        var packs = v.conversions.filter(function (c) { return !c.isBaseUnit; });
+        return '<tr' + (v.status !== 'ACTIVE' ? ' class="off"' : '') + '><td><b>' + esc(v.name) + '</b><div>' + v.attributes.map(function (a) { return '<span class="attr-pill"><i>' + esc(a.name) + '</i>' + esc(a.value) + '</span>'; }).join('') + '</div></td>' +
+          '<td class="sku">' + esc(v.sku) + '</td><td>' + bcCell(v.gtin, v.internalBarcode) + '</td><td>' +
+          (packs.length ? packs.map(function (c) { return '<div style="margin:2px 0"><b>1 ' + esc(c.unitName) + '</b> = ' + c.factor + ' ' + esc(c.containsUnit) + (c.containsUnit !== unit ? ' <span class="muted">(' + c.baseUnitEquivalent + ' ' + esc(unit) + ')</span>' : '') + (c.sku ? ' <span class="sku">' + esc(c.sku) + '</span>' : '') + (c.gtin || c.internalBarcode ? ' ' + bcCell(c.gtin, c.internalBarcode) : '') + (c.status !== 'ACTIVE' ? ' ' + badge('INACTIVE') : '') + '</div>'; }).join('') : '<span class="muted">Hanya ' + esc(unit) + '</span>') +
+          '</td><td>' + badge(v.status) + '</td>' + (can('product.write') ? '<td><button class="btn sm" data-vs="' + esc(v.id) + '" data-to="' + (v.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE') + '">' + (v.status === 'ACTIVE' ? 'Nonaktifkan' : 'Aktifkan') + '</button></td>' : '') + '</tr>';
+      }).join('') + '</tbody></table></div>' +
+      '<div class="sect">Riwayat perubahan</div><div id="hist">' + loadingBox() + '</div>';
+    $('#bk', main).onclick = function () { App.go('products'); };
+    bindCalc(main, p.variants, unit);
+    $$('[data-bc]', main).forEach(function (b) { b.onclick = function () { showBarcode(b.getAttribute('data-bc')); }; });
+    if ($('#ed', main)) $('#ed', main).onclick = function () { App.go('register', { productId: p.id }); };
+    if ($('#st', main)) $('#st', main).onclick = function () {
+      var to = p.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+      var go = function (reason) { busy($('#st', main), api('product.setStatus', { id: p.id, status: to, reason: reason })).then(function () { toast(to === 'ACTIVE' ? 'Produk diaktifkan' : 'Produk dinonaktifkan', 'ok'); App.go('product', p.id); }).catch(function () {}); };
+      if (to === 'ACTIVE') go(''); else promptText('Nonaktifkan produk', 'Alasan (wajib, min. 5 karakter)', { min: 5, ok: 'Nonaktifkan', danger: true }).then(function (r) { if (r) go(r); });
+    };
+    $$('[data-vs]', main).forEach(function (b) {
+      b.onclick = function () {
+        var to = b.getAttribute('data-to');
+        ask(to === 'ACTIVE' ? 'Aktifkan varian ini?' : 'Nonaktifkan varian ini? SKU & barcode tetap tercatat dan tidak dipakai ulang.', to === 'ACTIVE' ? 'Aktifkan' : 'Nonaktifkan', to !== 'ACTIVE').then(function (y) {
+          if (y) busy(b, api('variant.setStatus', { id: b.getAttribute('data-vs'), status: to })).then(function () { toast('Status varian diperbarui', 'ok'); App.go('product', p.id); }).catch(function () {});
+        });
+      };
+    });
+    api('product.audit', { id: p.id }, { quiet: true }).then(function (rows) {
+      $('#hist', main).innerHTML = rows.length ? '<div class="tablewrap"><table class="t"><thead><tr><th>Waktu</th><th>Aksi</th><th>Oleh</th><th>Keterangan</th></tr></thead><tbody>' + rows.map(function (a) {
+        var m = a.meta_json || {};
+        return '<tr><td class="nowrap">' + fmtDate(a.created_at) + '</td><td><b>' + esc(actionLabel(a.action)) + '</b></td><td>' + esc(a.actor) + '</td><td class="muted">' + esc(m.reason || (a.action === 'barcode.change' ? (a.before_json || {}).code + ' → ' + (a.after_json || {}).code : '')) + '</td></tr>';
+      }).join('') + '</tbody></table></div>' : '<div class="muted">Belum ada riwayat.</div>';
+    }).catch(function () { $('#hist', main).innerHTML = ''; });
+  }).catch(function (e) { main.innerHTML = '<button class="back" onclick="App.go(\'products\')">' + icon('arrowLeft') + 'Direktori Produk</button>' + errBox(e.message); });
+};
+function bcCell(gtin, internal) {
+  if (gtin) return '<a class="link-btn code" data-bc="' + esc(gtin) + '">' + esc(gtin) + '</a> ' + badge('GTIN', 'GTIN');
+  if (internal) return '<a class="link-btn code" data-bc="' + esc(internal) + '">' + esc(internal) + '</a> ' + badge('INTERNAL', 'Internal');
+  return badge('NONE', 'Belum ada');
 }
-function duplicateWarnModal(items, onProceed) {
-  openModal({ title: 'Kemungkinan produk duplikat', size: 'lg', body: `<p class="small">Sistem menemukan produk dengan nama mirip. Produk <b>tidak digabung otomatis</b>; reviewer akan melihat peringatan ini.</p>${duplicateList(items)}`,
-    footer: `<button class="btn sec" data-c>Periksa lagi</button><button class="btn danger" data-p>Produk berbeda — tetap ajukan</button>`,
-    onMount: (el, close) => { el.querySelector('[data-c]').onclick = close; el.querySelector('[data-p]').onclick = () => { close(); onProceed(); }; } });
+function showBarcode(code) {
+  var m = modal('<h3>Barcode</h3><div style="text-align:center;padding:10px;background:#fff"><svg id="bcsvg"></svg></div><div class="row" style="margin-top:12px"><button class="btn" data-close>Tutup</button><button class="btn ghost" id="bh">' + icon('clock') + 'Histori</button></div>');
+  try { JsBarcode($('#bcsvg', m), code, { format: code.length === 13 ? 'EAN13' : code.length === 8 ? 'EAN8' : code.length === 12 ? 'UPC' : 'CODE128', height: 70, fontSize: 16 }); } catch (e) { $('#bcsvg', m).outerHTML = '<div class="code" style="font-size:20px">' + esc(code) + '</div>'; }
+  $('#bh', m).onclick = function () { m.close(); barcodeHistory(code); };
+}
+/** Kalkulator: jumlah × satuan → ekuivalen satuan dasar (dihitung di browser dari data konversi tersimpan). */
+function calcHtml(variants) {
+  var act = variants.filter(function (v) { return v.status === 'ACTIVE'; });
+  if (!act.length) return '<div class="muted">Tidak ada varian aktif.</div>';
+  return '<div class="calc" id="calc"><select class="in" id="cv">' + act.map(function (v, i) { return '<option value="' + i + '">' + esc(v.name) + '</option>'; }).join('') + '</select>' +
+    '<input class="in" id="cq" type="number" min="0" value="1"><select class="in" id="cu"></select><span>=</span><span class="res" id="cr">—</span></div><div class="hint">Contoh: 3 BOX (isi 24) = 72 satuan dasar. Konversi berbasis kuantitas, bukan volume.</div>';
+}
+function bindCalc(root, variants, unit) {
+  var act = variants.filter(function (v) { return v.status === 'ACTIVE'; });
+  if (!act.length || !$('#calc', root)) return;
+  var fillUnits = function () {
+    var v = act[Number($('#cv', root).value)];
+    $('#cu', root).innerHTML = v.conversions.filter(function (c) { return c.status === 'ACTIVE'; }).map(function (c) { return '<option value="' + c.baseUnitEquivalent + '">' + esc(c.unitName) + '</option>'; }).join('');
+    var big = $('#cu', root).options.length - 1; $('#cu', root).selectedIndex = Math.max(0, Math.min(1, big));
+    calc();
+  };
+  var calc = function () { var q = Number($('#cq', root).value) || 0; $('#cr', root).textContent = fmtNum(q * Number($('#cu', root).value || 0)) + ' ' + unit; };
+  $('#cv', root).onchange = fillUnits; $('#cq', root).oninput = calc; $('#cu', root).onchange = calc;
+  fillUnits();
 }
 
-function opsList(ops) {
-  const d = (o) => ({ update_product: () => 'Ubah produk' + (o.name ? `: nama → "${o.name}"` : ''), update_variant: () => 'Ubah varian ' + (o.name || ''), add_variant: () => `Tambah varian ${o.variant.variantCode} ${o.variant.name || ''}`, add_sku: () => `Tambah kemasan isi ${o.sku.packQty}`, change_barcode: () => `Ganti barcode → ${o.barcode.mode} ${o.barcode.code || '(alokasi otomatis)'}`, change_sku_code: () => 'Ubah kode SKU → ' + o.newCode, set_sku_status: () => 'Status SKU → ' + o.status }[o.op] || (() => o.op))();
-  return `<ul class="tiny" style="margin:4px 0 0 16px;padding:0">${ops.map((o) => `<li>${esc(d(o))}</li>`).join('')}</ul>`;
+/* ───────── Master Brand & Master Kategori ───────── */
+Pages.brands = function (main) { masterPage(main, 'brand'); };
+Pages.categories = function (main) { masterPage(main, 'category'); };
+function masterPage(main, kind) {
+  var L = kind === 'brand' ? { t: 'Master Brand', one: 'brand', ex: 'Contoh: Viva → VIV, Hanasui → HAN, Purbasari → PUR' } : { t: 'Master Kategori', one: 'kategori', ex: 'Contoh: Parfum → PAR, Lipstick → LIP, Body Lotion → BOD' };
+  var w = can('master.write');
+  var f = { q: '', status: 'ACTIVE' };
+  main.innerHTML = pageHead('Master data', L.t, w ? '<button class="btn" id="bulk">' + icon('list') + 'Tambah banyak</button>' : '', 'Cukup isi nama — kode ' + L.one + ' dibuat otomatis (3 huruf), unik, dan permanen.') +
+    (w ? '<div class="card" style="margin-bottom:16px"><div class="add-card"><div><label class="f" style="margin-top:0">Nama ' + (kind === 'brand' ? 'Brand' : 'Kategori') + ' <span class="req">*</span></label><input class="in w100" id="nm" placeholder="Ketik nama ' + L.one + ', lalu Enter" maxlength="60" autocomplete="off"></div>' +
+      '<button class="btn pri" id="sv" style="height:40px">' + icon('plus') + 'Simpan</button></div><div class="code-preview" id="pv"><span>' + esc(L.ex) + '</span></div><div id="pw"></div></div>' : '') +
+    '<div class="toolbar"><div class="search">' + icon('search') + '<input class="in" id="q" placeholder="Cari nama atau kode…"></div><div class="seg" id="sg"><button data-s="ACTIVE" class="on">Aktif</button><button data-s="INACTIVE">Nonaktif</button><button data-s="">Semua</button></div><span class="muted right" id="cnt"></span></div><div id="ml">' + loadingBox() + '</div>';
+  var rows = [];
+  var render = function () {
+    var list = filterLocal(rows.filter(function (r) { return !f.status || r.status === f.status; }), f.q, ['name', 'code']);
+    $('#cnt', main).textContent = list.length + ' dari ' + rows.length + ' ' + L.one;
+    $('#ml', main).innerHTML = list.length ? '<div class="tablewrap"><table class="t"><thead><tr><th>Kode</th><th>Nama</th><th class="num">Produk</th><th>Status</th><th>Dibuat</th>' + (w ? '<th></th>' : '') + '</tr></thead><tbody>' + list.map(function (r) {
+      return '<tr' + (r.status !== 'ACTIVE' ? ' class="off"' : '') + '><td><span class="chip-code">' + esc(r.code) + '</span></td><td><b>' + esc(r.name) + '</b></td><td class="num">' + r.productCount + '</td><td>' + badge(r.status) + '</td><td class="nowrap muted">' + fmtDate(r.createdAt, false) + '</td>' +
+        (w ? '<td class="nowrap"><button class="btn sm" data-rn="' + esc(r.id) + '">' + icon('edit') + 'Ubah nama</button> <button class="btn sm ghost" data-st="' + esc(r.id) + '">' + (r.status === 'ACTIVE' ? 'Nonaktifkan' : 'Aktifkan') + '</button></td>' : '') + '</tr>';
+    }).join('') + '</tbody></table></div>' : '<div class="tablewrap">' + emptyBox(rows.length ? 'Tidak ada yang cocok' : 'Belum ada ' + L.one, rows.length ? '' : 'Tambahkan ' + L.one + ' pertama di atas.', kind === 'brand' ? 'tag' : 'layers') + '</div>';
+    $$('[data-rn]', main).forEach(function (b) { b.onclick = function () { rename(rows.find(function (r) { return r.id === b.getAttribute('data-rn'); })); }; });
+    $$('[data-st]', main).forEach(function (b) {
+      b.onclick = function () {
+        var r = rows.find(function (x) { return x.id === b.getAttribute('data-st'); });
+        var to = r.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+        var go = function () { busy(b, api(kind + '.setStatus', { id: r.id, status: to })).then(function () { toast((kind === 'brand' ? 'Brand ' : 'Kategori ') + r.name + (to === 'ACTIVE' ? ' diaktifkan' : ' dinonaktifkan'), 'ok'); reload(); }).catch(function () {}); };
+        if (to === 'ACTIVE') go(); else ask('Nonaktifkan ' + r.name + ' (' + r.code + ')? ' + L.one.charAt(0).toUpperCase() + L.one.slice(1) + ' nonaktif tidak bisa dipilih saat registrasi produk baru. Produk lama tidak berubah.', 'Nonaktifkan', true).then(function (y) { if (y) go(); });
+      };
+    });
+  };
+  var reload = function () { Ref.drop(kind); return Ref.get(kind, true).then(function (r) { rows = r; render(); }).catch(function (e) { $('#ml', main).innerHTML = errBox(e.message); }); };
+  var rename = function (r) {
+    var m = modal('<h3>Ubah nama ' + L.one + '</h3><div class="info-box">' + icon('lock') + '<span>Kode <b class="code">' + esc(r.code) + '</b> permanen dan tidak ikut berubah, sehingga SKU yang sudah terbit tetap konsisten.</span></div>' +
+      '<label class="f">Nama baru</label><input class="in w100" id="rn" value="' + esc(r.name) + '" maxlength="60"><div id="rw"></div><div class="row" style="margin-top:16px"><button class="btn pri" id="rs">Simpan</button><button class="btn" data-close>Batal</button></div>');
+    var inp = $('#rn', m); inp.focus(); inp.select();
+    var ack = false;
+    var go = function () {
+      busy($('#rs', m), api(kind + '.rename', { id: r.id, name: inp.value, acknowledgeSimilar: ack }, { silent: true })).then(function () { m.close(); toast('Nama diperbarui', 'ok'); reload(); })
+        .catch(function (e) {
+          if (e.code === 'SIMILAR_EXISTS') { ack = true; $('#rw', m).innerHTML = '<div class="warn-box">' + icon('alert') + '<span>' + esc(e.message) + '<br>' + e.details.map(function (d) { return esc(d.message); }).join('<br>') + '<br>Klik Simpan sekali lagi bila memang berbeda.</span></div>'; }
+          else $('#rw', m).innerHTML = errBox(e.message);
+        });
+    };
+    $('#rs', m).onclick = go; inp.onkeydown = function (e) { if (e.key === 'Enter') go(); };
+  };
+  if (w) {
+    var nm = $('#nm', main), pv = $('#pv', main), pw = $('#pw', main), ack = false, last = null;
+    var preview = debounce(function () {
+      var v = nm.value.trim(); ack = false; pw.innerHTML = '';
+      if (v.length < 2) { pv.innerHTML = '<span>' + esc(L.ex) + '</span>'; last = null; return; }
+      api(kind + '.preview', { name: v }, { quiet: true, silent: true }).then(function (d) {
+        if (nm.value.trim() !== v) return;
+        last = d;
+        if (d.exact) { pv.innerHTML = ''; pw.innerHTML = errBox('Sudah terdaftar: ' + d.exact.name + ' (' + d.exact.code + ')' + (d.exact.status !== 'ACTIVE' ? ' — nonaktif, aktifkan dari daftar di bawah' : '')); return; }
+        pv.innerHTML = 'Kode otomatis <span class="chip-code">' + esc(d.code) + '</span><span class="muted">— final ditetapkan saat disimpan</span>';
+        if (d.similar.length) pw.innerHTML = '<div class="warn-box">' + icon('alert') + '<span>Nama mirip sudah ada: ' + d.similar.map(function (s) { return '<b>' + esc(s.name) + '</b> (' + esc(s.code) + ')'; }).join(', ') + '. <label style="font-weight:700"><input type="checkbox" id="ak"> Ini ' + L.one + ' yang berbeda</label></span></div>';
+        var ak = $('#ak', pw); if (ak) ak.onchange = function () { ack = ak.checked; };
+      }).catch(function () {});
+    }, 250);
+    nm.oninput = preview;
+    var save = function () {
+      if (nm.value.trim().length < 2) { nm.focus(); return toast('Nama minimal 2 karakter', 'err'); }
+      busy($('#sv', main), api(kind + '.create', { name: nm.value, acknowledgeSimilar: ack }, { silent: true })).then(function (r) {
+        toast((kind === 'brand' ? 'Brand ' : 'Kategori ') + r.name + ' tersimpan dengan kode ' + r.code, 'ok');
+        nm.value = ''; pv.innerHTML = '<span>' + esc(L.ex) + '</span>'; pw.innerHTML = ''; nm.focus(); reload();
+      }).catch(function (e) {
+        if (e.code === 'SIMILAR_EXISTS') pw.innerHTML = '<div class="warn-box">' + icon('alert') + '<span>' + esc(e.message) + ' ' + e.details.map(function (d) { return esc(d.message); }).join('; ') + '. Centang konfirmasi bila berbeda.</span></div>', preview();
+        else pw.innerHTML = errBox(e.message);
+      });
+    };
+    $('#sv', main).onclick = save;
+    nm.onkeydown = function (e) { if (e.key === 'Enter') save(); };
+    $('#bulk', main).onclick = function () {
+      var m = modal('<h3>Tambah banyak ' + L.one + '</h3><div class="muted">Satu nama per baris. Kode dibuat otomatis; nama yang sudah ada dilewati.</div><textarea class="in w100" rows="10" id="bt" style="margin-top:12px" placeholder="Viva&#10;Hanasui&#10;Purbasari"></textarea>' +
+        '<label style="display:flex;gap:8px;margin-top:10px;font-size:13px"><input type="checkbox" id="ba"> Tetap simpan walau ada nama yang mirip (bukan sama persis)</label><div id="br"></div><div class="row" style="margin-top:16px"><button class="btn pri" id="bs">Simpan semua</button><button class="btn" data-close>Tutup</button></div>', { wide: false });
+      $('#bs', m).onclick = function () {
+        var names = $('#bt', m).value.split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
+        if (!names.length) return toast('Isi minimal satu nama', 'err');
+        busy($('#bs', m), api(kind + '.createMany', { names: names, acknowledgeSimilar: $('#ba', m).checked })).then(function (r) {
+          $('#br', m).innerHTML = '<div class="ok-box">' + icon('check') + '<span>' + r.created.length + ' tersimpan: ' + r.created.map(function (c) { return esc(c.name) + ' (' + esc(c.code) + ')'; }).join(', ') + '</span></div>' +
+            (r.skipped.length ? '<div class="warn-box">' + icon('alert') + '<span>' + r.skipped.length + ' dilewati:<br>' + r.skipped.map(function (s) { return 'Baris ' + s.line + ' — ' + esc(s.name) + ': ' + esc(s.reason); }).join('<br>') + '</span></div>' : '');
+          $('#bt', m).value = r.skipped.map(function (s) { return s.name; }).join('\n');
+          reload();
+        }).catch(function () {});
+      };
+    };
+  }
+  $('#q', main).oninput = debounce(function (e) { f.q = e.target.value; render(); }, 150);
+  $$('#sg button', main).forEach(function (b) { b.onclick = function () { $$('#sg button', main).forEach(function (x) { x.classList.remove('on'); }); b.classList.add('on'); f.status = b.getAttribute('data-s'); render(); }; });
+  reload();
 }
 
-async function priceModal(skuId, label, status) {
-  const m = openModal({ title: 'Harga & histori — ' + label, size: 'lg', body: spinner() });
-  const draw = async () => {
-    const h = await call('sku.history', { id: skuId });
-    m.el.querySelector('.mb').innerHTML = (can('price.write') && status !== 'archived' ? `<div class="box mb grid" style="grid-template-columns:130px 150px 1fr auto"><select id="pt"><option value="selling">Harga jual</option><option value="purchase">Harga beli</option></select><input id="pa" inputmode="numeric" placeholder="Nominal"><input id="pr" placeholder="Alasan perubahan (wajib)"><button class="btn" id="ps">Simpan</button></div>` : '') +
-      `<div class="tw"><table><thead><tr><th>Jenis</th><th>Nominal</th><th>Berlaku</th><th>Alasan</th><th>Oleh</th></tr></thead><tbody>${h.prices.map((x) => `<tr style="${x.effective_to ? 'color:#9ca3af' : ''}"><td>${x.price_type === 'selling' ? 'Jual' : 'Beli'}</td><td>${fmtRp(x.amount)}</td><td class="tiny">${fmtDate(x.effective_from)} → ${x.effective_to ? fmtDate(x.effective_to) : B('berlaku', 'b-green')}</td><td class="tiny">${esc(x.reason)}</td><td class="tiny">${esc(x.created_by)}</td></tr>`).join('') || '<tr><td colspan=5 class="muted">Belum ada harga</td></tr>'}</tbody></table></div>` +
-      (h.codeHistory.length ? `<div class="mt small"><b>Histori kode SKU</b>${h.codeHistory.map((c) => `<div class="mono tiny">${esc(c.old_code)} → ${esc(c.new_code)} · ${esc(c.changed_by)} · ${fmtDate(c.changed_at)} · "${esc(c.reason)}"</div>`).join('')}</div>` : '');
-    if ($('#ps', m.el)) $('#ps', m.el).onclick = async () => {
-      try { const r = await call('sku.setPrice', { id: skuId, priceType: $('#pt', m.el).value, amount: Number($('#pa', m.el).value.replace(/\D/g, '')), reason: $('#pr', m.el).value }); toast('success', r.changed ? 'Harga diperbarui' : 'Harga sama, tidak ada perubahan'); draw(); }
-      catch (e) { toast('error', e.message); }
+/* ───────── Barcode ───────── */
+Pages.barcodes = function (main) {
+  var f = { search: '', type: '', status: '', page: 1 };
+  main.innerHTML = pageHead('Identitas', 'Registry Barcode', can('barcode.allocate') ? '<button class="btn" id="al">' + icon('plus') + 'Alokasikan barcode internal</button>' : '',
+    'GTIN resmi diinput dari kemasan produsen. Barcode internal (prefix 200) hanya untuk barang tanpa GTIN — tidak pernah menggantikan GTIN resmi.') +
+    '<div class="filters"><div class="search">' + icon('search') + '<input class="in" id="q" placeholder="Cari kode atau nama produk…"></div><select class="in" id="ty"><option value="">Semua jenis</option><option value="gtin">GTIN produsen</option><option value="internal">Internal</option></select>' +
+    '<select class="in" id="ss"><option value="">Semua status</option><option value="assigned">Dipakai</option><option value="allocated">Dialokasikan (belum dipakai)</option><option value="retired">Dipensiunkan</option><option value="void">Void</option></select></div><div id="bl"></div>';
+  var load = function () {
+    var box = $('#bl', main); box.innerHTML = loadingBox();
+    api('barcode.list', f).then(function (d) {
+      box.innerHTML = d.rows.length ? '<div class="tablewrap"><table class="t"><thead><tr><th>Kode</th><th>Jenis</th><th>Status</th><th>Dipakai oleh</th><th>Dicatat</th><th></th></tr></thead><tbody>' + d.rows.map(function (b) {
+        return '<tr><td><a class="link-btn code" data-bc="' + esc(b.code) + '">' + esc(b.code) + '</a></td><td>' + (b.type === 'gtin' ? badge('GTIN', 'GTIN') + (b.verified ? ' ' + badge('ACTIVE', 'Terverifikasi') : '') : badge('INTERNAL', 'Internal')) + '</td><td>' + badge(b.status) + '</td>' +
+          '<td>' + (b.owner ? '<a class="link-btn" data-p="' + esc(b.owner.productId) + '">' + esc(b.owner.label) + '</a>' : '<span class="muted">—</span>') + '</td><td class="nowrap muted">' + fmtDate(b.allocatedAt) + '</td><td class="nowrap">' +
+          '<button class="btn sm ghost" data-h="' + esc(b.code) + '">Histori</button>' + (can('product.write') && b.type === 'gtin' && !b.verified ? '<button class="btn sm ghost" data-vf="' + esc(b.code) + '">Verifikasi</button>' : '') +
+          (can('barcode.allocate') && b.status === 'allocated' ? '<button class="btn sm ghost" data-vd="' + esc(b.code) + '">Void</button>' : '') + '</td></tr>';
+      }).join('') + '</tbody></table></div>' + pager(d, function (p) { f.page = p; load(); }) : '<div class="tablewrap">' + emptyBox('Belum ada barcode', 'Barcode tercatat otomatis saat produk disimpan.', 'barcode') + '</div>';
+      $$('[data-bc]', box).forEach(function (a) { a.onclick = function () { showBarcode(a.getAttribute('data-bc')); }; });
+      $$('[data-p]', box).forEach(function (a) { a.onclick = function () { App.go('product', a.getAttribute('data-p')); }; });
+      $$('[data-h]', box).forEach(function (a) { a.onclick = function () { barcodeHistory(a.getAttribute('data-h')); }; });
+      $$('[data-vf]', box).forEach(function (a) { a.onclick = function () { promptText('Verifikasi GTIN ' + a.getAttribute('data-vf'), 'Catatan bukti (mis. dicek pada kemasan fisik)', { min: 3, ok: 'Tandai terverifikasi' }).then(function (n) { if (n) api('barcode.verify', { code: a.getAttribute('data-vf'), note: n }).then(function () { toast('GTIN ditandai terverifikasi', 'ok'); load(); }).catch(function () {}); }); }; });
+      $$('[data-vd]', box).forEach(function (a) { a.onclick = function () { promptText('Void barcode ' + a.getAttribute('data-vd'), 'Alasan', { min: 3, ok: 'Void', danger: true }).then(function (n) { if (n) api('barcode.void', { code: a.getAttribute('data-vd'), reason: n }).then(function () { toast('Barcode di-void', 'ok'); load(); }).catch(function () {}); }); }; });
+    }).catch(function (e) { box.innerHTML = errBox(e.message); });
+  };
+  $('#q', main).oninput = debounce(function (e) { f.search = e.target.value; f.page = 1; load(); }, 300);
+  $('#ty', main).onchange = function (e) { f.type = e.target.value; f.page = 1; load(); };
+  $('#ss', main).onchange = function (e) { f.status = e.target.value; f.page = 1; load(); };
+  if ($('#al', main)) $('#al', main).onclick = function () {
+    var m = modal('<h3>Alokasikan barcode internal</h3><div class="muted">Untuk barang tanpa GTIN produsen. Kode dialokasikan berurutan di dalam lock (tidak pernah ganda). Catatan: saat registrasi produk, barcode internal sudah dialokasikan otomatis.</div>' +
+      '<label class="f">Jumlah (1–100)</label><input class="in" id="n" type="number" min="1" max="100" value="1"><label class="f">Catatan</label><input class="in w100" id="nt" placeholder="opsional"><div id="out"></div><div class="row" style="margin-top:16px"><button class="btn pri" id="go">Alokasikan</button><button class="btn" data-close>Tutup</button></div>');
+    var key = uid();
+    $('#go', m).onclick = function () {
+      busy($('#go', m), api('barcode.allocate', { count: Number($('#n', m).value), notes: $('#nt', m).value, requestKey: key })).then(function (codes) {
+        $('#out', m).innerHTML = '<div class="ok-box">' + icon('check') + '<span class="code">' + codes.join('<br>') + '</span></div>'; key = uid(); load();
+      }).catch(function () {});
     };
   };
-  draw();
-}
-
-async function barcodeHistoryModal(code) {
-  const m = openModal({ title: 'Histori barcode ' + code, size: 'lg', body: spinner() });
-  try {
-    const h = await call('barcode.history', { code });
-    m.el.querySelector('.mb').innerHTML = `<div class="row">${barcodeSvg(code, 44)}<div class="small">Jenis: <b>${esc(h.barcode.barcode_type)}</b> · ${badge(h.barcode.status)}<div class="tiny muted">${esc(h.barcode.notes)}</div></div></div>` +
-      (h.history.length ? `<div class="tw mt"><table><thead><tr><th>Produk</th><th>Dipasang</th><th>Dilepas</th><th>Alasan</th></tr></thead><tbody>${h.history.map((a) => `<tr><td>${a.owner ? `<a onclick="go('produk/${a.owner.productId}')">${esc(a.owner.label)}</a>` : '—'}</td><td class="tiny">${fmtDate(a.assigned_at)}<br>${esc(a.assigned_by)}</td><td class="tiny">${a.unassigned_at ? fmtDate(a.unassigned_at) + ' · ' + esc(a.unassigned_by) : B('aktif', 'b-green')}</td><td class="tiny">${esc(a.reason)}</td></tr>`).join('')}</tbody></table></div>` : empty('Belum pernah dipasang ke barang'));
-  } catch (e) { m.el.querySelector('.mb').innerHTML = errHtml(e); }
-}
-
-/* Change request builder */
-async function changeRequestModal(p) {
-  const cats = await call('ref.list', { kind: 'category' });
-  const ops = [];
-  const skus = [].concat(...p.variants.map((v) => v.skus.map((s) => Object.assign({ vname: v.name || 'Default' }, s))));
-  const vOpts = p.variants.map((v) => `<option value="${v.id}">${esc(v.name || 'Default')} ${v.variant_code ? '(' + esc(v.variant_code) + ')' : ''}</option>`).join('');
-  const sOpts = skus.map((s) => `<option value="${s.id}">${esc(s.sku_code)} — ${esc(s.vname)} isi ${s.pack_qty}</option>`).join('');
-  const attrOpts = Object.entries({ shade: 'Shade', color: 'Warna', size: 'Ukuran', volume: 'Volume', scent: 'Aroma', formula: 'Formulasi', type: 'Tipe', other: 'Lainnya' }).map(([k, l]) => `<option value="${k}">${l}</option>`).join('');
-  const forms = {
-    update_product: `<label class="f"><span>Nama produk</span><input data-k="name" value="${esc(p.name)}"></label><label class="f"><span>Kategori</span><select data-k="categoryId">${cats.filter((c) => c.status === 'active').map((c) => `<option value="${c.id}" ${c.id === p.category_id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label><label class="f"><span>Deskripsi</span><input data-k="description" value="${esc(p.description || '')}"></label><div class="tiny muted">SKU yang sudah terbit tidak berubah walau nama/kategori berubah.</div>`,
-    add_sku: `<label class="f"><span>Varian</span><select data-k="variantId">${vOpts}</select></label><div class="grid g2"><label class="f"><span>Isi kemasan</span><input data-k="qty" type="number" value="6"></label><label class="f"><span>Satuan</span><select data-k="unit"><option>PACK</option><option>PCS</option><option>BOX</option><option>SET</option><option>LUSIN</option></select></label><label class="f"><span>Harga beli</span><input data-k="buy" inputmode="numeric"></label><label class="f"><span>Harga jual</span><input data-k="sell" inputmode="numeric"></label></div>`,
-    add_variant: `<div class="grid g2"><label class="f"><span>Kode varian</span><input data-k="vcode"></label><label class="f"><span>Nama varian</span><input data-k="vname"></label><label class="f"><span>Atribut</span><select data-k="attrType">${attrOpts}</select></label><label class="f"><span>Nilai atribut</span><input data-k="attrValue"></label><label class="f"><span>Jenis barcode</span><select data-k="mode"><option value="gtin">GTIN produsen</option><option value="internal">Internal (alokasi otomatis)</option></select></label><label class="f"><span>Kode barcode (GTIN)</span><input data-k="code" inputmode="numeric"></label><label class="f"><span>Harga beli</span><input data-k="buy"></label><label class="f"><span>Harga jual</span><input data-k="sell"></label></div>`,
-    update_variant: `<label class="f"><span>Varian</span><select data-k="variantId">${vOpts}</select></label><div class="grid g2"><label class="f"><span>Nama baru</span><input data-k="vname"></label><label class="f"><span>Atribut</span><select data-k="attrType">${attrOpts}</select></label><label class="f"><span>Nilai atribut</span><input data-k="attrValue"></label></div>`,
-    change_barcode: `<label class="f"><span>Varian</span><select data-k="variantId">${vOpts}</select></label><div class="grid g2"><label class="f"><span>Jenis</span><select data-k="mode"><option value="gtin">GTIN produsen</option><option value="internal">Internal (alokasi otomatis bila kosong)</option><option value="none">Lepas barcode</option></select></label><label class="f"><span>Kode</span><input data-k="code" inputmode="numeric"></label></div><div class="warnt">Barcode lama dipensiunkan; mapping eksternal ditandai "tidak cocok" untuk dicek ulang.</div>`,
-    change_sku_code: `<label class="f"><span>SKU</span><select data-k="skuId">${sOpts}</select></label><label class="f"><span>Kode SKU baru</span><input data-k="newCode"></label><div class="warnt">Wajib diperbarui juga di BeeCloud & Shopee.</div>`,
-    set_sku_status: `<label class="f"><span>SKU</span><select data-k="skuId">${sOpts}</select></label><label class="f"><span>Status</span><select data-k="status"><option value="inactive">Nonaktif</option><option value="active">Aktif</option></select></label>`,
-  };
-  const OP_LABEL = { add_sku: 'Tambah kemasan (multipack)', update_product: 'Ubah nama/kategori/deskripsi', update_variant: 'Ubah varian', add_variant: 'Tambah varian baru', change_barcode: 'Ganti barcode', change_sku_code: 'Ubah kode SKU', set_sku_status: 'Aktif/nonaktifkan SKU' };
-  openModal({
-    title: 'Ajukan perubahan — ' + p.name, size: 'lg',
-    body: `${alertBox('info', null, 'Produk yang sudah disetujui tidak diubah langsung. Perubahan diterapkan setelah reviewer menyetujui (maker-checker).')}
-      <div class="box mt"><label class="f"><span>Jenis perubahan</span><select id="opk">${Object.keys(OP_LABEL).map((k) => `<option value="${k}">${OP_LABEL[k]}</option>`).join('')}</select></label><div id="opf" class="grid mt"></div><button class="btn sec sm mt" id="opadd">+ Tambahkan ke daftar</button></div>
-      <div id="oplist" class="mt"></div><label class="f mt"><span class="req">Alasan perubahan</span><textarea id="opr" rows="2"></textarea></label><div id="operr" class="mt"></div>`,
-    footer: `<button class="btn sec" data-c>Batal</button><button class="btn" data-s>Ajukan</button>`,
-    onMount: (el, close) => {
-      const drawForm = () => ($('#opf', el).innerHTML = forms[$('#opk', el).value]);
-      const val = (k) => { const x = el.querySelector(`#opf [data-k="${k}"]`); return x ? x.value.trim() : ''; };
-      const num = (s) => (s === '' ? null : Number(s.replace(/\D/g, '')));
-      $('#opk', el).onchange = drawForm; drawForm();
-      $('#opadd', el).onclick = () => {
-        const k = $('#opk', el).value;
-        const o = { update_product: () => ({ op: k, name: val('name') !== p.name ? val('name') : undefined, categoryId: val('categoryId') !== p.category_id ? val('categoryId') : undefined, description: val('description') !== (p.description || '') ? val('description') : undefined }),
-          add_sku: () => ({ op: k, variantId: val('variantId'), sku: { skuType: Number(val('qty')) === 1 ? 'single' : 'multipack', packQty: Number(val('qty')), salesUnit: val('unit'), purchasePrice: num(val('buy')), sellingPrice: num(val('sell')) } }),
-          add_variant: () => ({ op: k, variant: { variantCode: normCode(val('vcode')), name: val('vname'), attributes: val('attrValue') ? [{ type: val('attrType'), value: val('attrValue') }] : [], barcode: { mode: val('mode'), code: val('code') || null }, skus: [{ skuType: 'single', packQty: 1, salesUnit: 'PCS', purchasePrice: num(val('buy')), sellingPrice: num(val('sell')) }] } }),
-          update_variant: () => ({ op: k, variantId: val('variantId'), name: val('vname') || undefined, attributes: val('attrValue') ? [{ type: val('attrType'), value: val('attrValue') }] : undefined }),
-          change_barcode: () => ({ op: k, variantId: val('variantId'), barcode: { mode: val('mode'), code: val('code') || null } }),
-          change_sku_code: () => ({ op: k, skuId: val('skuId'), newCode: val('newCode').toUpperCase() }),
-          set_sku_status: () => ({ op: k, skuId: val('skuId'), status: val('status') }) }[k]();
-        ops.push(o);
-        $('#oplist', el).innerHTML = `<b class="small">Daftar perubahan (${ops.length})</b>` + opsList(ops);
-      };
-      el.querySelector('[data-c]').onclick = close;
-      el.querySelector('[data-s]').onclick = async () => {
-        try { await call('product.changeRequest', { id: p.id, input: { reason: $('#opr', el).value, operations: ops } }); toast('success', 'Change request diajukan', 'Diterapkan setelah disetujui reviewer'); close(); refreshPending(); router(); }
-        catch (e) { $('#operr', el).innerHTML = errHtml(e); }
-      };
-    },
-  });
-}
-
-/* ============================================================================ Persetujuan */
-route('persetujuan', async (main) => {
-  main.innerHTML = head('Persetujuan', 'Antrian registrasi produk baru & perubahan master data (maker-checker)') +
-    `<div class="row mb"><select id="rs" style="width:auto"><option value="pending_review">Menunggu review</option><option value="approved">Disetujui</option><option value="applied">Diterapkan</option><option value="rejected">Ditolak</option><option value="cancelled">Dibatalkan</option><option value="">Semua</option></select></div>
-    ${can('product.review') ? '' : alertBox('info', null, 'Hanya Reviewer/Admin yang dapat memutuskan.')}<div id="rl" class="mt"></div>`;
-  const load = async () => {
-    const list = await call('request.list', { status: $('#rs').value });
-    $('#rl').innerHTML = list.length ? list.map((r) => {
-      const own = r.submitted_by === S.user.email || r.product_created_by === S.user.email;
-      const warns = (r.payload_json && r.payload_json.duplicateWarnings) || [];
-      return `<section class="card mb"><div class="cb row between" style="align-items:flex-start"><div>
-        <div class="row">${B(r.request_type === 'change' ? 'Perubahan #' + r.request_no : 'Registrasi #' + r.request_no, r.request_type === 'change' ? 'b-violet' : 'b-blue')} ${badge(r.status)} ${warns.length ? B('⚠ ' + warns.length + ' nama mirip', 'b-red') : ''}</div>
-        <a onclick="go('produk/${r.product_id}')" style="font-size:15px;font-weight:600;display:block;margin-top:4px">${esc(r.product_name)}</a>
-        <div class="mono tiny muted">${r.productNo} · ${esc(r.brand_name)}</div>
-        <div class="tiny muted">Diajukan ${esc(r.submitted_by)} · ${fmtDate(r.submitted_at)} ${r.reviewed_by ? '· diputuskan ' + esc(r.reviewed_by) : ''}</div>
-        ${r.reason ? `<div class="small">Alasan: ${esc(r.reason)}</div>` : ''}${r.review_reason ? `<div class="small">Catatan reviewer: ${esc(r.review_reason)}</div>` : ''}
-        ${r.payload_json && r.payload_json.operations ? opsList(r.payload_json.operations) : ''}
-        ${warns.map((w) => `<div class="tiny" style="color:#be123c">${esc(w.message)}</div>`).join('')}
-        ${r.status === 'pending_review' && own && can('product.review') ? '<div class="warnt">Anda pembuat/pengaju — harus diputuskan reviewer lain.</div>' : ''}
-      </div><div class="row">${r.status === 'pending_review' && can('product.review') ? `<button class="btn ok" ${own ? 'disabled' : ''} data-d="approve" data-id="${r.id}">Setujui</button><button class="btn danger" ${own ? 'disabled' : ''} data-d="reject" data-id="${r.id}">Tolak</button>` : ''}${r.status === 'pending_review' && r.request_type === 'change' && r.submitted_by === S.user.email ? `<button class="btn sec" data-d="cancel" data-id="${r.id}">Batalkan</button>` : ''}</div></div></section>`;
-    }).join('') : card('', empty('Tidak ada permintaan', 'Semua sudah diproses.'));
-    $$('[data-d]', $('#rl')).forEach((b) => (b.onclick = () => {
-      const r = list.find((x) => x.id === b.dataset.id);
-      const d = b.dataset.d;
-      confirmDialog({ title: { approve: 'Setujui', reject: 'Tolak', cancel: 'Batalkan' }[d] + ' — ' + r.product_name, confirmLabel: { approve: 'Setujui', reject: 'Tolak', cancel: 'Batalkan' }[d], tone: d === 'approve' ? 'ok' : 'danger', reason: d === 'reject', reasonLabel: d === 'reject' ? 'Alasan penolakan (wajib)' : 'Catatan (opsional)',
-        onConfirm: async (reason) => {
-          if (r.request_type === 'new_product' && d !== 'cancel') await call('product.workflow', { id: r.product_id, action: d, reason });
-          else await call('request.decide', { id: r.id, decision: d, reason });
-          toast('success', d === 'approve' ? (r.request_type === 'change' ? 'Perubahan diterapkan' : 'Registrasi disetujui — aktifkan dari detail produk') : 'Tersimpan');
-          refreshPending(); load();
-        } });
-    }));
-  };
-  $('#rs').onchange = load;
   load();
-});
-
-/* ============================================================================ Brand & kategori */
-function refModal(kind, initial, onSaved) {
-  const L = kind === 'brand' ? 'Brand' : 'Kategori';
-  openModal({
-    title: initial ? 'Edit ' + L : can('reference.manage') ? 'Tambah ' + L : 'Usulkan ' + L + ' baru',
-    body: `${!can('reference.manage') ? alertBox('info', null, 'Usulan berstatus "Menunggu persetujuan" sampai disetujui Reviewer/Admin.') : ''}
-      <div class="grid mt"><label class="f"><span class="req">Nama resmi</span><input id="rn" value="${esc(initial ? initial.name : '')}"></label>
-      <label class="f"><span class="req">Kode (2–6 huruf/angka)</span><input id="rc" class="mono" maxlength="6" value="${esc(initial ? initial.code : '')}"></label>
-      ${kind === 'brand' ? `<label class="f"><span>Produsen / distributor</span><input id="rm" value="${esc(initial ? initial.manufacturer || '' : '')}"></label>` : ''}
-      <label class="f"><span>Catatan</span><input id="rnt" value="${esc(initial ? initial.notes || '' : '')}"></label></div><div id="re" class="mt"></div>`,
-    footer: `<button class="btn sec" data-c>Batal</button><button class="btn" data-s>Simpan</button>`,
-    onMount: (el, close) => {
-      $('#rc', el).oninput = () => ($('#rc', el).value = normCode($('#rc', el).value));
-      el.querySelector('[data-c]').onclick = close;
-      let ack = false;
-      el.querySelector('[data-s]').onclick = async () => {
-        try {
-          const r = await call('ref.save', { kind, input: { id: initial && initial.id, code: $('#rc', el).value, name: $('#rn', el).value, manufacturer: $('#rm', el) ? $('#rm', el).value : '', notes: $('#rnt', el).value, acknowledgeSimilar: ack } });
-          toast('success', r.status === 'pending' ? 'Usulan dikirim' : L + ' disimpan'); close(); onSaved && onSaved(r);
-        } catch (e) {
-          $('#re', el).innerHTML = errHtml(e);
-          if (e.code === 'SIMILAR_EXISTS') { ack = true; el.querySelector('[data-s]').textContent = 'Tetap simpan (bukan duplikat)'; }
-        }
-      };
-    },
-  });
+};
+function barcodeHistory(code) {
+  api('barcode.history', { code: code }).then(function (d) {
+    modal('<h3>Histori barcode <span class="code">' + esc(code) + '</span></h3><div class="row">' + (d.barcode.type === 'gtin' ? badge('GTIN', 'GTIN') : badge('INTERNAL', 'Internal')) + badge(d.barcode.status) + '<span class="muted">' + esc(d.barcode.symbology) + '</span></div>' +
+      (d.barcode.notes ? '<div class="muted" style="margin-top:8px">' + esc(d.barcode.notes) + '</div>' : '') +
+      (d.history.length ? '<table class="t" style="margin-top:12px"><thead><tr><th>Dipasang</th><th>Ke</th><th>Dilepas</th><th>Alasan</th></tr></thead><tbody>' + d.history.map(function (h) {
+        return '<tr><td class="nowrap">' + fmtDate(h.assignedAt) + '<div class="muted">' + esc(h.assignedBy) + '</div></td><td>' + esc(h.owner ? h.owner.label : '—') + '</td><td class="nowrap">' + (h.unassignedAt ? fmtDate(h.unassignedAt) : '<span class="badge b-ACTIVE">Aktif</span>') + '</td><td class="muted">' + esc(h.reason) + '</td></tr>';
+      }).join('') + '</tbody></table>' : '<div class="muted" style="margin-top:12px">Belum pernah dipasang.</div>') + '<div class="row" style="margin-top:16px"><button class="btn" data-close>Tutup</button></div>', { wide: true });
+  }).catch(function () {});
 }
-route('referensi', async (main, args) => {
-  const kind = args[0] === 'kategori' ? 'category' : 'brand';
-  const list = await call('ref.list', { kind });
-  main.innerHTML = head('Brand & Kategori', 'Nama resmi & kode unik yang dipakai seluruh SKU', can('reference.propose') || can('reference.manage') ? `<button class="btn" id="add">${can('reference.manage') ? '+ Tambah' : '+ Usulkan'} ${kind === 'brand' ? 'Brand' : 'Kategori'}</button>` : '') +
-    `<div class="tabs"><a href="#/referensi" class="${kind === 'brand' ? 'on' : ''}">Brand</a><a href="#/referensi/kategori" class="${kind === 'category' ? 'on' : ''}">Kategori</a></div>
-    <section class="card"><div class="cb row"><input id="rq" placeholder="Cari nama / kode…" style="max-width:280px"><select id="rst" style="max-width:220px"><option value="">Semua status</option><option value="active">Aktif</option><option value="pending">Menunggu persetujuan</option><option value="inactive">Nonaktif</option><option value="rejected">Ditolak</option></select></div><div id="rt"></div></section>`;
-  const draw = () => {
-    const q = $('#rq').value.toLowerCase(), st = $('#rst').value;
-    const rows = list.filter((r) => (!st || r.status === st) && (!q || (r.name + ' ' + r.code).toLowerCase().indexOf(q) >= 0));
-    $('#rt').innerHTML = rows.length ? `<div class="tw"><table><thead><tr><th>Kode</th><th>Nama</th><th>Produk</th><th>Status</th><th>Diusulkan</th><th></th></tr></thead><tbody>${rows.map((r) => `<tr><td class="mono"><b>${esc(r.code)}</b></td><td>${esc(r.name)}</td><td>${r.product_count}</td><td>${badge(r.status)}</td><td class="tiny muted">${esc(r.proposed_by)}<br>${fmtDate(r.created_at)}</td><td style="text-align:right;white-space:nowrap">${can('reference.manage') ? `${r.status === 'pending' ? `<button class="btn ok sm" data-a="approve" data-id="${r.id}">Setujui</button> <button class="btn sec sm" data-a="reject" data-id="${r.id}">Tolak</button>` : ''}${r.status === 'active' ? `<button class="btn ghost sm" data-a="deactivate" data-id="${r.id}">Nonaktifkan</button>` : ''}${r.status === 'inactive' ? `<button class="btn ghost sm" data-a="activate" data-id="${r.id}">Aktifkan</button>` : ''}<button class="btn ghost sm" data-e="${r.id}">Edit</button>` : ''}</td></tr>`).join('')}</tbody></table></div>` : empty('Tidak ada data');
-    $$('[data-a]', $('#rt')).forEach((b) => (b.onclick = () => { const r = list.find((x) => x.id === b.dataset.id); const a = b.dataset.a; confirmDialog({ title: `${a} — ${r.name}`, confirmLabel: 'Lanjutkan', tone: a === 'approve' || a === 'activate' ? 'ok' : 'danger', reason: a === 'reject' || a === 'deactivate', onConfirm: async (reason) => { await call('ref.status', { kind, id: r.id, action: a, reason }); toast('success', 'Tersimpan'); router(); } }); }));
-    $$('[data-e]', $('#rt')).forEach((b) => (b.onclick = () => refModal(kind, list.find((x) => x.id === b.dataset.e), () => router())));
-  };
-  $('#rq').oninput = draw; $('#rst').onchange = draw; draw();
-  if ($('#add')) $('#add').onclick = () => refModal(kind, null, () => router());
-});
 
-/* ============================================================================ Barcode */
-route('barcode', async (main) => {
-  const F = { search: '', type: '', status: '', page: 1 };
-  main.innerHTML = head('Manajemen Barcode', 'Registry GTIN produsen & barcode internal, beserta histori pemakaian') +
-    `<div class="grid g2">${card('Generator barcode internal', `<p class="small">Namespace EAN-13 berawalan <span class="mono">200</span> (rentang <i>restricted circulation</i> GS1 — hanya untuk di dalam toko, <b>bukan GTIN resmi</b>). Dialokasikan berurutan di bawah kunci (LockService) sehingga tidak pernah ganda.</p>
-      ${can('barcode.allocate') ? `<div class="row"><input id="bn" type="number" min="1" max="100" value="1" style="width:100px"><button class="btn" id="ba">Alokasikan</button></div>` : alertBox('info', null, 'Anda tidak memiliki hak alokasi barcode.')}`)}
-      ${card('Cek barcode (validasi & konflik)', `<input id="bv" class="mono" placeholder="Scan / ketik barcode…" inputmode="numeric"><div id="bvr" class="mt"></div>`)}</div>
-    <section class="card mt2"><div class="ch"><h2>Registry barcode</h2></div><div class="cb row"><input id="bq" placeholder="Cari kode / produk…" style="max-width:260px"><select id="bt" style="max-width:170px"><option value="">Semua jenis</option><option value="gtin">GTIN</option><option value="internal">Internal</option></select><select id="bs" style="max-width:200px"><option value="">Semua status</option><option value="allocated">Dialokasikan</option><option value="assigned">Dipakai</option><option value="retired">Dipensiunkan</option><option value="void">Void</option></select></div><div id="bl"></div></section>`;
-  const load = async () => {
-    const d = await call('barcode.list', F);
-    $('#bl').innerHTML = d.rows.length ? `<div class="tw"><table><thead><tr><th>Kode</th><th>Jenis</th><th>Status</th><th>Dipakai oleh</th><th>Dialokasikan</th><th></th></tr></thead><tbody>${d.rows.map((b) => `<tr><td class="mono">${esc(b.code)}</td><td>${b.barcode_type === 'gtin' ? B('GTIN', 'b-green') : B('Internal', 'b-blue')} ${b.verified_official ? B('terverifikasi', 'b-green') : ''}</td><td>${badge(b.status)}</td><td class="small">${b.owner ? `<a onclick="go('produk/${b.owner.productId}')">${esc(b.owner.label)}</a>` : `<span class="muted">${esc(b.notes || '—')}</span>`}</td><td class="tiny muted">${esc(b.allocated_by)}<br>${fmtDate(b.allocated_at)}</td><td style="white-space:nowrap"><button class="btn ghost sm" onclick="barcodeHistoryModal('${b.code}')">Histori</button>${b.status === 'allocated' && can('barcode.allocate') ? `<button class="btn ghost sm" data-void="${b.code}">Void</button>` : ''}${b.barcode_type === 'gtin' && !b.verified_official && b.status === 'assigned' && can('product.review') ? `<button class="btn ghost sm" data-ver="${b.code}">Verifikasi</button>` : ''}</td></tr>`).join('')}</tbody></table></div>` + pager(d, (p) => { F.page = p; load(); }) : empty('Belum ada barcode');
-    $$('[data-void]', $('#bl')).forEach((x) => (x.onclick = () => confirmDialog({ title: 'Void ' + x.dataset.void, message: 'Kode yang di-void tidak akan pernah dipakai.', tone: 'danger', confirmLabel: 'Void', reason: true, onConfirm: async (reason) => { await call('barcode.void', { code: x.dataset.void, reason }); load(); } })));
-    $$('[data-ver]', $('#bl')).forEach((x) => (x.onclick = () => confirmDialog({ title: 'Verifikasi GTIN ' + x.dataset.ver, message: 'Tandai bahwa barcode ini sudah dicocokkan dengan kemasan fisik / data GS1.', tone: 'ok', confirmLabel: 'Verifikasi', reason: true, reasonLabel: 'Bukti verifikasi', onConfirm: async (note) => { await call('barcode.verify', { code: x.dataset.ver, note }); load(); } })));
-  };
-  $('#bq').oninput = debounce(() => { F.search = $('#bq').value; F.page = 1; load(); }, 400);
-  $('#bt').onchange = () => { F.type = $('#bt').value; F.page = 1; load(); };
-  $('#bs').onchange = () => { F.status = $('#bs').value; F.page = 1; load(); };
-  if ($('#ba')) $('#ba').onclick = async () => {
-    try { const r = await call('barcode.allocate', { count: Number($('#bn').value) || 1, requestKey: 'manual-' + uid() }); openModal({ title: 'Barcode internal dialokasikan', body: `<div class="grid g2">${r.map((b) => `<div class="box" style="text-align:center">${barcodeSvg(b.code, 40)}</div>`).join('')}</div><p class="tiny muted mt">Berstatus "Dialokasikan" sampai dipasang ke varian/SKU. Tidak akan pernah dialokasikan ulang.</p>` }); load(); }
-    catch (e) { toast('error', e.message); }
-  };
-  $('#bv').oninput = debounce(async () => {
-    const code = $('#bv').value.replace(/\D/g, '');
-    if (code.length < 8) return ($('#bvr').innerHTML = '');
-    const v = await call('barcode.validate', { code, mode: 'gtin' });
-    $('#bvr').innerHTML = (v.ok ? `<div class="okt">✔ Valid sebagai GTIN (${v.symbology})</div>` : `<div class="err">✖ ${esc(v.message)}</div>`) + (v.warnings || []).map((w) => `<div class="warnt">${esc(w)}</div>`).join('') +
-      `<div class="small mt">Registry: ${v.registered ? esc(v.registered.type + ' · ' + v.registered.status) : 'belum terdaftar'}</div>${v.owner ? `<div class="err"><b>Dipakai oleh: ${esc(v.owner.label)}</b></div>` : ''}${v.registered ? `<a onclick="barcodeHistoryModal('${code}')">Lihat histori</a>` : ''}`;
-  }, 400);
-  load();
-});
-
-/* ============================================================================ SKU */
-route('sku', async (main) => {
-  main.innerHTML = head('SKU & Kemasan', 'Satuan, multipack (terhubung ke varian satuan), dan bundle campuran (BOM)') + alertBox('info', null, 'SKU baru dibuat lewat <a onclick="go(\'registrasi\')">Registrasi Produk</a> (draft) atau <b>Ajukan perubahan → Tambah kemasan</b> pada produk aktif.') +
-    `<section class="card mt"><div class="cb row"><input id="sq" placeholder="Cari SKU / nama…" style="max-width:260px"><select id="sty" style="max-width:160px"><option value="">Semua tipe</option><option value="single">Satuan</option><option value="multipack">Multipack</option><option value="bundle">Bundle</option></select><select id="sst" style="max-width:160px"><option value="active">Aktif</option><option value="draft">Draft</option><option value="inactive">Nonaktif</option><option value="all">Semua</option></select></div><div id="sl"></div></section>`;
-  const load = async () => {
-    const rows = await call('sku.list', { search: $('#sq').value, type: $('#sty').value, status: $('#sst').value, limit: 300 });
-    const T = { single: B('Satuan'), multipack: B('Multipack', 'b-blue'), bundle: B('Bundle', 'b-violet') };
-    $('#sl').innerHTML = rows.length ? `<div class="tw"><table><thead><tr><th>SKU</th><th>Nama</th><th>Tipe</th><th>Isi</th><th>Harga beli</th><th>Harga jual</th><th>Status</th></tr></thead><tbody>${rows.map((s) => `<tr class="click" onclick="go('produk/${s.product_id}')"><td class="mono small">${esc(s.sku_code || '—')}</td><td>${esc(s.display_name)}<div class="tiny muted">${s.productNo} · ${esc(s.brand_name)}</div></td><td>${T[s.sku_type]}</td><td>${s.pack_qty}</td><td>${fmtRp(s.purchase_price)}</td><td>${fmtRp(s.selling_price)}</td><td>${badge(s.status)}</td></tr>`).join('')}</tbody></table></div>` : empty('Tidak ada SKU');
-  };
-  $('#sq').oninput = debounce(load, 400); $('#sty').onchange = load; $('#sst').onchange = load; load();
-});
-
-/* ============================================================================ Import & Export */
-route('import', async (main) => {
-  const types = can('import.run') ? await call('import.types') : [];
-  main.innerHTML = head('Import & Export', 'Phase 1 integrasi: pertukaran data via Excel/CSV yang tervalidasi') + `<div class="grid g2">
-    ${can('import.run') ? card('Import Excel / CSV', `<div class="grid"><label class="f"><span>Jenis data</span><select id="it">${types.map((t) => `<option value="${t.id}">${esc(t.label)}</option>`).join('')}</select></label><div id="idesc" class="tiny muted"></div>
-      <label class="dz"><input type="file" id="ifile" accept=".xlsx,.xls,.csv" style="display:none"><span id="ifn">Pilih file .xlsx / .csv — dibaca di browser Anda</span></label>
-      <label class="f" id="isheetw" style="display:none"><span>Sheet</span><select id="isheet"></select></label>
-      ${alertBox('info', null, 'Urutan migrasi template lama: <b>1)</b> Referensi → <b>2)</b> Barcode Internal Terpakai → <b>3)</b> Master Produk → <b>4)</b> Listing Shopee. Ada pratinjau & validasi per baris; hanya baris valid yang disimpan; data yang sama tidak bisa diimport dua kali.')}</div>`) : ''}
-    ${card('Export', `<div class="box"><b>File import BeeCloud</b><div class="tiny muted">SKU aktif + nama, satuan, isi, barcode, harga. <b>Format kolom belum diverifikasi</b> terhadap template import resmi BeeCloud — cocokkan dulu sebelum upload.</div>
-      <div class="row mt small"><select id="ef" style="width:90px"><option value="xlsx">XLSX</option><option value="csv">CSV</option></select><label><input type="checkbox" id="eu" style="width:auto"> Hanya yang belum terkonfirmasi</label>${can('mapping.write') ? `<label><input type="checkbox" id="em" checked style="width:auto"> Tandai "Diekspor"</label>` : ''}</div>
-      <div class="row mt"><button class="btn sm" id="eb">Unduh file BeeCloud</button><button class="btn sec sm" data-tosheet="beecloud">→ Tulis ke tab spreadsheet</button></div></div>
-      <div class="tiny muted mt">Bila unduhan diblokir browser, gunakan "→ Tulis ke tab spreadsheet" lalu File › Download dari Google Sheets.</div>
-      <div class="row mt"><button class="btn sec sm" id="emaster">Master produk (format template lama)</button><button class="btn sec sm" data-map="shopee">Mapping Shopee</button><button class="btn sec sm" data-map="beecloud">Mapping BeeCloud</button></div>`)}
-  </div><div id="ipreview" class="mt2"></div>${can('import.run') ? '<div id="ihist" class="mt2"></div>' : ''}`;
-  $('#eb').onclick = async () => { try { const d = await call('export.beecloud', { onlyUnsynced: $('#eu').checked, markExported: $('#em') ? $('#em').checked : false }); downloadTable(d, $('#ef').value); toast('success', `${d.rows.length} SKU diekspor`, $('#em') && $('#em').checked ? 'Ditandai "Diekspor" — konfirmasi setelah berhasil diimport di BeeCloud.' : ''); } catch (e) { toast('error', e.message); } };
-  $('#emaster').onclick = async () => downloadTable(await call('export.master'), 'xlsx');
-  $$('[data-map]').forEach((b) => (b.onclick = async () => downloadTable(await call('export.mappings', { system: b.dataset.map }), 'xlsx')));
-  $$('[data-tosheet]').forEach((b) => (b.onclick = async () => {
-    try { const r = await call('export.toSheet', { kind: b.dataset.tosheet, onlyUnsynced: $('#eu').checked, markExported: $('#em') ? $('#em').checked : false }); toast('success', `${r.rows} baris ditulis ke tab "${r.sheetName}"`, 'Buka spreadsheet database untuk mengunduh.'); }
-    catch (e) { toast('error', e.message); }
-  }));
-  if (!can('import.run')) return;
-  let wb = null, fileName = '';
-  const desc = () => { const t = types.find((x) => x.id === $('#it').value); $('#idesc').textContent = t ? t.description : ''; if (wb) pickSheet(); };
-  const pickSheet = () => {
-    const t = types.find((x) => x.id === $('#it').value);
-    const re = t.sheetPattern ? new RegExp(t.sheetPattern, 'i') : null;
-    $('#isheet').innerHTML = wb.SheetNames.map((n) => `<option ${re && re.test(n) ? 'selected' : ''}>${esc(n)}</option>`).join('');
-    $('#isheetw').style.display = '';
-    prepare();
-  };
-  $('#it').onchange = desc; desc();
-  $('#ifile').onchange = (e) => {
-    const f = e.target.files[0]; if (!f) return;
-    fileName = f.name; $('#ifn').textContent = f.name + ' — membaca…';
-    const reader = new FileReader();
-    reader.onload = () => { try { wb = XLSX.read(reader.result, { type: 'array', cellText: true, cellDates: false }); $('#ifn').textContent = f.name; pickSheet(); } catch (err) { toast('error', 'File tidak dapat dibaca'); } };
-    reader.readAsArrayBuffer(f);
-  };
-  $('#isheet').onchange = () => prepare();
-  async function prepare() {
-    const sheet = $('#isheet').value;
-    // raw:true — nilai asli sel. Angka dikonversi sendiri agar barcode 13 digit tidak menjadi "8.99923E+12".
-    const cellStr = (c) => (typeof c === 'number' ? (Number.isInteger(c) ? c.toFixed(0) : String(Math.round(c * 1e6) / 1e6)) : c === null || c === undefined ? '' : String(c));
-    const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheet], { header: 1, raw: true, defval: '', blankrows: true }).map((r) => r.map(cellStr));
-    const type = $('#it').value;
-    const t = types.find((x) => x.id === type);
-    const prep = await call('import.prepare', { type, rows });
-    const box = $('#ipreview');
-    box.innerHTML = card(`Mapping kolom — ${esc(t.label)} · sheet "${esc(sheet)}" · ${prep.dataRows} baris`, `<div class="grid g4">${t.fields.map((f) => `<label class="f"><span class="${f.required ? 'req' : ''}">${esc(f.label)}</span><select data-map-f="${f.key}"><option value="">— tidak dipakai —</option>${prep.headers.map((h, i) => `<option value="${i}" ${prep.mapping[f.key] === i ? 'selected' : ''}>${String.fromCharCode(65 + (i % 26))}: ${esc(h || '(tanpa judul)')}</option>`).join('')}</select></label>`).join('')}</div><button class="btn mt" id="ival">Validasi data</button><div id="ires" class="mt"></div>`);
-    $('#ival').onclick = async () => {
-      const mapping = {}; $$('[data-map-f]', box).forEach((s) => (mapping[s.dataset.mapF] = s.value === '' ? null : Number(s.value)));
-      const payload = { type, rows, headerIndex: prep.headerIndex, mapping, fileName, sheetName: sheet };
-      $('#ires').innerHTML = spinner('Memvalidasi…');
-      try {
-        const v = await call('import.validate', payload);
-        const sm = v.summary;
-        let filter = 'error';
-        const drawRows = () => {
-          const rs = v.rows.filter((r) => !filter || r.status === filter).slice(0, 300);
-          $('#irows').innerHTML = rs.length ? `<div class="tw"><table><thead><tr><th>Baris</th><th>Status</th><th>Data</th><th>Pesan</th></tr></thead><tbody>${rs.map((r) => `<tr><td class="mono">${r.rowNumber}</td><td>${badge(r.status)}</td><td class="tiny">${esc(r.raw.filter((x) => x !== '').slice(0, 6).join(' · ').slice(0, 140))}</td><td class="tiny">${r.issues.map((i) => `<div class="${i.severity === 'error' ? 'err' : 'warnt'}" style="margin:0">${esc(i.message)}</div>`).join('')}</td></tr>`).join('')}</tbody></table></div>` : empty('Tidak ada baris');
+/* ───────── Mapping BeeCloud / Shopee ───────── */
+Pages.mapping = function (main) {
+  var f = { system: 'shopee', status: '', search: '', page: 1 };
+  main.innerHTML = pageHead('Integrasi', 'Mapping BeeCloud / Shopee', can('mapping.write') ? '<button class="btn pri" id="nm">' + icon('plus') + 'Tambah mapping</button>' : '',
+    'Status: Dipetakan → Diekspor (belum terbukti) → Terkonfirmasi (ada bukti). Aplikasi tidak mengubah listing Shopee secara otomatis.') +
+    '<div class="toolbar"><div class="seg" id="sy"><button data-s="shopee" class="on">Shopee</button><button data-s="beecloud">BeeCloud</button></div><div class="search">' + icon('search') + '<input class="in" id="q" placeholder="Cari SKU, ID listing…"></div>' +
+    '<select class="in" id="st" style="width:auto"><option value="">Semua status</option><option value="mapped">Dipetakan</option><option value="exported">Diekspor</option><option value="confirmed">Terkonfirmasi</option><option value="mismatch">Tidak cocok</option><option value="error">Error</option></select></div><div id="ml"></div>';
+  var load = function () {
+    var box = $('#ml', main); box.innerHTML = loadingBox();
+    api('mapping.list', f).then(function (d) {
+      box.innerHTML = d.rows.length ? '<div class="tablewrap"><table class="t"><thead><tr><th>SKU internal</th><th>Produk</th><th>SKU eksternal</th>' + (f.system === 'shopee' ? '<th>ID Produk / Variasi</th>' : '') + '<th>Status</th><th></th></tr></thead><tbody>' + d.rows.map(function (m) {
+        return '<tr><td class="sku">' + esc(m.sku) + '</td><td>' + esc(m.displayName || '—') + '</td><td class="sku">' + esc(m.externalSku) + (m.skuMatches ? '' : ' ' + badge('mismatch', 'beda')) + '</td>' + (f.system === 'shopee' ? '<td class="code">' + esc(m.externalProductId) + (m.externalVariationId ? ' / ' + esc(m.externalVariationId) : '') + '</td>' : '') +
+          '<td>' + badge(m.status) + (m.lastError ? '<div class="muted" style="font-size:11.5px">' + esc(m.lastError) + '</div>' : '') + '</td><td class="nowrap">' + (can('mapping.write') ? '<select class="in sm" data-act="' + esc(m.id) + '"><option value="">Aksi…</option><option value="mark_exported">Tandai diekspor</option><option value="confirm">Konfirmasi (ada bukti)</option><option value="mark_error">Tandai error</option><option value="reset">Reset</option><option value="deactivate">Nonaktifkan</option></select>' : '') + '</td></tr>';
+      }).join('') + '</tbody></table></div>' + pager(d, function (p) { f.page = p; load(); }) : '<div class="tablewrap">' + emptyBox('Belum ada mapping ' + (f.system === 'shopee' ? 'Shopee' : 'BeeCloud'), 'Tambahkan mapping atau ekspor ke BeeCloud dari menu Ekspor Data.', 'link') + '</div>';
+      $$('[data-act]', box).forEach(function (s) {
+        s.onchange = function () {
+          var a = s.value; if (!a) return;
+          var need = ['confirm', 'mark_error', 'deactivate'].indexOf(a) >= 0;
+          (need ? promptText('Catatan / bukti', 'Mis. "dicek di Seller Centre 14/10, SKU tampil"', { min: 3 }) : Promise.resolve('')).then(function (note) {
+            if (need && !note) { s.value = ''; return; }
+            api('mapping.action', { id: s.getAttribute('data-act'), action: a, note: note }).then(function () { toast('Mapping diperbarui', 'ok'); load(); }).catch(function () { s.value = ''; });
+          });
         };
-        $('#ires').innerHTML = `<div class="grid g4">${[['Siap disimpan', sm.valid + sm.warning, 'okt'], ['Error', sm.error, 'err'], ['Peringatan', sm.warning, 'warnt'], ['Dilewati', sm.skipped, 'muted']].map((x) => `<div class="soft"><div class="tiny muted">${x[0]}</div><div class="${x[2]}" style="font-size:18px;font-weight:600;margin:0">${x[1]}</div></div>`).join('')}</div>
-          <div class="tiny mt">${v.errorSummary.map((e) => `<span class="${e.severity === 'error' ? 'err' : 'warnt'}" style="display:inline">${esc(e.code)} ×${e.n}</span>`).join(' · ')}</div>
-          <div class="row mt"><button class="btn ok" id="icommit" ${sm.valid + sm.warning ? '' : 'disabled'}>Simpan ${sm.valid + sm.warning} baris valid</button><button class="btn sec" id="ierr">Unduh laporan error</button>
-          <select id="ifilter" style="width:auto"><option value="error">Error</option><option value="warning">Peringatan</option><option value="valid">Valid</option><option value="skipped">Dilewati</option><option value="">Semua</option></select></div><div id="irows" class="mt"></div>`;
-        $('#ifilter').onchange = () => { filter = $('#ifilter').value; drawRows(); };
-        drawRows();
-        $('#ierr').onclick = () => downloadTable({ fileName: 'laporan-error-import', headers: ['Baris', 'Status', 'Pesan'].concat(prep.headers), rows: v.rows.filter((r) => r.issues.length).map((r) => [r.rowNumber, r.status, r.issues.map((i) => i.severity + ': ' + i.message).join(' | ')].concat(r.raw)), textColumns: prep.headers.map((_, i) => i + 3) }, 'xlsx');
-        $('#icommit').onclick = () => confirmDialog({ title: 'Simpan hasil import?', message: `<b>${sm.valid + sm.warning}</b> baris valid disimpan ke master. <b>${sm.error}</b> baris error dilewati. Tercatat di audit trail.`, tone: 'ok', confirmLabel: 'Simpan',
-          onConfirm: async () => { const r = await call('import.commit', payload); toast('success', `Import selesai (batch #${r.batchNo})`, `${r.committed} baris tersimpan`); $('#ires').innerHTML = alertBox('success', `${r.committed} baris tersimpan`, `Error: ${r.summary.error}, dilewati: ${r.summary.skipped}`); loadHist(); } });
-      } catch (e) { $('#ires').innerHTML = errHtml(e); }
+      });
+    }).catch(function (e) { box.innerHTML = errBox(e.message); });
+  };
+  $$('#sy button', main).forEach(function (b) { b.onclick = function () { $$('#sy button', main).forEach(function (x) { x.classList.remove('on'); }); b.classList.add('on'); f.system = b.getAttribute('data-s'); f.page = 1; load(); }; });
+  $('#q', main).oninput = debounce(function (e) { f.search = e.target.value; f.page = 1; load(); }, 300);
+  $('#st', main).onchange = function (e) { f.status = e.target.value; f.page = 1; load(); };
+  if ($('#nm', main)) $('#nm', main).onclick = function () {
+    var sys = f.system;
+    var m = modal('<h3>Tambah mapping ' + (sys === 'shopee' ? 'Shopee' : 'BeeCloud') + '</h3><label class="f">SKU internal</label><div id="sk"></div>' +
+      (sys === 'shopee' ? '<div class="fgrid"><div><label class="f">ID Produk Shopee</label><input class="in w100" id="pid" inputmode="numeric"></div><div><label class="f">ID Variasi (opsional)</label><input class="in w100" id="vid" inputmode="numeric"></div></div>' : '') +
+      '<label class="f">SKU di ' + (sys === 'shopee' ? 'Shopee (Seller SKU)' : 'BeeCloud') + '</label><input class="in w100" id="ext" placeholder="kosong = sama dengan SKU internal">' + (sys === 'shopee' ? '<label class="f">Nama listing</label><input class="in w100" id="ln">' : '') +
+      '<div class="row" style="margin-top:16px"><button class="btn pri" id="go">Simpan</button><button class="btn" data-close>Batal</button></div>');
+    var sk = combo($('#sk', m), { placeholder: 'Cari SKU / nama produk…', load: function (q) { return api('mapping.unmapped', { system: sys, search: q }, { quiet: true, silent: true }); }, label: function (it) { return it.sku; }, sub: function (it) { return it.displayName + (it.barcode ? ' · ' + it.barcode : ''); }, empty: 'Semua SKU sudah dipetakan / tidak ditemukan' });
+    $('#go', m).onclick = function () {
+      var it = sk.get(); if (!it) return toast('Pilih SKU internal', 'err');
+      busy($('#go', m), api('mapping.create', { system: sys, sku: it.sku, externalProductId: $('#pid', m) ? $('#pid', m).value : '', externalVariationId: $('#vid', m) ? $('#vid', m).value : '', externalSku: $('#ext', m).value, listingName: $('#ln', m) ? $('#ln', m).value : '' }))
+        .then(function () { m.close(); toast('Mapping ditambahkan', 'ok'); load(); }).catch(function () {});
     };
-  }
-  async function loadHist() {
-    const h = await call('import.history');
-    $('#ihist').innerHTML = card('Riwayat import', h.length ? `<div class="tw"><table><thead><tr><th>#</th><th>Jenis</th><th>File</th><th>Baris</th><th>Hasil</th><th>Oleh</th></tr></thead><tbody>${h.map((b) => `<tr><td class="mono">${b.batch_no}</td><td>${esc((types.find((t) => t.id === b.import_type) || {}).label || b.import_type)}</td><td>${esc(b.file_name)}<div class="tiny muted">${esc(b.sheet_name)}</div></td><td>${b.total_rows}</td><td class="tiny"><span class="okt" style="display:inline">${b.committed_rows} tersimpan</span> · <span class="err" style="display:inline">${b.error_rows} error</span> · ${b.skipped_rows} dilewati</td><td class="tiny muted">${esc(b.created_by)}<br>${fmtDate(b.created_at)}</td></tr>`).join('')}</tbody></table></div>` : empty('Belum ada import'), '', true);
-  }
-  loadHist();
-});
-
-/* ============================================================================ Kualitas data */
-route('kualitas', async (main) => {
-  const d = await call('quality.get');
-  const META = { similarNames: ['Nama produk mirip / identik', 'Kandidat duplikat — tinjau, jangan digabung otomatis', 'red'], variantsNoBarcode: ['Varian tanpa barcode', 'Wajib GTIN atau kode internal', 'red'], internalOnly: ['Memakai barcode internal', 'Cari GTIN resmi di kemasan bila ada', 'amber'], missingPrices: ['SKU aktif tanpa harga', 'Harga beli/jual kosong', 'amber'], negativeMargin: ['Harga jual < harga beli', 'Salah input / promo?', 'red'], multipackNoSingle: ['Multipack tanpa SKU satuan', 'Paket harus terhubung ke unit dasar', 'amber'], mappingProblems: ['Mapping bermasalah', 'Tidak cocok / error', 'red'], shopeeSkuMismatch: ['SKU Shopee ≠ SKU master', 'Seller SKU perlu disamakan', 'amber'], unverifiedGtin: ['GTIN belum diverifikasi fisik', 'Check digit valid ≠ terbukti resmi', 'amber'] };
-  let sec = 'similarNames';
-  main.innerHTML = head('Kualitas Data', 'Temuan yang membuat master belum memenuhi standar') + `<div class="grid g3" id="qs"></div><div id="qd" class="mt2"></div>`;
-  const draw = () => {
-    $('#qs').innerHTML = Object.keys(META).map((k) => `<div class="stat ${d.summary[k] ? META[k][2] : 'green'}" data-s="${k}" style="${sec === k ? 'outline:2px solid #6366f1' : ''}"><div class="l">${META[k][0]}</div><div class="v">${d.summary[k]}</div><div class="tiny muted">${META[k][1]}</div></div>`).join('');
-    $$('[data-s]').forEach((x) => (x.onclick = () => { sec = x.dataset.s; draw(); }));
-    const rows = d[sec] || [];
-    let body;
-    if (!rows.length) body = empty('Tidak ada temuan 🎉');
-    else if (sec === 'similarNames') body = `<div class="tw"><table><thead><tr><th>Skor</th><th>Produk A</th><th>Produk B</th><th>Brand</th><th></th></tr></thead><tbody>${rows.map((r, i) => `<tr><td>${r.exact ? B('identik', 'b-red') : B(Math.round(r.score * 100) + '%', 'b-amber')}</td><td><a onclick="go('produk/${r.a.id}')">${esc(r.a.name)}</a><div class="tiny muted">${r.a.productNo} · ${esc(r.a.status)}</div></td><td><a onclick="go('produk/${r.b.id}')">${esc(r.b.name)}</a><div class="tiny muted">${r.b.productNo} · ${esc(r.b.status)}</div></td><td>${esc(r.brandName)}</td><td>${can('product.review') || can('product.write') ? `<button class="btn ghost sm" data-dis="${i}">Bukan duplikat</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`;
-    else { const keys = Object.keys(rows[0]).filter((k) => k !== 'product_id'); body = `<div class="tw"><table><thead><tr>${keys.map((k) => `<th>${esc(k.replace(/_/g, ' '))}</th>`).join('')}<th></th></tr></thead><tbody>${rows.map((r) => `<tr>${keys.map((k) => `<td class="${/sku|barcode|listing/.test(k) ? 'mono small' : ''}">${/price/.test(k) ? fmtRp(r[k]) : esc(r[k] === null ? '—' : r[k])}</td>`).join('')}<td>${r.product_id ? `<a onclick="go('produk/${r.product_id}')">Buka</a>` : ''}</td></tr>`).join('')}</tbody></table></div>`; }
-    $('#qd').innerHTML = card(META[sec][0], body, '', true);
-    $$('[data-dis]').forEach((b) => (b.onclick = () => { const r = rows[Number(b.dataset.dis)]; confirmDialog({ title: 'Tandai bukan duplikat', message: esc(r.a.name + '  ↔  ' + r.b.name), reason: true, reasonLabel: 'Alasan (mis. ukuran/varian berbeda)', confirmLabel: 'Simpan', onConfirm: async (reason) => { await call('quality.dismiss', { a: r.a.id, b: r.b.id, reason }); toast('success', 'Ditandai bukan duplikat'); router(); } }); }));
-  };
-  draw();
-});
-
-/* ============================================================================ Mapping */
-route('mapping', async (main, args) => {
-  const system = args[0] === 'shopee' ? 'shopee' : 'beecloud';
-  const F = { system, status: '', search: '', page: 1 };
-  main.innerHTML = head('Mapping BeeCloud & Shopee', 'SKU internal ↔ identifier sistem eksternal beserta status sinkronisasi', can('mapping.write') ? '<button class="btn" id="madd">+ Tambah mapping</button>' : '') +
-    `<div class="grid g3 mb">${alertBox('info', 'Dipetakan → Diekspor → Terkonfirmasi', '"Terkonfirmasi" hanya bila ada bukti dari sistem eksternal (file ekspor yang diimport balik, atau konfirmasi manual dengan catatan bukti).')}${alertBox('warn', 'Shopee tidak diubah otomatis', 'Samakan Seller SKU di Seller Center secara manual, lalu import ekspor Shopee untuk konfirmasi.')}${alertBox('info', 'Phase 2 (API)', 'Integrasi API baru diaktifkan setelah dokumentasi & kredensial resmi tersedia.')}</div>
-    <div class="tabs"><a href="#/mapping" class="${system === 'beecloud' ? 'on' : ''}">BeeCloud</a><a href="#/mapping/shopee" class="${system === 'shopee' ? 'on' : ''}">Shopee</a></div>
-    <section class="card"><div class="cb row"><select id="mv" style="width:auto"><option value="mapped">Sudah dipetakan</option><option value="unmapped">SKU aktif belum dipetakan</option></select><input id="mq" placeholder="Cari SKU / ID listing…" style="max-width:240px"><select id="ms" style="max-width:220px"><option value="">Semua status</option>${['mapped', 'exported', 'confirmed', 'mismatch', 'error'].map((s) => `<option value="${s}">${LABELS[s][0]}</option>`).join('')}</select></div><div id="ml"></div></section>`;
-  const load = async () => {
-    if ($('#mv').value === 'unmapped') {
-      const rows = await call('mapping.unmapped', { system });
-      $('#ml').innerHTML = rows.length ? `<div class="tw"><table><thead><tr><th>SKU</th><th>Nama</th></tr></thead><tbody>${rows.map((s) => `<tr class="click" onclick="go('produk/${s.product_id}')"><td class="mono small">${esc(s.sku_code)}</td><td>${esc(s.display_name)}</td></tr>`).join('')}</tbody></table></div>` : empty('Semua SKU aktif sudah dipetakan');
-      return;
-    }
-    const d = await call('mapping.list', F);
-    $('#ml').innerHTML = d.rows.length ? `<div class="tw"><table><thead><tr><th>SKU internal</th><th>${system === 'shopee' ? 'Listing (produk / variasi)' : 'SKU BeeCloud'}</th>${system === 'shopee' ? '<th>Seller SKU</th>' : ''}<th>Status</th><th>Ekspor / konfirmasi</th><th></th></tr></thead><tbody>${d.rows.map((m) => `<tr><td><span class="mono small">${esc(m.sku_code)}</span><div class="tiny"><a onclick="go('produk/${m.product_id}')">${esc(m.display_name)}</a></div></td>
-      <td class="mono small">${system === 'shopee' ? esc(m.external_product_id + (m.external_variation_id ? ' / ' + m.external_variation_id : '')) + `<div class="tiny muted" style="font-family:inherit">${esc((m.listing_name || '').slice(0, 60))}</div>` : esc(m.external_sku)}</td>
-      ${system === 'shopee' ? `<td class="mono small">${esc(m.external_sku)}${m.sku_matches ? '' : '<div class="err">≠ SKU master</div>'}</td>` : ''}
-      <td>${badge(m.mapping_status)}${m.last_error ? `<div class="err">${esc(m.last_error)}</div>` : ''}</td><td class="tiny muted">${m.last_exported_at ? 'Ekspor ' + fmtDate(m.last_exported_at) : '—'}<br>${m.last_confirmed_at ? 'Konfirmasi ' + fmtDate(m.last_confirmed_at) : ''}</td>
-      <td>${can('mapping.write') ? `<select data-ma="${m.id}" style="width:170px"><option value="">Aksi…</option>${m.mapping_status === 'mapped' ? '<option value="mark_exported">Tandai diekspor</option>' : ''}${m.mapping_status !== 'confirmed' ? '<option value="confirm">Konfirmasi tersinkron</option>' : ''}${system === 'beecloud' && m.mapping_status === 'mismatch' ? '<option value="reset">Reset ke SKU master</option>' : ''}<option value="mark_error">Tandai error</option><option value="deactivate">Nonaktifkan</option></select>` : ''}</td></tr>`).join('')}</tbody></table></div>` + pager(d, (p) => { F.page = p; load(); }) : empty('Belum ada mapping');
-    $$('[data-ma]').forEach((s) => (s.onchange = () => { const a = s.value; if (!a) return; const needNote = ['confirm', 'mark_error', 'deactivate'].indexOf(a) >= 0; confirmDialog({ title: s.options[s.selectedIndex].text, reason: needNote, reasonLabel: a === 'confirm' ? 'Bukti konfirmasi (mis. "dicek di BeeCloud 14/10, SKU tampil")' : 'Catatan', confirmLabel: 'Simpan', tone: a === 'confirm' ? 'ok' : a === 'mark_error' || a === 'deactivate' ? 'danger' : '', onConfirm: async (note) => { await call('mapping.action', { id: s.dataset.ma, action: a, note }); toast('success', 'Mapping diperbarui'); load(); } }); s.value = ''; }));
-  };
-  $('#mv').onchange = load; $('#mq').oninput = debounce(() => { F.search = $('#mq').value; F.page = 1; load(); }, 400); $('#ms').onchange = () => { F.status = $('#ms').value; F.page = 1; load(); };
-  if ($('#madd')) $('#madd').onclick = async () => {
-    const skus = await call('sku.list', { status: 'active', limit: 2000 });
-    let skuId = '';
-    openModal({ title: 'Tambah mapping ' + (system === 'shopee' ? 'Shopee' : 'BeeCloud'),
-      body: `<div class="grid"><label class="f"><span class="req">SKU internal</span>${combo('msku', skus.map((s) => ({ value: s.id, label: s.sku_code, hint: s.display_name })), '', 'Cari SKU…', (v, o) => { skuId = v; if (!$('#mext').value) $('#mext').value = o.label; })}</label>
-        ${system === 'shopee' ? `<div class="grid g2"><label class="f"><span class="req">ID Produk Shopee</span><input id="mpid" class="mono" inputmode="numeric"></label><label class="f"><span>ID Variasi (opsional)</span><input id="mvid" class="mono" inputmode="numeric"></label></div>` : ''}
-        <label class="f"><span>${system === 'shopee' ? 'Seller SKU di Shopee' : 'SKU di BeeCloud'}</span><input id="mext" class="mono"><div class="hint">Seharusnya SAMA PERSIS dengan SKU master.</div></label><div id="merr"></div></div>`,
-      footer: '<button class="btn sec" data-c>Batal</button><button class="btn" data-s>Simpan</button>',
-      onMount: (el, close) => { initCombos(el); el.querySelector('[data-c]').onclick = close; el.querySelector('[data-s]').onclick = async () => { try { await call('mapping.create', { skuId, system, externalSku: $('#mext', el).value, externalProductId: $('#mpid', el) ? $('#mpid', el).value : '', externalVariationId: $('#mvid', el) ? $('#mvid', el).value : '' }); toast('success', 'Mapping dibuat', 'Status: Dipetakan'); close(); load(); } catch (e) { $('#merr', el).innerHTML = errHtml(e); } }; } });
   };
   load();
-});
+};
 
-/* ============================================================================ Audit */
-route('audit', async (main) => {
-  const F = { entityType: '', action: '', page: 1 };
-  main.innerHTML = head('Audit Trail', 'Semua tindakan penting beserta nilai sebelum & sesudah') + `<section class="card"><div class="cb row"><select id="ae" style="width:auto"><option value="">Semua entitas</option>${['product', 'request', 'brand', 'category', 'barcode', 'sku', 'mapping', 'import', 'export', 'user', 'settings'].map((x) => `<option>${x}</option>`).join('')}</select><input id="aa" placeholder="Filter aksi" style="max-width:220px"></div><div id="al"></div></section>`;
-  const load = async () => {
-    const d = await call('audit.list', F);
-    $('#al').innerHTML = d.rows.length ? `<div class="tw"><table><thead><tr><th>Waktu</th><th>Pengguna</th><th>Aksi</th><th>Entitas</th><th></th></tr></thead><tbody>${d.rows.map((a, i) => `<tr><td class="tiny">${fmtDate(a.created_at)}</td><td>${esc(a.actor)}</td><td>${esc(auditLabel(a.action))}${a.meta_json && a.meta_json.reason ? `<div class="tiny muted">"${esc(a.meta_json.reason)}"</div>` : ''}</td><td class="mono tiny">${esc(a.entity_type)} ${esc(String(a.entity_id).slice(0, 8))}</td><td>${a.before_json || a.after_json || a.meta_json ? `<a data-ad="${i}">Detail</a>` : ''}</td></tr>`).join('')}</tbody></table></div>` + pager(d, (p) => { F.page = p; load(); }) : empty('Tidak ada log');
-    $$('[data-ad]').forEach((x) => (x.onclick = () => { const a = d.rows[Number(x.dataset.ad)]; openModal({ title: auditLabel(a.action), size: 'lg', body: `<div class="grid g2"><div><b class="small">Sebelum</b><pre class="json">${esc(JSON.stringify(a.before_json, null, 2))}</pre></div><div><b class="small">Sesudah</b><pre class="json">${esc(JSON.stringify(a.after_json, null, 2))}</pre></div></div>${a.meta_json ? `<pre class="json">${esc(JSON.stringify(a.meta_json, null, 2))}</pre>` : ''}` }); }));
+/* ───────── Ekspor ───────── */
+Pages.export = function (main) {
+  var item = function (kind, title, desc, extra) {
+    return '<div class="panel"><div class="panel-h"><h3>' + title + '</h3></div><div class="muted" style="margin-bottom:12px">' + desc + '</div>' + (extra || '') +
+      '<div class="row" style="margin-top:12px"><button class="btn pri" data-x="' + kind + '" data-f="xlsx">' + icon('download') + 'Unduh XLSX</button><button class="btn" data-x="' + kind + '" data-f="csv">CSV</button><button class="btn ghost" data-x="' + kind + '" data-f="sheet">' + icon('file') + 'Tulis ke tab spreadsheet</button></div></div>';
   };
-  $('#ae').onchange = () => { F.entityType = $('#ae').value; F.page = 1; load(); };
-  $('#aa').oninput = debounce(() => { F.action = $('#aa').value; F.page = 1; load(); }, 400);
+  main.innerHTML = pageHead('Integrasi', 'Ekspor Data', '', 'File dibuat di browser; kolom SKU & barcode tetap teks (tidak berubah jadi angka). Bila unduhan diblokir, gunakan "Tulis ke tab spreadsheet".') +
+    '<div class="grid2">' + item('master', 'Master SKU', 'Satu baris per SKU: varian dan kemasan ber-SKU, lengkap dengan barcode, satuan, isi, brand & kategori.') +
+    item('conversions', 'Satuan & konversi', 'Seluruh satuan kemasan per varian: isi, satuan isi, ekuivalen satuan dasar, SKU/GTIN kemasan.') +
+    item('beecloud', 'Import BeeCloud', 'Format kolom <b>belum diverifikasi</b> terhadap template import resmi BeeCloud — cek dulu sebelum dipakai.', '<label style="display:flex;gap:8px;font-size:13px"><input type="checkbox" id="bu"> Hanya SKU yang belum terkonfirmasi di BeeCloud</label>' + (can('mapping.write') ? '<label style="display:flex;gap:8px;font-size:13px;margin-top:6px"><input type="checkbox" id="bm"> Tandai SKU sebagai "Diekspor" di mapping</label>' : '')) +
+    item('mappings', 'Mapping Shopee', 'Daftar mapping SKU internal ↔ listing Shopee beserta statusnya.') + '</div><div id="xr"></div>';
+  $$('[data-x]', main).forEach(function (b) {
+    b.onclick = function () {
+      var kind = b.getAttribute('data-x'), fm = b.getAttribute('data-f');
+      var p = { kind: kind, system: 'shopee', onlyUnsynced: $('#bu', main) && $('#bu', main).checked, markExported: $('#bm', main) && $('#bm', main).checked && kind === 'beecloud' };
+      if (fm === 'sheet') return busy(b, api('export.toSheet', p)).then(function (r) { $('#xr', main).innerHTML = '<div class="ok-box">' + icon('check') + '<span>' + r.rows + ' baris ditulis ke tab "' + esc(r.sheetName) + '". <a href="' + esc(r.url) + '" target="_blank">Buka spreadsheet</a></span></div>'; }).catch(function () {});
+      busy(b, api('export.data', p)).then(function (d) {
+        if (!window.XLSX) return toast('Pustaka Excel belum termuat. Coba lagi sebentar lagi.', 'err');
+        if (!d.rows.length) return toast('Tidak ada data untuk diekspor', 'warn');
+        downloadTable(d, fm); toast(d.rows.length + ' baris diekspor', 'ok');
+      }).catch(function () {});
+    };
+  });
+};
+
+/* ───────── Pengguna ───────── */
+Pages.users = function (main) {
+  main.innerHTML = pageHead('Sistem', 'Pengguna', '<button class="btn pri" id="nu">' + icon('plus') + 'Tambah pengguna</button>', 'Admin: semua akses · Admin Data: registrasi & master data · Viewer: hanya melihat & ekspor.') + '<div id="ul">' + loadingBox() + '</div>';
+  var roles = cfg().roles || [];
+  var roleSel = function (v) { return '<select class="in w100" id="ro">' + roles.map(function (r) { return '<option value="' + r.id + '"' + (r.id === v ? ' selected' : '') + '>' + esc(r.label) + '</option>'; }).join('') + '</select>'; };
+  var load = function () {
+    api('user.list').then(function (rows) {
+      $('#ul', main).innerHTML = '<div class="tablewrap"><table class="t"><thead><tr><th>Nama</th><th>Email</th><th>Role</th><th>Status</th><th>Login terakhir</th><th></th></tr></thead><tbody>' + rows.map(function (u) {
+        return '<tr' + (u.isActive ? '' : ' class="off"') + '><td><b>' + esc(u.fullName) + '</b></td><td>' + esc(u.email) + '</td><td>' + badge(u.role) + '</td><td>' + badge(u.isActive ? 'ACTIVE' : 'INACTIVE') + '</td><td class="muted">' + fmtDate(u.lastLoginAt) + '</td><td><button class="btn sm" data-u="' + esc(u.id) + '">' + icon('edit') + 'Ubah</button></td></tr>';
+      }).join('') + '</tbody></table></div>';
+      $$('[data-u]', main).forEach(function (b) {
+        b.onclick = function () {
+          var u = rows.find(function (x) { return x.id === b.getAttribute('data-u'); });
+          var m = modal('<h3>Ubah pengguna</h3><div class="muted">' + esc(u.email) + '</div><label class="f">Nama</label><input class="in w100" id="fn" value="' + esc(u.fullName) + '"><label class="f">Role</label>' + roleSel(u.role) +
+            '<label class="f">Reset password (opsional, min. 10 karakter)</label><input class="in w100" id="pw" type="text" autocomplete="off"><label style="display:flex;gap:8px;margin-top:12px"><input type="checkbox" id="ac"' + (u.isActive ? ' checked' : '') + '> Akun aktif</label>' +
+            '<div class="row" style="margin-top:16px"><button class="btn pri" id="go">Simpan</button><button class="btn" data-close>Batal</button></div>');
+          $('#go', m).onclick = function () { busy($('#go', m), api('user.update', { id: u.id, fullName: $('#fn', m).value, role: $('#ro', m).value, password: $('#pw', m).value || undefined, isActive: $('#ac', m).checked })).then(function () { m.close(); toast('Pengguna diperbarui', 'ok'); load(); }).catch(function () {}); };
+        };
+      });
+    }).catch(function (e) { $('#ul', main).innerHTML = errBox(e.message); });
+  };
+  $('#nu', main).onclick = function () {
+    var m = modal('<h3>Tambah pengguna</h3><label class="f">Nama lengkap</label><input class="in w100" id="fn"><label class="f">Email (untuk login)</label><input class="in w100" id="em" type="email"><label class="f">Role</label>' + roleSel('data_entry') +
+      '<label class="f">Password awal (min. 10 karakter)</label><input class="in w100" id="pw" type="text" autocomplete="off"><div class="hint">Sampaikan langsung ke pengguna; minta segera diganti di menu Profil.</div><div class="row" style="margin-top:16px"><button class="btn pri" id="go">Simpan</button><button class="btn" data-close>Batal</button></div>');
+    $('#go', m).onclick = function () { busy($('#go', m), api('user.create', { fullName: $('#fn', m).value, email: $('#em', m).value, role: $('#ro', m).value, password: $('#pw', m).value })).then(function () { m.close(); toast('Pengguna ditambahkan', 'ok'); load(); }).catch(function () {}); };
+  };
   load();
-});
+};
 
-/* ============================================================================ Pengguna */
-const ROLE_LABEL_UI = { admin: 'Admin', data_entry: 'Data Entry', reviewer: 'Reviewer', viewer: 'Viewer' };
-route('pengguna', async (main) => {
-  const users = await call('user.list');
-  main.innerHTML = head('Pengguna & Hak Akses', 'Role-based access control — diterapkan di server', '<button class="btn" id="uadd">+ Tambah pengguna</button>') +
-    card('', `<div class="tw"><table><thead><tr><th>Nama</th><th>Role</th><th>Status</th><th>Login terakhir</th><th></th></tr></thead><tbody>${users.map((u) => `<tr><td>${esc(u.fullName)}<div class="tiny muted">${esc(u.email)}</div></td><td>${B(ROLE_LABEL_UI[u.role], 'b-indigo')}</td><td>${u.isActive ? B('Aktif', 'b-green') : B('Nonaktif', 'b-red')}</td><td class="tiny muted">${fmtDate(u.lastLoginAt)}</td><td><button class="btn ghost sm" data-u="${u.id}">Edit</button></td></tr>`).join('')}</tbody></table></div>`, '', true) +
-    `<div class="mt">${alertBox('info', 'Matriks hak akses', 'Admin: semua · Data Entry: buat/ubah draft, ajukan, usulkan referensi, alokasi barcode, harga, mapping, import/export · Reviewer: setujui/tolak/aktifkan, kelola referensi, lifecycle, audit · Viewer: lihat & ekspor.')}</div>`;
-  const form = (u) => openModal({ title: u ? 'Edit pengguna' : 'Tambah pengguna',
-    body: `<div class="grid"><label class="f"><span class="req">Email</span><input id="ue" type="email" value="${esc(u ? u.email : '')}" ${u ? 'disabled' : ''}></label><label class="f"><span class="req">Nama lengkap</span><input id="un" value="${esc(u ? u.fullName : '')}"></label>
-      <label class="f"><span>Role</span><select id="ur" ${u && u.id === S.user.id ? 'disabled' : ''}>${Object.keys(ROLE_LABEL_UI).map((r) => `<option value="${r}" ${u && u.role === r ? 'selected' : ''}>${ROLE_LABEL_UI[r]}</option>`).join('')}</select></label>
-      <label class="f"><span class="${u ? '' : 'req'}">${u ? 'Password baru (kosongkan bila tidak diganti)' : 'Password awal'}</span><input id="up" type="password" autocomplete="new-password"><div class="hint">Minimal 10 karakter</div></label>
-      ${u && u.id !== S.user.id ? `<label class="row small"><input type="checkbox" id="ua" style="width:auto" ${u.isActive ? 'checked' : ''}> Akun aktif</label>` : ''}<div id="uerr"></div></div>`,
-    footer: '<button class="btn sec" data-c>Batal</button><button class="btn" data-s>Simpan</button>',
-    onMount: (el, close) => { el.querySelector('[data-c]').onclick = close; el.querySelector('[data-s]').onclick = async () => {
-      try { if (u) await call('user.update', { id: u.id, fullName: $('#un', el).value, role: $('#ur', el).value, isActive: $('#ua', el) ? $('#ua', el).checked : undefined, password: $('#up', el).value || undefined }); else await call('user.create', { email: $('#ue', el).value, fullName: $('#un', el).value, role: $('#ur', el).value, password: $('#up', el).value }); toast('success', 'Pengguna disimpan'); close(); router(); }
-      catch (e) { $('#uerr', el).innerHTML = errHtml(e); } }; } });
-  $('#uadd').onclick = () => form(null);
-  $$('[data-u]').forEach((b) => (b.onclick = () => form(users.find((x) => x.id === b.dataset.u))));
-});
+/* ───────── Pengaturan ───────── */
+Pages.settings = function (main) {
+  var w = can('settings.manage');
+  api('settings.get').then(function (s) {
+    var row = function (t, d, ctl) { return '<div class="cfg-row"><div><div class="t">' + t + '</div><div class="d">' + d + '</div></div><div>' + ctl + '</div></div>'; };
+    var dis = w ? '' : ' disabled';
+    main.innerHTML = pageHead('Sistem', 'Pengaturan', '', w ? '' : 'Hanya Admin yang dapat mengubah pengaturan.') + '<div class="cfg">' +
+      row('Template SKU varian', 'Token: {BRAND} {CATEGORY} {PRODUCT} {VARIANT}. Wajib memuat {BRAND}, {PRODUCT}, {VARIANT}. Hanya berlaku untuk SKU baru — SKU tersimpan tidak pernah berubah. SKU kemasan = SKU varian + satuan + isi (mis. -BOX24).', '<input class="in w100 code" id="tp" value="' + esc(s.sku_template) + '"' + dis + '><div class="hint" id="tpx"></div>') +
+      row('Panjang kode brand & kategori', 'Default 3 huruf kapital. Kode yang sudah dibuat tidak berubah.', '<select class="in" id="cl"' + dis + '><option value="3"' + (s.master_code_length === 3 ? ' selected' : '') + '>3 karakter</option><option value="4"' + (s.master_code_length === 4 ? ' selected' : '') + '>4 karakter</option></select>') +
+      row('Satuan dasar', 'Pilihan satuan dasar saat registrasi (unit stok terkecil). Pisahkan dengan koma.', '<textarea class="in w100" rows="2" id="bu"' + dis + '>' + esc(s.base_units.join(', ')) + '</textarea>') +
+      row('Satuan kemasan', 'Pilihan satuan kemasan di langkah Satuan & Konversi. Isi per kemasan diatur per varian.', '<textarea class="in w100" rows="2" id="pu"' + dis + '>' + esc(s.pack_units.join(', ')) + '</textarea>') +
+      row('Jenis atribut varian', 'Pilihan cepat di generator varian (user tetap boleh menambah jenis lain).', '<textarea class="in w100" rows="2" id="at"' + dis + '>' + esc(s.attribute_types.join(', ')) + '</textarea>') +
+      row('Ambang kemiripan nama', 'Nama produk/brand dengan skor kemiripan ≥ nilai ini ditampilkan sebagai peringatan duplikasi (0.50–0.99).', '<input class="in" id="fz" type="number" step="0.01" min="0.5" max="0.99" value="' + esc(s.fuzzy_threshold) + '"' + dis + '>') +
+      row('Prefix barcode internal', 'Namespace GS1 "restricted circulation" — tidak bentrok dengan GTIN resmi produsen.', '<span class="chip-code">' + esc(s.internal_barcode_prefix) + '</span>') +
+      (w ? '<div class="row" style="margin-top:14px"><button class="btn pri" id="sv">Simpan pengaturan</button></div>' : '') + '</div>';
+    var ex = function () { var t = $('#tp', main).value.toUpperCase(); $('#tpx', main).innerHTML = 'Contoh: <span class="sku">' + esc(t.replace('{BRAND}', 'SCA').replace('{CATEGORY}', 'PAR').replace('{PRODUCT}', 'PEDP').replace('{VARIANT}', 'OB50')) + '</span>'; };
+    $('#tp', main).oninput = ex; ex();
+    if (w) $('#sv', main).onclick = function () {
+      busy($('#sv', main), api('settings.save', { sku_template: $('#tp', main).value, master_code_length: Number($('#cl', main).value), base_units: $('#bu', main).value, pack_units: $('#pu', main).value, attribute_types: $('#at', main).value, fuzzy_threshold: Number($('#fz', main).value) }))
+        .then(function () { toast('Pengaturan disimpan', 'ok'); return api('auth.me', {}, { quiet: true }); }).then(function (me) { if (me) App.remember(me); }).catch(function () {});
+    };
+  }).catch(function (e) { main.innerHTML = errBox(e.message); });
+};
 
-/* ============================================================================ Pengaturan & profil */
-route('pengaturan', async (main) => {
-  const s = await call('settings.get');
-  const ed = can('settings.manage');
-  main.innerHTML = head('Pengaturan & Profil', ed ? 'Aturan bisnis (Admin)' : 'Hanya Admin yang dapat mengubah pengaturan') + `<div class="grid g2">
-    ${card('Format SKU bisnis', `<label class="f"><span>Template</span><input id="stpl" class="mono" value="${esc(s.sku_template)}" ${ed ? '' : 'disabled'}><div class="hint">Token: {BRAND} {CATEGORY} {PRODUCT} {VARIANT} {BARCODE} {QTY}</div></label>
-      <div class="row mt"><button class="btn sec sm" data-tpl="{BRAND}-{CATEGORY}-{PRODUCT}{VARIANT}-{BARCODE}-{QTY}" ${ed ? '' : 'disabled'}>Format existing (dengan barcode)</button><button class="btn sec sm" data-tpl="{BRAND}-{CATEGORY}-{PRODUCT}{VARIANT}-{QTY}" ${ed ? '' : 'disabled'}>Format stabil (tanpa barcode)</button></div>
-      <div class="soft mt mono small" id="sprev"></div><div class="mt">${alertBox('warn', null, 'Perubahan template hanya berlaku untuk SKU baru. SKU yang sudah ada (termasuk SKU lama di BeeCloud/Shopee) tidak pernah diubah otomatis.')}</div>`)}
-    ${card('Kontrol internal', `<label class="row small"><input type="checkbox" id="smc" style="width:auto" ${s.maker_checker ? 'checked' : ''} ${ed ? '' : 'disabled'}><span><b>Maker-checker</b> — pembuat/pengaju tidak boleh menyetujui miliknya sendiri</span></label>
-      <label class="row small mt"><input type="checkbox" id="saa" style="width:auto" ${s.auto_activate_on_approve ? 'checked' : ''} ${ed ? '' : 'disabled'}><span><b>Aktifkan otomatis saat disetujui</b></span></label>
-      <label class="f mt"><span>Ambang kemiripan nama (0.5–0.99)</span><input id="sft" type="number" step="0.01" value="${s.fuzzy_threshold}" ${ed ? '' : 'disabled'}></label>
-      <label class="f mt"><span>Prefix barcode internal</span><input class="mono" value="${esc(s.internal_barcode_prefix)}" disabled></label>${ed ? '<button class="btn mt" id="ssave">Simpan pengaturan</button>' : ''}`)}
-    ${card('Ganti password saya', `<div class="grid"><label class="f"><span>Password lama</span><input type="password" id="po"></label><label class="f"><span>Password baru (min. 10)</span><input type="password" id="pn" autocomplete="new-password"></label><button class="btn sec" id="pchg">Ganti password</button></div>`)}
-  </div>`;
-  const prev = () => { const t = $('#stpl').value.toUpperCase(); const f = (o) => t.replace('{BRAND}', o.b).replace('{CATEGORY}', o.c).replace('{PRODUCT}', o.p).replace('{VARIANT}', o.v).replace('{BARCODE}', o.bc).replace('{QTY}', o.q).replace(/-{2,}/g, '-'); $('#sprev').innerHTML = esc(f({ b: 'VIV', c: 'TON', p: 'VAM100', v: '', bc: '8992796011501', q: '6' })) + '<br>' + esc(f({ b: 'PXY', c: 'PWR', p: 'UPCR', v: 'NO', bc: '2000000000046', q: '1' })); };
-  $('#stpl').oninput = prev; prev();
-  $$('[data-tpl]').forEach((b) => (b.onclick = () => { $('#stpl').value = b.dataset.tpl; prev(); }));
-  if ($('#ssave')) $('#ssave').onclick = async () => { try { await call('settings.save', { sku_template: $('#stpl').value, maker_checker: $('#smc').checked, auto_activate_on_approve: $('#saa').checked, fuzzy_threshold: Number($('#sft').value) }); toast('success', 'Pengaturan disimpan'); } catch (e) { toast('error', e.message); } };
-  $('#pchg').onclick = async () => { try { await call('user.changePassword', { oldPassword: $('#po').value, newPassword: $('#pn').value }); toast('success', 'Password diganti'); $('#po').value = $('#pn').value = ''; } catch (e) { toast('error', e.message); } };
-});
+/* ───────── Audit log ───────── */
+Pages.audit = function (main) {
+  var f = { action: '', actor: '', entityType: '', page: 1 };
+  main.innerHTML = pageHead('Sistem', 'Audit Log', '', 'Catatan perubahan data penting: siapa, kapan, nilai sebelum & sesudah.') +
+    '<div class="filters"><select class="in" id="et"><option value="">Semua entitas</option><option value="product">Produk</option><option value="variant">Varian</option><option value="brand">Brand</option><option value="category">Kategori</option><option value="barcode">Barcode</option><option value="mapping">Mapping</option><option value="user">Pengguna</option><option value="settings">Pengaturan</option></select>' +
+    '<input class="in" id="ac" placeholder="Filter aksi (mis. product)"><input class="in" id="us" placeholder="Filter pengguna"></div><div id="al"></div>';
+  var load = function () {
+    var box = $('#al', main); box.innerHTML = loadingBox();
+    api('audit.list', f).then(function (d) {
+      box.innerHTML = d.rows.length ? '<div class="tablewrap"><table class="t"><thead><tr><th>Waktu</th><th>Aksi</th><th>Oleh</th><th>Entitas</th><th>Detail</th></tr></thead><tbody>' + d.rows.map(function (a, i) {
+        return '<tr><td class="nowrap">' + fmtDate(a.created_at) + '</td><td><b>' + esc(actionLabel(a.action)) + '</b><div class="muted" style="font-size:11px">' + esc(a.action) + '</div></td><td>' + esc(a.actor) + '</td><td>' + esc(a.entity_type) + (a.entity_type === 'product' && a.entity_id ? ' <a class="link-btn" data-p="' + esc(a.entity_id) + '">buka</a>' : '') + '</td><td>' + (a.before_json || a.after_json || a.meta_json ? '<button class="btn sm ghost" data-i="' + i + '">Lihat</button>' : '') + '</td></tr>';
+      }).join('') + '</tbody></table></div>' + pager(d, function (p) { f.page = p; load(); }) : '<div class="tablewrap">' + emptyBox('Tidak ada catatan', '', 'activity') + '</div>';
+      $$('[data-p]', box).forEach(function (a) { a.onclick = function () { App.go('product', a.getAttribute('data-p')); }; });
+      $$('[data-i]', box).forEach(function (b) {
+        b.onclick = function () {
+          var a = d.rows[Number(b.getAttribute('data-i'))];
+          var pre = function (t, v) { return v ? '<div class="sect" style="margin:12px 0 6px">' + t + '</div><pre class="json" style="max-width:none">' + esc(JSON.stringify(v, null, 2)) + '</pre>' : ''; };
+          modal('<h3>' + esc(actionLabel(a.action)) + '</h3><div class="muted">' + esc(a.actor) + ' · ' + fmtDate(a.created_at) + '</div>' + pre('Sebelum', a.before_json) + pre('Sesudah', a.after_json) + pre('Keterangan', a.meta_json) + '<div class="row" style="margin-top:16px"><button class="btn" data-close>Tutup</button></div>', { wide: true });
+        };
+      });
+    }).catch(function (e) { box.innerHTML = errBox(e.message); });
+  };
+  $('#et', main).onchange = function (e) { f.entityType = e.target.value; f.page = 1; load(); };
+  $('#ac', main).oninput = debounce(function (e) { f.action = e.target.value; f.page = 1; load(); }, 300);
+  $('#us', main).oninput = debounce(function (e) { f.actor = e.target.value; f.page = 1; load(); }, 300);
+  load();
+};
+
+/* ───────── Profil ───────── */
+Pages.profile = function (main) {
+  var u = App.me.user;
+  main.innerHTML = pageHead('Akun', 'Profil & Password') + '<div class="card" style="max-width:520px"><div class="kv"><div>Nama</div><div><b>' + esc(u.fullName) + '</b></div><div>Email</div><div>' + esc(u.email) + '</div><div>Role</div><div>' + badge(u.role) + '</div></div>' +
+    '<div class="sect">Ganti password</div><form id="pf"><label class="f">Password lama</label><div class="pw"><input class="in w100" type="password" name="o" autocomplete="current-password" required><button type="button" class="eye" tabindex="-1">' + icon('eye') + '</button></div>' +
+    '<label class="f">Password baru (min. 10 karakter)</label><div class="pw"><input class="in w100" type="password" name="n" autocomplete="new-password" minlength="10" required><button type="button" class="eye" tabindex="-1">' + icon('eye') + '</button></div>' +
+    '<label class="f">Ulangi password baru</label><input class="in w100" type="password" name="n2" autocomplete="new-password" required><div class="row" style="margin-top:16px"><button class="btn pri" type="submit">Simpan password</button></div></form></div>';
+  var f = $('#pf', main); App.bindEye(f);
+  f.onsubmit = function (e) {
+    e.preventDefault();
+    if (f.n.value !== f.n2.value) return toast('Ulangan password baru tidak sama', 'err');
+    busy($('button[type=submit]', f), api('user.changePassword', { oldPassword: f.o.value, newPassword: f.n.value })).then(function () { toast('Password berhasil diganti', 'ok'); f.reset(); }).catch(function () {});
+  };
+};
 </script>

@@ -1,15 +1,13 @@
 {
   "name": "master-produk-apps-script",
   "private": true,
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Master Produk & SKU toko kosmetik — Google Apps Script + Google Sheets",
   "scripts": {
     "test": "node --test apps-script/test/scenarios.test.cjs",
-    "dev": "node apps-script/dev/server.cjs",
-    "migrasi:uji": "node apps-script/test/legacy-migration.cjs"
+    "dev": "node apps-script/dev/server.cjs"
   },
-  "devDependencies": {
-    "exceljs": "^4.4.0"
-  },
-  "engines": { "node": ">=20" }
+  "engines": {
+    "node": ">=20"
+  }
 }

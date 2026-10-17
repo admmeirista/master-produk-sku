@@ -17,40 +17,31 @@ const call = (t, a, p) => JSON.parse(JSON.stringify(ctx.api(t, a, p)));
 // ----- data demo (akun development; password tercatat di sini, bukan untuk produksi)
 const DEV_USERS = [
   ['admin@toko.local', 'Admin Toko', 'admin', 'Admin#Rpm2026'],
-  ['entry@toko.local', 'Rina (Data Entry)', 'data_entry', 'Entry#Rpm2026'],
-  ['reviewer@toko.local', 'Sari (Reviewer)', 'reviewer', 'Review#Rpm2026'],
+  ['entry@toko.local', 'Rina (Admin Data)', 'data_entry', 'Entry#Rpm2026'],
   ['viewer@toko.local', 'Budi (Viewer)', 'viewer', 'Viewer#Rpm2026'],
 ];
-const owner = JSON.parse(JSON.stringify(ctx.setup()));
+const owner = JSON.parse(JSON.stringify(ctx.setup())).admin;
 const ownerToken = call(null, 'auth.login', { email: owner.email, password: owner.password }).data.token;
 DEV_USERS.forEach(([email, fullName, role, password]) => call(ownerToken, 'user.create', { email, fullName, role, password }));
 const ref = JSON.parse(fs.readFileSync(path.join(__dirname, 'reference.json'), 'utf8'));
-const refRows = [['Nama Brand', 'Kode Brand', '', 'Nama Kategori', 'Kode Kategori']].concat(
-  Array.from({ length: Math.max(ref.brands.length, ref.categories.length) }, (_, i) => [ref.brands[i]?.name || '', ref.brands[i]?.code || '', '', ref.categories[i]?.name || '', ref.categories[i]?.code || '']),
-);
-const prep = call(ownerToken, 'import.prepare', { type: 'reference', rows: refRows }).data;
-call(ownerToken, 'import.commit', { type: 'reference', rows: refRows, headerIndex: prep.headerIndex, mapping: prep.mapping, fileName: 'reference.json' });
 const tok = (e, p) => call(null, 'auth.login', { email: e, password: p }).data.token;
 const entry = tok('entry@toko.local', 'Entry#Rpm2026');
-const reviewer = tok('reviewer@toko.local', 'Review#Rpm2026');
-const brands = call(entry, 'ref.list', { kind: 'brand' }).data;
-const cats = call(entry, 'ref.list', { kind: 'category' }).data;
-const B = (c) => brands.find((b) => b.code === c).id;
-const C = (c) => cats.find((b) => b.code === c).id;
-const single = (b, s) => ({ skuType: 'single', packQty: 1, salesUnit: 'PCS', purchasePrice: b, sellingPrice: s });
-const pack = (q, b, s) => ({ skuType: 'multipack', packQty: q, salesUnit: 'PACK', purchasePrice: b * q, sellingPrice: s });
-const mk = (input) => call(entry, 'product.save', { input }).data;
-const viva = mk({ brandId: B('VIV'), categoryId: C('TON'), productCode: 'VAM100', name: 'Viva Air Mawar 100ml', variants: [{ barcode: { mode: 'gtin', code: '8992796011501' }, skus: [single(4900, 7500), pack(6, 4900, 42000), pack(12, 4900, 80000), pack(24, 4900, 152000)] }] });
-const prb = mk({ brandId: B('PRB'), categoryId: C('BSR'), productCode: 'GH180', name: 'Purbasari Gluta Hya Body Serum 180ml', variants: [{ barcode: { mode: 'gtin', code: '8999225912415' }, skus: [single(29000, 42000), pack(3, 29000, 120000), pack(6, 29000, 235000)] }] });
-for (const p of [viva, prb]) {
-  call(entry, 'product.workflow', { id: p.id, action: 'submit' });
-  call(reviewer, 'product.workflow', { id: p.id, action: 'approve', reason: 'Barcode cocok kemasan' });
-  call(reviewer, 'product.workflow', { id: p.id, action: 'activate' });
-}
-const shade = (code, value, barcode) => ({ variantCode: code, name: value, attributes: [{ type: 'shade', value }], barcode, skus: [single(27360, 38000)] });
-const pixy = mk({ brandId: B('PXY'), categoryId: C('PWR'), productCode: 'UPCR', name: 'Pixy UV Perfect Creamy Cake Refill', hasVariants: true, variants: [shade('NO', 'Natural Ochre', { mode: 'internal' }), shade('SY', 'Silky Yellow', { mode: 'internal' }), shade('YH', 'Yellow Honey', { mode: 'gtin', code: '8992222072045' })] });
-call(entry, 'product.workflow', { id: pixy.id, action: 'submit' });
-mk({ brandId: B('VIV'), categoryId: C('TON'), productCode: 'AIM100', name: 'VIVA Air Mawar 100 ML', variants: [{ barcode: { mode: 'none' }, skus: [single(4900, 7500)] }] });
+call(entry, 'brand.createMany', { names: ['Viva', 'Hanasui', 'Purbasari', 'Scarlett', 'Pixy'].concat(ref.brands.map((b) => b.name)), acknowledgeSimilar: true });
+call(entry, 'category.createMany', { names: ['Parfum', 'Lipstick', 'Body Lotion', 'Facial Wash', 'Toner', 'Powder Refill'].concat(ref.categories.map((c) => c.name)), acknowledgeSimilar: true });
+const brands = call(entry, 'brand.list', {}).data;
+const cats = call(entry, 'category.list', {}).data;
+const B = (n) => brands.find((b) => b.name === n).id;
+const C = (n) => cats.find((c) => c.name === n).id;
+const g13 = (b) => { let s = 0; for (let i = 11, w = 3; i >= 0; i--, w = w === 3 ? 1 : 3) s += Number(b[i]) * w; return b + ((10 - (s % 10)) % 10); };
+const save = (input) => { const r = call(entry, 'product.save', { input }); if (!r.ok) console.error('seed gagal', input.name, r.error); };
+save({ brandId: B('Scarlett'), categoryId: C('Parfum'), name: 'Parfum Eau de Parfum', baseUnit: 'BOTOL', hasVariants: true, variants: [
+  { attributes: [{ name: 'Aroma', value: 'Ocean Blue' }, { name: 'Volume', value: '50 ml' }], barcode: { mode: 'gtin', code: g13('899100000001') }, conversions: [{ unitName: 'BOX', factor: 24, isTradeItem: true, barcode: { mode: 'gtin', code: g13('899100000091') } }, { unitName: 'KARTON', factor: 6, containsUnit: 'BOX' }] },
+  { attributes: [{ name: 'Aroma', value: 'Ocean Blue' }, { name: 'Volume', value: '100 ml' }], barcode: { mode: 'gtin', code: g13('899100000002') }, conversions: [{ unitName: 'BOX', factor: 12 }] },
+  { attributes: [{ name: 'Aroma', value: 'Rose Garden' }, { name: 'Volume', value: '50 ml' }], barcode: { mode: 'gtin', code: g13('899100000003') }, conversions: [{ unitName: 'BOX', factor: 24 }] },
+  { attributes: [{ name: 'Aroma', value: 'Rose Garden' }, { name: 'Volume', value: '100 ml' }], barcode: { mode: 'none' }, conversions: [] },
+] });
+save({ brandId: B('Viva'), categoryId: C('Toner'), name: 'Viva Air Mawar 100ml', baseUnit: 'BOTOL', hasVariants: false, variants: [{ barcode: { mode: 'gtin', code: '8992796011501' }, conversions: [{ unitName: 'LUSIN', factor: 12 }, { unitName: 'KARTON', factor: 4, containsUnit: 'LUSIN' }] }] });
+save({ brandId: B('Hanasui'), categoryId: C('Lipstick'), name: 'Hanasui Matte Lip Cream', baseUnit: 'PCS', hasVariants: true, variants: ['01 Pink Nude', '02 Rosy', '03 Brick'].map((sh) => ({ attributes: [{ name: 'Shade', value: sh }], barcode: { mode: 'internal' }, conversions: [{ unitName: 'BOX', factor: 12 }, { unitName: 'KARTON', factor: 10, containsUnit: 'BOX' }] })) });
 
 // ----- HTML seperti HtmlService (include + scriptlet)
 function page() {
@@ -113,4 +104,4 @@ http
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
     res.end(page());
   })
-  .listen(PORT, () => console.log(`Pratinjau Apps Script: http://localhost:${PORT}  (login: admin@toko.local / Admin#Rpm2026)`));
+  .listen(PORT, () => console.log(`Pratinjau Apps Script: http://localhost:${PORT}  (login: entry@toko.local / Entry#Rpm2026)`));
