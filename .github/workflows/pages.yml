@@ -1,6 +1,7 @@
 # Membangun & mempublikasikan tampilan aplikasi ke GitHub Pages (https://<user>.github.io/<repo>/).
 # Server & database tetap di Google Apps Script + Google Sheets.
-# Butuh repository VARIABLE (bukan secret): APPS_SCRIPT_URL = URL Web App, format https://script.google.com/macros/s/<ID>/exec
+# URL Web App: repository VARIABLE APPS_SCRIPT_URL bila diisi, selain itu URL deployment bawaan di bawah.
+# (URL ini memang publik karena dipanggil dari browser; data dijaga oleh login aplikasi.)
 name: GitHub Pages
 
 on:
@@ -28,7 +29,7 @@ jobs:
           node-version: 20
       - name: Bangun halaman
         env:
-          APPS_SCRIPT_URL: ${{ vars.APPS_SCRIPT_URL }}
+          APPS_SCRIPT_URL: ${{ vars.APPS_SCRIPT_URL || 'https://script.google.com/macros/s/AKfycbxMUSvhdJ4fLpwBho1Wj5uMpaYxtat5lQB2mJpiVz4jWw-x-PANVpfBgJnPXJRdqe74XA/exec' }}
         run: node apps-script/tools/build-pages.cjs _site
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
