@@ -57,9 +57,9 @@ Semua kolom baru ditambahkan di sebelah kanan, sehingga `setup()` aman dijalanka
 
 ## 4. Deployment
 
-1. Kode dikirim dengan `clasp push`.
-2. **Jalankan `setup` sekali** di editor Apps Script. Langkah ini membuat tab `PRODUCT_DIMENSIONS`, kolom baru, dan counter `parent_no`. Tidak ada izin (scope) baru.
-3. Deploy versi baru ke deployment yang sama (URL tetap), lalu push ke GitHub supaya halaman GitHub Pages ikut diperbarui.
+1. Kode dikirim dengan `clasp push`, deploy versi baru ke deployment yang sama (URL tetap), lalu `git push` (GitHub Pages).
+2. **Tidak perlu menjalankan `setup` manual.** Permintaan pertama setelah kode baru membuat tab `PRODUCT_DIMENSIONS`, kolom baru,
+   dan penghitung `parent_no` secara otomatis (lihat README › Cara pasang / memperbarui). Tidak ada izin (scope) baru di v5.
 
 ## 5. Hasil pengujian (dijalankan 18 Okt 2026)
 

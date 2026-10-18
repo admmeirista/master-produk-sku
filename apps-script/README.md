@@ -43,13 +43,16 @@ File Google Sheets terpisah [Master Produk DB](https://docs.google.com/spreadshe
 
 ## Cara pasang / memperbarui
 
-1. Kode dikirim ke proyek Apps Script dengan `clasp push` (atau salin manual semua file `src/`).
-2. Di editor Apps Script pilih fungsi **`setup`** › **Jalankan** › izinkan akses. `setup` aman diulang:
-   membuat/melengkapi tab, mengisi pengaturan, **memigrasikan data struktur lama** (tab lama tidak dihapus), dan membuat
-   akun Admin pertama bila belum ada (password sementara di **Log eksekusi**).
-   v4 meminta izin baru **terhubung ke layanan eksternal** (UrlFetchApp, untuk lookup GTIN Open Beauty Facts) — klik *Izinkan*.
-3. **Terapkan › Kelola deployment › Edit › Versi baru** (URL Web App tetap sama).
-4. (Disarankan) jalankan `installDailyBackup` sekali untuk backup harian otomatis ke Drive.
+**Pembaruan rutin — tanpa langkah manual.** Setiap perubahan kode dikirim dengan `clasp push` lalu `clasp deploy -i <DEPLOYMENT_ID>`
+(URL Web App tetap sama) dan `git push` (GitHub Pages ikut diperbarui). Struktur database diperbarui **otomatis**: permintaan
+pertama ke aplikasi setelah kode baru membuat tab/kolom baru, menjalankan migrasi data, dan melengkapi penghitung
+(`autoSchema_` di `Code.gs`, dibandingkan lewat sidik skema di Script Properties). Data yang ada tidak disentuh; tab berisi data
+dengan urutan kolom berbeda menghentikan pembaruan dengan pesan error (bukan menimpa).
+
+`setup` manual di editor Apps Script hanya diperlukan untuk:
+1. Instalasi pertama (membuat akun Admin; password sementara di **Log eksekusi**).
+2. Bila kode baru memakai layanan Google yang butuh **izin baru** (Google mewajibkan persetujuan pemilik akun).
+3. (Opsional) `installDailyBackup` sekali untuk backup harian otomatis ke Drive.
 
 ## Aturan identitas (permanen)
 

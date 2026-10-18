@@ -1,6 +1,6 @@
 /**
  * Emulator minimal layanan Google Apps Script untuk menjalankan file .gs di Node (khusus pengujian).
- * Meniru: SpreadsheetApp (sheet = array 2D berisi string), LockService, CacheService, Utilities, Session.
+ * Meniru: SpreadsheetApp (sheet = array 2D berisi string), LockService, CacheService, PropertiesService, Utilities, Session.
  */
 const fs = require('node:fs');
 const path = require('node:path');
@@ -108,12 +108,14 @@ function createGas({ ownerEmail = 'owner@toko.local' } = {}) {
     copy: (name) => ({ getUrl: () => 'https://docs.google.com/copy/' + encodeURIComponent(name) }),
   };
   const cache = new Map();
+  const props = new Map();
   const state = { lockBusy: false, fetch: null, fetchLog: [] }; // simulasi user lain sedang memegang lock
   const toSigned = (buf) => [...buf].map((b) => (b > 127 ? b - 256 : b));
   const ctx = {
     console: { log() {}, error: (...a) => console.error(...a) },
     SpreadsheetApp: { getActive: () => ss, openById: () => ss, flush() {}, ProtectionType: { SHEET: 'SHEET' } },
     LockService: { getScriptLock: () => ({ tryLock: () => !state.lockBusy, waitLock() {}, releaseLock() {} }) },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => (props.has(k) ? props.get(k) : null), setProperty: (k, v) => props.set(k, String(v)), deleteProperty: (k) => props.delete(k) }) },
     CacheService: { getScriptCache: () => ({ get: (k) => cache.get(k) ?? null, put: (k, v) => cache.set(k, v), remove: (k) => cache.delete(k) }) },
     Session: { getEffectiveUser: () => ({ getEmail: () => ownerEmail }), getActiveUser: () => ({ getEmail: () => '' }) },
     Utilities: {

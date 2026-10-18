@@ -127,6 +127,8 @@ function api(token, action, payload) {
   try {
     resetDbCache_();
     if (action === 'ping') return { ok: true, data: { pong: true } };
+    autoSchema_();
+    resetDbCache_();
     if (action === 'auth.login') return { ok: true, data: login_(payload && payload.email, payload && payload.password) };
     if (action === 'auth.logout') return { ok: true, data: logout_(token) };
     const user = sessionUser_(token);
@@ -187,6 +189,60 @@ function meInfo_(user) {
  *  4. membuat akun Admin pertama bila belum ada (password sementara di Log eksekusi).
  */
 function setup() {
+  ensureSheets_();
+  const out = ensureData_(true);
+  setSchemaVersion_();
+  const m = out.migration;
+  console.log(`Migrasi data lama: ${m.brands} brand, ${m.categories} kategori, ${m.products} produk, ${m.variants} varian, ${m.packs} kemasan, ${m.attributes} atribut, ${m.barcodes} barcode, ${m.legacySkus} SKU lama, ${m.mappings} mapping, ${m.audit} log audit, ${m.counters} penghitung.`);
+  m.skipped.forEach((x) => console.log('  dilewati: ' + x));
+  m.notMigrated.forEach((x) => console.log('  tidak dimigrasikan: ' + x));
+  if (out.admin) console.log(`AKUN ADMIN DIBUAT — email: ${out.admin.email} | password sementara: ${out.admin.password}  (segera ganti di menu Profil)`);
+  else console.log('Setup selesai. Akun admin sudah ada sebelumnya.');
+  return out;
+}
+
+/**
+ * Pembaruan struktur OTOMATIS: dipanggil di awal setiap permintaan API. Bila SCHEMA / penghitung / pengaturan default
+ * berubah (kode baru di-push), permintaan pertama sesudahnya membuat tab & kolom baru, menjalankan migrasi data,
+ * dan melengkapi penghitung — tanpa menjalankan setup() manual. Pengecekan cepat lewat cache (± 0 ms).
+ * setup() manual tetap diperlukan hanya untuk instalasi pertama (akun admin) atau bila Google meminta izin baru.
+ */
+function schemaFingerprint_() {
+  const src = JSON.stringify([SCHEMA, COUNTER_NAMES_, Object.keys(DEFAULT_SETTINGS)]);
+  return Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, src, Utilities.Charset.UTF_8));
+}
+function setSchemaVersion_() {
+  const fp = schemaFingerprint_();
+  PropertiesService.getScriptProperties().setProperty('schema_fp', fp);
+  CacheService.getScriptCache().put('schema_fp', fp, 21600);
+}
+function autoSchema_() {
+  const fp = schemaFingerprint_();
+  const cache = CacheService.getScriptCache();
+  if (cache.get('schema_fp') === fp) return false;
+  const props = PropertiesService.getScriptProperties();
+  if (props.getProperty('schema_fp') === fp) {
+    cache.put('schema_fp', fp, 21600);
+    return false;
+  }
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) throw new AppError('Aplikasi sedang memperbarui struktur database. Coba lagi beberapa detik lagi.', [], 'BUSY');
+  try {
+    if (props.getProperty('schema_fp') === fp) return false;
+    ensureSheets_();
+  } finally {
+    lock.releaseLock();
+  }
+  ensureData_(false);
+  setSchemaVersion_();
+  console.log('Struktur database diperbarui otomatis (' + fp + ')');
+  return true;
+}
+
+const COUNTER_NAMES_ = ['parent_no', 'product_no', 'sku_no', 'internal_barcode', 'multipack_no', 'bundle_no', 'supplier_no'];
+
+/** Tab & header sesuai SCHEMA (aman diulang; tab berisi data dengan kolom berbeda → dihentikan, data tidak disentuh). */
+function ensureSheets_() {
   const ss = ss_();
   Object.keys(SCHEMA).forEach((name) => {
     let sh = ss.getSheetByName(name);
@@ -227,7 +283,11 @@ function setup() {
     if (!SCHEMA[n] && n !== 'Tentang' && LEGACY_TABS.indexOf(n) < 0 && n.indexOf('Ekspor ') !== 0 && sh.getLastRow() === 0 && ss.getSheets().length > 1) ss.deleteSheet(sh);
   });
   resetDbCache_();
-  const out = withLock_(() => {
+}
+
+/** Pengaturan default, migrasi data lama, penghitung; akun admin pertama hanya dari setup() manual. */
+function ensureData_(createAdmin) {
+  return withLock_(() => {
     const st = db_('Settings');
     Object.keys(DEFAULT_SETTINGS).forEach((k) => {
       if (!st.find((r) => r.key === k)) st.insert({ key: k, value: JSON.stringify(DEFAULT_SETTINGS[k]), updated_by: 'setup', updated_at: now_() });
@@ -235,9 +295,11 @@ function setup() {
     // migrasi dulu (menyalin penghitung lama), baru penghitung yang belum ada dibuat
     const migration = migrateLegacy_('setup');
     const seq = db_('SYSTEM_COUNTERS');
-    ['parent_no', 'product_no', 'sku_no', 'internal_barcode', 'multipack_no', 'bundle_no', 'supplier_no'].forEach((n) => !seq.find((r) => r.CounterName === n) && seq.insert({ CounterName: n, Value: '1', UpdatedAt: now_() }));
+    // penghitung baru dimulai setelah nomor tertinggi yang sudah dipakai (mis. kode parent 0007 → mulai 8)
+    const maxParent = db_('MASTER_PRODUCTS').rows().reduce((m, p) => Math.max(m, Number(p.ParentCode) || 0), 0);
+    COUNTER_NAMES_.forEach((n) => !seq.find((r) => r.CounterName === n) && seq.insert({ CounterName: n, Value: String(n === 'parent_no' ? maxParent + 1 : 1), UpdatedAt: now_() }));
     let admin = null;
-    if (!db_('Users').rows().length) {
+    if (createAdmin && !db_('Users').rows().length) {
       const email = (Session.getEffectiveUser().getEmail() || 'admin@toko.local').toLowerCase();
       const password = Utilities.getUuid().replace(/-/g, '').slice(0, 14);
       createUser_({ email, fullName: 'Administrator', role: 'admin', password }, null);
@@ -245,13 +307,6 @@ function setup() {
     }
     return { admin, migration };
   });
-  const m = out.migration;
-  console.log(`Migrasi data lama: ${m.brands} brand, ${m.categories} kategori, ${m.products} produk, ${m.variants} varian, ${m.packs} kemasan, ${m.attributes} atribut, ${m.barcodes} barcode, ${m.legacySkus} SKU lama, ${m.mappings} mapping, ${m.audit} log audit, ${m.counters} penghitung.`);
-  m.skipped.forEach((s) => console.log('  dilewati: ' + s));
-  m.notMigrated.forEach((s) => console.log('  tidak dimigrasikan: ' + s));
-  if (out.admin) console.log(`AKUN ADMIN DIBUAT — email: ${out.admin.email} | password sementara: ${out.admin.password}  (segera ganti di menu Profil)`);
-  else console.log('Setup selesai. Akun admin sudah ada sebelumnya.');
-  return out;
 }
 
 /** Backup: salin seluruh spreadsheet ke Drive (berisi semua tab/tabel). */

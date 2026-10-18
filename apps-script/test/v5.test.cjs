@@ -374,3 +374,24 @@ test('batch/expiry dihapus dari formulir: nilai lama dipertahankan saat edit (ti
   assert.equal(after[head.indexOf('BatchTracking')], 'TRUE');
   assert.equal(after[head.indexOf('ShelfLifeMonths')], '36');
 });
+
+test('pembaruan struktur otomatis: setelah kode baru di-push, permintaan pertama membuat tab/kolom/penghitung tanpa setup manual', () => {
+  // simulasi database versi lama: tab PRODUCT_DIMENSIONS & penghitung parent_no belum ada, sidik skema lama
+  G.ss.deleteSheet(G.sheets.get('PRODUCT_DIMENSIONS'));
+  const seq = G.sheets.get('SYSTEM_COUNTERS');
+  const before = seq.data.find((r) => r[0] === 'parent_no').slice();
+  seq.data = seq.data.filter((r) => r[0] !== 'parent_no');
+  G.ctx.PropertiesService.getScriptProperties().setProperty('schema_fp', 'versi-lama');
+  G.cache.delete('schema_fp');
+  G.ctx.resetDbCache_();
+  // permintaan biasa dari aplikasi
+  const list = ok(call(V, 'product.list', { status: 'all' }));
+  assert.ok(list.total > 0, 'data lama tetap ada');
+  assert.ok(G.sheets.get('PRODUCT_DIMENSIONS'), 'tab baru dibuat otomatis');
+  assert.deepEqual(G.sheets.get('PRODUCT_DIMENSIONS').data[0].slice(0, 4), ['DimensionID', 'VariantID', 'ProductID', 'PackagingUnit']);
+  assert.equal(Number(seq.data.find((r) => r[0] === 'parent_no')[1]), Number(before[1]), 'penghitung dibuat ulang mulai setelah kode parent tertinggi');
+  assert.equal(G.ctx.PropertiesService.getScriptProperties().getProperty('schema_fp'), G.ctx.schemaFingerprint_());
+  // permintaan berikutnya tidak menjalankan pembaruan lagi
+  assert.equal(G.ctx.autoSchema_(), false);
+  void before;
+});

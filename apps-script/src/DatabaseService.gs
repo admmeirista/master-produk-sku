@@ -335,13 +335,18 @@ function peekSeq_(name) {
  */
 function allocateParentSku_(brand, cat) {
   const used = {};
+  const usedNo = {};
   db_('MASTER_PRODUCTS')
     .rows()
-    .forEach((p) => (used[String(p.ProductCode).toUpperCase()] = 1));
+    .forEach((p) => {
+      used[String(p.ProductCode).toUpperCase()] = 1;
+      if (p.ParentCode) usedNo[Number(p.ParentCode)] = 1;
+    });
   for (let guard = 0; guard < 100000; guard++) {
     const no = nextSeq_('parent_no');
     const code = buildParentSku(brand.BrandCode, cat.CategoryCode, no);
-    if (!used[code]) return { no, parentCode: String(no).padStart(PARENT_CODE_DIGITS, '0'), code };
+    // nomor parent unik global (lintas brand/kategori) & tidak pernah dialokasikan ulang
+    if (!used[code] && !usedNo[no]) return { no, parentCode: String(no).padStart(PARENT_CODE_DIGITS, '0'), code };
   }
   throw new AppError('Tidak menemukan kode parent kosong');
 }
