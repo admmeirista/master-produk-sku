@@ -245,7 +245,7 @@ function exportMaster_() {
   const rows = sellables_({ statuses: INVENTORY_STATUSES });
   return {
     fileName: 'master-produk-sku-' + stamp_(),
-    headers: ['No', 'SKU', 'Jenis SKU', 'Parent SKU', 'Nama Produk SKU', 'Varian', 'Atribut', 'Satuan', 'Isi (Satuan Dasar)', 'Satuan Dasar', 'Barcode', 'Jenis Barcode', 'Brand', 'Kode Brand', 'Kategori', 'Kode Kategori', 'Stockable', 'SKU Lama', 'Kode Produk Lama', 'Status', 'Panjang (cm)', 'Lebar (cm)', 'Tinggi (cm)', 'Berat Kotor (g)', 'Foto', 'ID Kategori Shopee', 'Jalur Kategori Shopee'],
+    headers: ['No', 'SKU', 'Jenis SKU', 'Parent SKU', 'Nama Produk SKU', 'Varian', 'Atribut', 'Satuan', 'Isi (Satuan Dasar)', 'Satuan Dasar', 'Barcode', 'Jenis Barcode', 'Brand', 'Kode Brand', 'Kategori', 'Kode Kategori', 'Stockable', 'SKU Lama', 'Kode Produk Lama', 'Status', 'Panjang (cm)', 'Lebar (cm)', 'Tinggi (cm)', 'Berat Kotor (g)', 'Foto', 'ID Kategori Marketplace', 'Jalur Kategori'],
     rows: rows.map((r, i) => [i + 1, r.sku, r.kind === 'pack' ? 'Kemasan' : r.kind === 'bundle' ? 'Bundle' : 'Child SKU', r.product_code, r.display_name, r.variant_name, r.attributes, r.unit, r.base_qty, r.base_unit, r.barcode, r.barcode_type, r.brand_name, r.brand_code, r.category_name, r.category_code, r.stockable ? 'Ya' : 'Tidak', r.legacy_sku, r.legacy_code, STATUS_LABEL[r.status] || r.status, r.length_cm, r.width_cm, r.height_cm, r.gross_weight_g, r.image_url || '', r.shopee_category_id || '', r.category_path || '']),
     textColumns: [1, 3, 10, 17, 18],
   };

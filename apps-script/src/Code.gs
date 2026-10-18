@@ -216,7 +216,7 @@ function setup() {
  * setup() manual tetap diperlukan hanya untuk instalasi pertama (akun admin) atau bila Google meminta izin baru.
  */
 function schemaFingerprint_() {
-  const src = JSON.stringify([SCHEMA, COUNTER_NAMES_, Object.keys(DEFAULT_SETTINGS), SHOPEE_CATEGORY_VERSION]);
+  const src = JSON.stringify([SCHEMA, COUNTER_NAMES_, Object.keys(DEFAULT_SETTINGS), SHOPEE_CATEGORY_VERSION, DATA_MIGRATION_VERSION_]);
   return Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, src, Utilities.Charset.UTF_8));
 }
 function setSchemaVersion_() {
@@ -247,6 +247,12 @@ function autoSchema_() {
   return true;
 }
 
+/** Naikkan bila ensureData_ membawa migrasi data baru (memicu pembaruan otomatis sekali). */
+const DATA_MIGRATION_VERSION_ = 2;
+const OLD_ATTRIBUTE_TYPES_ = [
+  JSON.stringify(['Warna', 'Shade', 'Aroma', 'Ukuran', 'Volume', 'Isi', 'Jenis', 'Tipe']),
+  JSON.stringify(['Warna', 'Shade', 'Aroma', 'Ukuran', 'Volume', 'Isi', 'Berat', 'Jenis Produk', 'Jenis', 'Tipe']),
+];
 const COUNTER_NAMES_ = ['parent_no', 'product_no', 'sku_no', 'internal_barcode', 'multipack_no', 'bundle_no', 'supplier_no'];
 
 /** Tab & header sesuai SCHEMA (aman diulang; tab berisi data dengan kolom berbeda → dihentikan, data tidak disentuh). */
@@ -300,6 +306,9 @@ function ensureData_(createAdmin) {
     Object.keys(DEFAULT_SETTINGS).forEach((k) => {
       if (!st.find((r) => r.key === k)) st.insert({ key: k, value: JSON.stringify(DEFAULT_SETTINGS[k]), updated_by: 'setup', updated_at: now_() });
     });
+    // jenis variasi: ganti daftar bawaan lama dengan daftar baru (daftar yang sudah diubah user tidak disentuh)
+    const at = st.find((r) => r.key === 'attribute_types');
+    if (at && OLD_ATTRIBUTE_TYPES_.indexOf(at.value) >= 0) st.update(at, { value: JSON.stringify(DEFAULT_SETTINGS.attribute_types), updated_by: 'setup', updated_at: now_() });
     // migrasi dulu (menyalin penghitung lama), baru penghitung yang belum ada dibuat
     const migration = migrateLegacy_('setup');
     // kategori standar Shopee (Perawatan & Kecantikan) disalin/diperbarui setelah migrasi — tidak menghapus kategori apa pun
@@ -315,6 +324,8 @@ function ensureData_(createAdmin) {
       createUser_({ email, fullName: 'Administrator', role: 'admin', password }, null);
       admin = { email, password };
     }
+    // data bisa berubah di luar alur biasa → cache direktori dimulai ulang
+    bumpDataVersion_();
     return { admin, migration };
   });
 }

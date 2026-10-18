@@ -245,7 +245,7 @@ function refCombo(host, kind, value, onChange, placeholder, includeInactive, dis
     label: function (it) { return cat && it.path && dup[it.name] > 1 ? it.name + ' (' + catGroup(it).split(' › ')[0] + ')' : it.name; },
     sub: function (it) {
       var info = it.status !== 'ACTIVE' ? 'Nonaktif' : '';
-      if (cat) return [it.source === 'LOCAL' ? 'Kategori lama · di luar standar Shopee' : catGroup(it), info].filter(Boolean).join(' · ');
+      if (cat) return [it.source === 'LOCAL' ? 'Lainnya' : catGroup(it), info].filter(Boolean).join(' · ');
       return info || (it.productCount ? it.productCount + ' produk' : '');
     },
     empty: cat ? 'Kategori tidak ditemukan. Coba kata lain, mis. toner, serum, lipstik, sabun.' : 'Tidak ditemukan. Tambahkan di Master Brand.', onChange: onChange
@@ -386,8 +386,8 @@ function masterPage(main, kind) {
   var w = can('master.write'), wAdd = w && !cat;
   var f = { q: '', status: 'ACTIVE', src: 'SHOPEE' };
   if (cat) main.innerHTML = pageHead('Master data', L.t, '') +
-    '<div class="info-box" style="margin-bottom:14px">' + icon('layers') + '<span>Kategori mengikuti <b>standar Shopee Indonesia — Perawatan &amp; Kecantikan</b>. Saat registrasi cukup ketik nama kategorinya (mis. <i>toner</i>, <i>lipstik</i>); yang bisa dipilih hanya kategori paling akhir, sama seperti di Shopee.</span></div>' +
-    '<div class="toolbar"><div class="search">' + icon('search') + '<input class="in" id="q" placeholder="Cari kategori atau kelompok…"></div><div class="seg" id="src"><button data-src="SHOPEE" class="on">Standar Shopee</button><button data-src="LOCAL">Kategori lama</button></div><div class="seg" id="sg"><button data-s="ACTIVE" class="on">Aktif</button><button data-s="INACTIVE">Nonaktif</button><button data-s="">Semua</button></div>' + (w ? '<label class="chk-all hidden" id="cal"><input type="checkbox" id="ca"> Pilih semua</label>' : '') + '<span class="muted right" id="cnt"></span></div><div id="lh"></div><div id="bb"></div><div id="ml">' + loadingBox() + '</div>';
+    '<div class="info-box" style="margin-bottom:14px">' + icon('layers') + '<span>Kategori bertingkat sesuai standar marketplace (Perawatan &amp; Kecantikan). Saat registrasi cukup ketik nama kategorinya, mis. <i>toner</i> atau <i>lipstik</i>; yang dipilih selalu kategori paling akhir.</span></div>' +
+    '<div class="toolbar"><div class="search">' + icon('search') + '<input class="in" id="q" placeholder="Cari kategori atau kelompok…"></div><div class="seg" id="sg"><button data-s="ACTIVE" class="on">Aktif</button><button data-s="INACTIVE">Nonaktif</button><button data-s="">Semua</button></div>' + '<span class="muted right" id="cnt"></span></div><div id="bb"></div><div id="ml">' + loadingBox() + '</div>';
   else main.innerHTML = pageHead('Master data', L.t, w ? '<button class="btn" id="upx">' + icon('upload') + 'Upload Excel</button><button class="btn" id="bulk">' + icon('list') + 'Tambah banyak</button>' : '') +
     (w ? '<div class="card" style="margin-bottom:16px"><div class="add-card"><div><label class="f" style="margin-top:0">Nama ' + (kind === 'brand' ? 'Brand' : 'Kategori') + ' <span class="req">*</span></label><input class="in w100" id="nm" placeholder="Ketik nama ' + L.one + ', lalu Enter" maxlength="60" autocomplete="off"></div>' +
       '<button class="btn pri" id="sv" style="height:40px">' + icon('plus') + 'Simpan</button></div><div id="pw"></div></div>' : '') +
@@ -413,32 +413,26 @@ function masterPage(main, kind) {
       });
     };
   };
-  /** Kategori standar Shopee: dikelompokkan per kelompok utama; hanya kategori akhir yang ditampilkan sebagai baris. */
-  var renderShopee = function () {
-    var leaves = rows.filter(function (r) { return r.source === 'SHOPEE' && r.leaf; });
-    var list = filterLocal(leaves.filter(function (r) { return !f.status || r.status === f.status; }), f.q, ['name', 'path']);
+  /** Kategori: satu daftar per kelompok utama (kategori di luar daftar baku → "Lainnya"); hanya kategori akhir yang tampil sebagai baris. */
+  var renderCats = function () {
+    var all = rows.filter(function (r) { return r.leaf !== false; });
+    var list = filterLocal(all.filter(function (r) { return !f.status || r.status === f.status; }), f.q, ['name', 'path']);
     cur = [];
-    $('#cnt', main).textContent = list.length + ' dari ' + leaves.length + ' kategori';
-    $('#lh', main).innerHTML = '';
+    $('#cnt', main).textContent = list.length + ' dari ' + all.length + ' kategori';
     var groups = [], by = {};
-    list.forEach(function (r) { var g = r.path.split(' > ')[0]; if (!by[g]) { by[g] = []; groups.push(g); } by[g].push(r); });
-    $('#ml', main).innerHTML = list.length ? '<div class="tablewrap"><table class="t compact cat-t"><thead><tr><th>Kategori</th><th class="num">Produk</th><th>Status</th><th>ID Shopee</th>' + (w ? '<th></th>' : '') + '</tr></thead><tbody>' +
+    list.forEach(function (r) { var g = r.source === 'LOCAL' ? 'Lainnya' : r.path.split(' > ')[0]; if (!by[g]) { by[g] = []; groups.push(g); } by[g].push(r); });
+    if (by.Lainnya) groups = groups.filter(function (g) { return g !== 'Lainnya'; }).concat(['Lainnya']);
+    $('#ml', main).innerHTML = list.length ? '<div class="tablewrap"><table class="t compact cat-t"><thead><tr><th>Kategori</th><th class="num">Produk</th><th>Status</th>' + (w ? '<th></th>' : '') + '</tr></thead><tbody>' +
       groups.map(function (g) {
-        return '<tr class="grp"><td colspan="' + (w ? 5 : 4) + '">' + esc(g) + ' <span class="muted">· ' + by[g].length + '</span></td></tr>' + by[g].map(function (r) {
-          var mid = r.path.split(' > ').slice(1, -1).join(' › ');
-          return '<tr' + (r.status !== 'ACTIVE' ? ' class="off"' : '') + '><td class="nm"><b>' + esc(r.name) + '</b>' + (mid ? '<div class="cpath">' + esc(mid) + '</div>' : '') + '</td><td class="num">' + r.productCount + '</td><td>' + badge(r.status) + '</td><td class="muted code">' + esc(r.shopeeId) + '</td>' +
-            (w ? '<td class="nowrap"><div class="ra"><button class="btn sm ghost" data-st="' + esc(r.id) + '">' + (r.status === 'ACTIVE' ? 'Nonaktifkan' : 'Aktifkan') + '</button></div></td>' : '') + '</tr>';
+        return '<tr class="grp"><td colspan="' + (w ? 4 : 3) + '">' + esc(g) + ' <span class="muted">· ' + by[g].length + '</span></td></tr>' + by[g].map(function (r) {
+          var local = r.source === 'LOCAL', mid = local ? 'Di luar daftar baku — pindahkan produknya lalu hapus' : r.path.split(' > ').slice(1, -1).join(' › ');
+          return '<tr' + (r.status !== 'ACTIVE' ? ' class="off"' : '') + '><td class="nm"><b>' + esc(r.name) + '</b>' + (mid ? '<div class="cpath">' + esc(mid) + '</div>' : '') + '</td><td class="num">' + r.productCount + '</td><td>' + badge(r.status) + '</td>' +
+            (w ? '<td class="nowrap"><div class="ra"><button class="btn sm ghost" data-st="' + esc(r.id) + '">' + (r.status === 'ACTIVE' ? 'Nonaktifkan' : 'Aktifkan') + '</button>' + (local && !r.productCount ? '<button class="btn sm ghost danger" data-del="' + esc(r.id) + '" title="Hapus">' + icon('trash') + '</button>' : '') + '</div></td>' : '') + '</tr>';
         }).join('');
       }).join('') + '</tbody></table></div>' : '<div class="tablewrap">' + emptyBox('Tidak ada yang cocok', 'Coba kata lain, mis. serum, sabun, lipstik.', 'layers') + '</div>';
   };
   var render = function () {
-    if (cat) {
-      var nLocal = rows.filter(function (r) { return r.source === 'LOCAL'; }).length;
-      $$('[data-src]', main).forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-src') === f.src); if (b.getAttribute('data-src') === 'LOCAL') b.textContent = 'Kategori lama' + (nLocal ? ' (' + nLocal + ')' : ''); });
-      if ($('#cal', main)) $('#cal', main).classList.toggle('hidden', f.src !== 'LOCAL');
-      if (f.src === 'SHOPEE') { renderShopee(); bindRowActions(); bar(); return; }
-      $('#lh', main).innerHTML = nLocal ? '<div class="hint" style="margin:0 0 10px">Kategori lama di luar standar Shopee. Pindahkan produknya ke kategori Shopee lewat <b>Edit produk</b>, lalu hapus kategori lama yang sudah tidak dipakai.</div>' : '';
-    }
+    if (cat) { renderCats(); bindRowActions(); return; }
     var base = cat ? rows.filter(function (r) { return r.source === 'LOCAL'; }) : rows;
     var list = filterLocal(base.filter(function (r) { return !f.status || r.status === f.status; }), f.q, ['name']);
     cur = list;
@@ -489,9 +483,6 @@ function masterPage(main, kind) {
     };
     $('#rs', m).onclick = go; inp.onkeydown = function (e) { if (e.key === 'Enter') go(); };
   };
-  if (cat) {
-    $$('[data-src]', main).forEach(function (b) { b.onclick = function () { f.src = b.getAttribute('data-src'); sel = {}; render(); }; });
-  }
   if (wAdd) {
     var nm = $('#nm', main), pw = $('#pw', main), ack = false;
     var preview = debounce(function () {

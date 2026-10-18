@@ -489,3 +489,18 @@ test('sinkron kategori Shopee: aman diulang, kategori lama bernama sama ditautka
   assert.deepEqual([am.CategoryName, am.ExternalSource || ''], ['Air Mawar', '']);
   assert.equal(L.ctx.db_('MASTER_CATEGORIES').rows().length, 121);
 });
+
+test('jenis variasi: daftar bawaan lama diganti otomatis; daftar buatan user tidak disentuh', () => {
+  const L = createGas();
+  L.ctx.ensureSheets_();
+  L.sheets.get('Settings').data.push(['attribute_types', JSON.stringify(['Warna', 'Shade', 'Aroma', 'Ukuran', 'Volume', 'Isi', 'Jenis', 'Tipe']), 'setup', '']);
+  L.ctx.resetDbCache_();
+  L.ctx.ensureData_(false);
+  assert.deepEqual(JSON.parse(JSON.stringify(L.ctx.getSettings_().attribute_types)), ['Warna', 'Aroma', 'Ukuran', 'Berat Isi', 'Volume']);
+  const L2 = createGas();
+  L2.ctx.ensureSheets_();
+  L2.sheets.get('Settings').data.push(['attribute_types', JSON.stringify(['Warna', 'Motif']), 'setup', '']);
+  L2.ctx.resetDbCache_();
+  L2.ctx.ensureData_(false);
+  assert.deepEqual(JSON.parse(JSON.stringify(L2.ctx.getSettings_().attribute_types)), ['Warna', 'Motif']);
+});

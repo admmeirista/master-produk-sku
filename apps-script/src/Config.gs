@@ -112,7 +112,8 @@ const DEFAULT_SETTINGS = {
   internal_barcode_prefix: '200',
   base_units: ['PCS', 'BOTOL', 'TUBE', 'SACHET', 'JAR', 'PACK', 'POT', 'STICK'],
   pack_units: ['BOX', 'KARTON', 'PACK', 'LUSIN', 'INNER', 'DUS', 'BAL', 'SET'],
-  attribute_types: ['Warna', 'Shade', 'Aroma', 'Ukuran', 'Volume', 'Isi', 'Berat', 'Jenis Produk', 'Jenis', 'Tipe'],
+  // urutan = urutan kata pada nama SKU otomatis (warna/aroma dulu, ukuran/isi di belakang); jenis lain lewat pilihan "Lainnya…"
+  attribute_types: ['Warna', 'Aroma', 'Ukuran', 'Berat Isi', 'Volume'],
   channels: ['shopee', 'tiktok', 'tokopedia', 'beecloud', 'lainnya'],
   gtin_lookup_enabled: true,
 };

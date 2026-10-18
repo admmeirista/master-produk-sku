@@ -124,7 +124,7 @@ function masterRename_(user, kind, id, input) {
   const k = masterCfg_(kind);
   const rec = db_(k.table).byId(id);
   if (!rec) throw new AppError(k.label + ' tidak ditemukan', [], 'NOT_FOUND');
-  if (catIsShopee_(rec)) throw new AppError('Nama kategori standar Shopee tidak dapat diubah', [], 'STANDARD');
+  if (catIsShopee_(rec)) throw new AppError('Nama kategori baku tidak dapat diubah', [], 'STANDARD');
   const name = masterCleanName_(k, input.name);
   if (name === rec[k.name]) return masterView_(k, rec, {});
   const chk = masterNameCheck_(k, name, id);
@@ -158,7 +158,7 @@ function masterDelete_(user, kind, id) {
   const k = masterCfg_(kind);
   const rec = db_(k.table).byId(id);
   if (!rec || rec.Status === STATUS.DELETED) throw new AppError(k.label + ' tidak ditemukan', [], 'NOT_FOUND');
-  if (catIsShopee_(rec)) throw new AppError('Kategori standar Shopee tidak dapat dihapus. Nonaktifkan saja bila tidak dipakai.', [], 'STANDARD');
+  if (catIsShopee_(rec)) throw new AppError('Kategori baku tidak dapat dihapus. Nonaktifkan saja bila tidak dipakai.', [], 'STANDARD');
   const used = db_('MASTER_PRODUCTS').filter((p) => p[k.id] === id && p.Status !== STATUS.DELETED).length;
   if (used) throw new AppError(`${k.label} ${rec[k.name]} dipakai ${used} produk sehingga tidak dapat dihapus. Nonaktifkan saja.`, [], 'IN_USE');
   db_(k.table).update(rec, { Status: STATUS.DELETED, UpdatedBy: user.email, UpdatedAt: now_() });
@@ -181,7 +181,7 @@ function masterDeleteMany_(user, kind, ids) {
       deleted.push(rec[k.name]);
     } catch (e) {
       if (!(e instanceof AppError)) throw e;
-      skipped.push({ id, name: rec ? rec[k.name] : id, reason: e.code === 'IN_USE' ? 'masih dipakai produk' : e.code === 'STANDARD' ? 'kategori standar Shopee (nonaktifkan saja)' : e.message });
+      skipped.push({ id, name: rec ? rec[k.name] : id, reason: e.code === 'IN_USE' ? 'masih dipakai produk' : e.code === 'STANDARD' ? 'kategori baku (nonaktifkan saja)' : e.message });
     }
   });
   return { deleted, skipped };

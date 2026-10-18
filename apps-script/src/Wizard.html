@@ -259,6 +259,8 @@ var Wiz = {
     }
     if (step === 2) {
       if (!s.variants.length) out.push('Buat minimal satu SKU produk');
+      if (!Wiz.isSingle() && !s.variants.some(function (v) { return v.attributes.some(function (a) { return String(a.value).trim(); }); }))
+        out.push('Isi jenis variasi & pilihannya lalu klik Buat daftar SKU — atau pilih "1 SKU saja" bila produk hanya satu jenis');
       var keys = {}, multi = !Wiz.isSingle() && s.variants.length > 1;
       s.variants.forEach(function (v, i) {
         var lbl = multi ? 'Varian ' + (i + 1) : 'Barcode';
@@ -341,7 +343,7 @@ var Wiz = {
         var v = keep[0] || s.variants[0] || Wiz.newVariant([]);
         s.variants = [v]; s.single = true; s.errors = {}; Wiz.render(); Wiz.persist();
       };
-      if (s.variants.filter(function (v) { return !v.saved; }).length > 1) return ask('Hanya baris pertama yang dipertahankan. Lanjutkan?', 'Ya, tanpa variasi', true).then(function (y) { if (y) go(); });
+      if (s.variants.filter(function (v) { return !v.saved; }).length > 1) return ask('Hanya baris pertama yang dipertahankan. Lanjutkan?', 'Ya, 1 SKU saja', true).then(function (y) { if (y) go(); });
       return go();
     }
     s.single = false;
@@ -352,8 +354,8 @@ var Wiz = {
   step2: function (body) {
     var s = Wiz.st, types = cfg().attributeTypes || [], newP = !s.productId, single = Wiz.isSingle();
     body.innerHTML = '<div class="card"><div class="sec-h"><h3>Varian & Barcode</h3></div>' +
-      '<div class="mode2"><button type="button" data-sg="1" class="' + (single ? 'on' : '') + '"><b>Tanpa variasi</b><span>Satu produk, mis. Viva Air Mawar 100 ml</span></button>' +
-      '<button type="button" data-sg="0" class="' + (single ? '' : 'on') + '"><b>Ada variasi</b><span>Beda warna, shade, aroma, atau ukuran</span></button></div>' +
+      '<div class="mode2"><button type="button" data-sg="1" class="' + (single ? 'on' : '') + '"><b>1 SKU saja</b><span>Produk hanya satu jenis, mis. Viva Air Mawar 100 ml → 1 kode SKU</span></button>' +
+      '<button type="button" data-sg="0" class="' + (single ? '' : 'on') + '"><b>Beberapa SKU</b><span>Ada pilihan warna, ukuran, aroma, dll. → tiap pilihan 1 kode SKU</span></button></div>' +
       (single ? '<div id="sg1"></div>'
         : '<div class="sect" style="margin-top:14px">Jenis variasi</div><div id="attrs"></div><button class="btn sm" id="aa" type="button">' + icon('plus') + 'Tambah jenis variasi</button>' +
           '<div class="combo-bar" id="cbar"></div><div class="sect">Daftar SKU produk</div><div id="vt"></div>') + Wiz.fe('variants') +
@@ -549,7 +551,8 @@ var Wiz = {
   /** Daftar SKU produk (mode ada variasi): kartu per baris — foto, nama otomatis, pilihan variasi, barcode, kode SKU. */
   renderVariants: function () {
     var s = Wiz.st, box = $('#vt', Wiz.main); if (!box) return;
-    if (!s.variants.length) { box.innerHTML = '<div class="tablewrap">' + emptyBox('Belum ada SKU produk', 'Pilih jenis variasi & pilihannya, lalu klik <b>Buat daftar SKU</b>.', 'layers') + '</div>'; return; }
+    var blank = s.variants.length === 1 && !s.variants[0].saved && !s.variants[0].attributes.some(function (a) { return String(a.value).trim(); });
+    if (!s.variants.length || blank) { box.innerHTML = '<div class="tablewrap">' + emptyBox('Belum ada SKU produk', 'Pilih jenis variasi (mis. Warna) dan ketik pilihannya (Merah, Biru), lalu klik <b>Buat daftar SKU</b>. Setiap pilihan menjadi 1 kode SKU: …-001, …-002, dst.', 'layers') + '</div>'; return; }
     var cols = Wiz.attrCols();
     box.innerHTML = s.variants.map(function (v, i) {
       var p = 'variants.' + i, rowErr = Object.keys(s.errors).some(function (k) { return k.indexOf(p + '.') === 0 && Wiz.stepOf(k) === 2; });
@@ -637,7 +640,7 @@ var Wiz = {
     var dimCells = function (v, i, u) {
       var d = v.dims[u] || { l: '', w: '', h: '', wt: '', wu: 'g' }, di = Wiz.dimUnits(v).indexOf(u), p = 'variants.' + i + '.dimensions.' + di;
       var num = function (k, ph) { return '<input class="in sm' + (di >= 0 && Wiz.st.errors[p + '.' + ({ l: 'lengthCm', w: 'widthCm', h: 'heightCm', wt: 'weight' })[k]] ? ' err' : '') + '" data-dm="' + esc(u) + '" data-k="' + k + '" type="number" min="0" step="0.1" inputmode="decimal" placeholder="' + ph + '" value="' + esc(d[k]) + '">'; };
-      return '<td><div class="dim3">' + num('l', 'P') + '<span>×</span>' + num('w', 'L') + '<span>×</span>' + num('h', 'T') + '</div></td><td><div class="row" style="gap:4px;flex-wrap:nowrap">' + num('wt', 'Berat') + '<select class="in sm" data-dm="' + esc(u) + '" data-k="wu" style="width:64px"><option value="g"' + (d.wu !== 'kg' ? ' selected' : '') + '>g</option><option value="kg"' + (d.wu === 'kg' ? ' selected' : '') + '>kg</option></select></div></td>';
+      return '<td><div class="dim3">' + num('l', 'P') + '<span>×</span>' + num('w', 'L') + '<span>×</span>' + num('h', 'T') + '</div></td><td><div class="row" style="gap:4px;flex-wrap:nowrap">' + num('wt', 'gram') + '</div></td>';
     };
     box.innerHTML = s.variants.map(function (v, i) {
       if (v.status !== 'ACTIVE' && v.status !== 'DRAFT' && !v.conversions.length) return '';
@@ -647,9 +650,9 @@ var Wiz = {
       var lockBase = v.saved && v.conversions.some(function (c) { return c.saved && c.status !== 'DELETED'; });
       return '<div class="vcard' + (isOpen ? ' open' : '') + '" data-v="' + i + '"><div class="vcard-h">' + icon('chevron', 'chev') + '<span class="nm">' + esc(Wiz.displayName(v) || 'Varian ' + (i + 1)) + '</span>' +
         (hasErr ? '<span class="badge b-ERR">Perlu dicek</span>' : '') + '<span data-pk>' + Wiz.pkBadge(v) + '</span><span class="muted right">' + esc(base) + (actives.length ? ' · ' + actives.map(function (c, j) { var r = calc[j]; return esc(c.unitName) + (r && r.eq ? ' (' + r.eq + ')' : ''); }).join(' · ') : '') + '</span></div>' +
-        '<div class="vcard-b"><div class="tbl-x"><table class="t lvt"><thead><tr><th>Satuan</th><th>Isi</th><th>Setara</th><th>Dimensi (cm) P × L × T</th><th>Berat kotor</th><th></th></tr></thead><tbody>' +
+        '<div class="vcard-b"><div class="tbl-x"><table class="t lvt"><thead><tr><th>Satuan</th><th>Isi</th><th>Setara</th><th>Dimensi (cm) P × L × T</th><th>Berat kotor (gram)</th><th></th></tr></thead><tbody>' +
         '<tr class="lv0"><td><select class="in sm" data-bu' + (lockBase ? ' disabled title="Hapus kemasan dulu untuk mengganti satuan terkecil"' : '') + '>' +
-        baseUnits.concat(base && baseUnits.indexOf(base) < 0 ? [base] : []).map(function (u) { return '<option' + (u === base ? ' selected' : '') + '>' + esc(u) + '</option>'; }).join('') + '</select><div class="muted" style="font-size:11px;margin-top:2px">satuan terkecil</div>' + Wiz.fe('variants.' + i + '.baseUnit') + '</td><td class="muted">—</td><td>1 ' + esc(base) + '</td>' + dimCells(v, i, base) + '<td></td></tr>' +
+        baseUnits.concat(base && baseUnits.indexOf(base) < 0 ? [base] : []).map(function (u) { return '<option' + (u === base ? ' selected' : '') + '>' + esc(u) + '</option>'; }).join('') + '</select>' + Wiz.fe('variants.' + i + '.baseUnit') + '</td><td class="muted lv-note">satuan terkecil</td><td>1 ' + esc(base) + '</td>' + dimCells(v, i, base) + '<td></td></tr>' +
         v.conversions.map(function (c, j) {
           if (c.status === 'DELETED') return '';
           var p = 'variants.' + i + '.conversions.' + j, active = c.status === 'ACTIVE', r = active ? calc[k++] : null, locked = c.saved && c.tradeSaved;
@@ -852,7 +855,7 @@ var Wiz = {
           barcode: v.barcode.mode === 'gtin' && !cleanBc(v.barcode.code) ? { mode: 'none' } : { mode: v.barcode.mode, code: v.barcode.code }, barcodeChangeReason: v.reason, statusReason: v.statusReason,
           nameOverride: v.nameOverride, nameOverrideReason: v.overrideReason, baseUnit: v.baseUnit || s.baseUnit, imageUrl: v.imageUrl || '', imageFileId: v.imageFileId || '',
           conversions: v.conversions.filter(function (c) { return c.saved || c.status === 'ACTIVE'; }).map(function (c) { return { id: c.id || undefined, unitName: c.unitName, factor: Number(c.factor), containsUnit: c.containsUnit || base, isTradeItem: !!c.isTradeItem, status: c.status, barcode: c.isTradeItem ? { mode: c.barcode.mode, code: c.barcode.code } : { mode: 'none' }, barcodeChangeReason: c.reason }; }),
-          dimensions: units.filter(function (u) { return v.dims[u]; }).map(function (u) { var d = v.dims[u]; return { unit: u, lengthCm: d.l, widthCm: d.w, heightCm: d.h, weight: d.wt, weightUnit: d.wu || 'g' }; }) };
+          dimensions: units.filter(function (u) { return v.dims[u]; }).map(function (u) { var d = v.dims[u]; return { unit: u, lengthCm: d.l, widthCm: d.w, heightCm: d.h, weight: d.wt, weightUnit: 'g' }; }) };
       })
     };
   },
