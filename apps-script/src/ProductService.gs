@@ -104,8 +104,9 @@ function productIndex_() {
     .forEach((v) => {
       const s = st(v.ProductID);
       s.variants++;
-      if (v.Status === STATUS.ACTIVE) s.active++;
-      if (v.Status === STATUS.ACTIVE && (v.GTIN || v.InternalBarcode)) s.withBarcode++;
+      const live = v.Status === STATUS.ACTIVE || v.Status === STATUS.DRAFT;
+      if (live) s.active++;
+      if (live && (v.GTIN || v.InternalBarcode)) s.withBarcode++; // sisanya = "GTIN belum didata"
       if (v.SKU) s.skus++;
       s.text += ' ' + [v.SKU, v.GTIN, v.InternalBarcode, v.VariantName, normalizeName(v.ProductSKUName), normalizeName(v.NameOverride)].join(' ');
     });

@@ -94,7 +94,7 @@ function dataQuality_() {
   add('bundle_invalid', 'Bundle dengan komponen tidak valid', 'error', badBundles, 'Ganti komponen yang tidak aktif di menu Packaging & Bundle.');
 
   // ---- kelengkapan & kemiripan
-  add('variant_no_barcode', 'Child SKU aktif tanpa barcode', 'info', V.filter((v) => v.Status === STATUS.ACTIVE && !v.GTIN && !v.InternalBarcode && (pById[v.ProductID] || {}).Status === STATUS.ACTIVE).map(vLabel), 'Scan GTIN produsen di Edit produk, atau alokasikan barcode internal bila tidak ada GTIN.');
+  add('variant_no_barcode', 'SKU produk aktif belum ada GTIN / barcode (perlu didata)', 'warn', V.filter((v) => [STATUS.ACTIVE, STATUS.DRAFT].indexOf(v.Status) >= 0 && !v.GTIN && !v.InternalBarcode && [STATUS.ACTIVE, STATUS.DRAFT].indexOf((pById[v.ProductID] || {}).Status) >= 0).map(vLabel), 'Cek fisik barang: scan GTIN di Edit produk › Varian & Barcode, atau pilih "Tidak ada GTIN" agar sistem membuat nomor internal.');
   const dims = dimensionsByVariant_();
   add('packaging_incomplete', 'Data kemasan belum lengkap (dimensi/berat satuan dasar)', 'info', V.filter((v) => v.Status === STATUS.ACTIVE && (pById[v.ProductID] || {}).Status === STATUS.ACTIVE && !packagingComplete_(v.BaseUnit || (pById[v.ProductID] || {}).BaseUnit, dims[v.VariantID])).map(vLabel), 'Lengkapi panjang, lebar, tinggi, dan berat di Edit produk › Kemasan & Logistik. Tidak memengaruhi SKU.');
   const threshold = Number(getSettings_().fuzzy_threshold) || 0.82;

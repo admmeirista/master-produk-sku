@@ -128,7 +128,7 @@ Pages.products = function (main) {
   main.innerHTML = pageHead('Master data', 'Master Produk', (can('export.run') ? '<button class="btn" id="ex">' + icon('download') + 'Ekspor</button>' : '') + (can('product.write') ? '<button class="btn pri" id="np">' + icon('plus') + 'Registrasi Produk</button>' : '')) +
     '<div class="filters"><div class="search">' + icon('search') + '<input class="in" id="fq" placeholder="Cari Kode Produk Induk, Kode SKU Produk, GTIN, barcode internal, nama…"></div><div id="fb" style="width:190px"></div><div id="fc" style="width:190px"></div>' +
     '<select class="in" id="fs"><option value="ACTIVE">Aktif</option><option value="DRAFT">Draft</option><option value="INACTIVE">Nonaktif</option><option value="DISCONTINUED">Discontinued</option><option value="ARCHIVED">Diarsipkan</option><option value="all">Semua status</option></select>' +
-    '<select class="in" id="fk"><option value="">Semua kelengkapan</option><option value="incomplete">Barcode belum lengkap</option><option value="complete">Barcode lengkap</option></select></div><div id="pl"></div>';
+    '<select class="in" id="fk"><option value="">Semua</option><option value="incomplete">GTIN belum didata</option><option value="complete">Barcode lengkap</option></select></div><div id="pl"></div>';
   if ($('#np', main)) $('#np', main).onclick = function () { App.go('register'); };
   if ($('#ex', main)) $('#ex', main).onclick = function () {
     var b = $('#ex', main);
@@ -145,7 +145,7 @@ Pages.products = function (main) {
           return '<tr data-id="' + esc(r.id) + '"' + (r.status !== 'ACTIVE' ? ' class="off"' : '') + '><td><button class="exp" data-exp title="Lihat varian & kemasan">' + icon('chevron') + '</button></td>' +
             '<td class="sku nowrap">' + esc(r.productCode) + '</td><td><div class="pcell"><b>' + esc(r.name) + '</b>' + (r.legacyCode ? '<small>kode lama ' + esc(r.legacyCode) + '</small>' : '') + '</div></td>' +
             '<td>' + esc(r.brandName) + '</td><td>' + esc(r.categoryName) + '</td><td class="num">' + r.variantCount + (r.skuCount > r.variantCount ? ' <span class="muted">+' + (r.skuCount - r.variantCount) + ' kemasan</span>' : '') + '</td>' +
-            '<td>' + (r.complete ? badge('GTIN', 'Lengkap') : badge('NONE', r.withBarcode + '/' + r.activeVariants)) + '</td><td>' + badge(r.status) + '</td>' +
+            '<td>' + (r.complete ? badge('GTIN', 'Lengkap') : badge('NONE', (r.activeVariants - r.withBarcode) + ' GTIN belum didata')) + '</td><td>' + badge(r.status) + '</td>' +
             '<td><div class="ra"><button class="btn sm ghost" data-open title="Detail">' + icon('eye') + '</button>' + (can('product.write') ? '<button class="btn sm ghost" data-edit title="Edit">' + icon('edit') + '</button><button class="btn sm ghost" data-dup title="Duplikat produk">' + icon('copy') + '</button>' : '') + '</div></td></tr>';
         }).join('') + '</tbody></table></div>' + pager(d, function (p) { f.page = p; load(); });
       $$('tr[data-id]', box).forEach(function (tr) {
@@ -288,7 +288,7 @@ Pages.product = function (main, id, tab) {
 function bcCell(gtin, internal) {
   if (gtin) return '<a class="link-btn code" data-bc="' + esc(gtin) + '">' + esc(gtin) + '</a> ' + badge('GTIN', 'GTIN');
   if (internal) return '<a class="link-btn code" data-bc="' + esc(internal) + '">' + esc(internal) + '</a> ' + badge('INTERNAL', 'Internal');
-  return badge('NONE', 'Belum ada');
+  return badge('NONE', 'GTIN belum didata');
 }
 function showBarcode(code) {
   var m = modal('<h3>Barcode</h3><div style="text-align:center;padding:10px;background:#fff"><svg id="bcsvg"></svg></div><div class="row" style="margin-top:12px"><button class="btn" data-close>Tutup</button><button class="btn ghost" id="bh">' + icon('clock') + 'Histori</button></div>');

@@ -117,9 +117,8 @@ function planVariants_(input, ctx) {
         err(path + '.status', e.message);
       }
     }
-    // barcode opsional: GTIN produsen, barcode internal (dibuat otomatis), atau tanpa barcode
-    const bm = iv.barcode && iv.barcode.mode;
-    if (bm === 'gtin' && !cleanBarcode(iv.barcode.code)) err(path + '.barcode', 'Barcode Produk (GTIN) belum diisi — pilih "Tanpa barcode" bila tidak ada');
+    // barcode opsional: GTIN produsen (boleh dikosongkan dulu → ditandai "GTIN belum didata"), atau nomor internal dari sistem
+    if (iv.barcode && iv.barcode.mode === 'gtin' && !cleanBarcode(iv.barcode.code)) iv.barcode = { mode: 'none' };
     // satuan dasar per Child SKU (default dari produk)
     const curBase = dbv ? dbv.BaseUnit || dbBase[dbv.VariantID] || '' : '';
     const baseUnit = normalizeUnit(iv.baseUnit) || curBase || ctx.baseUnit;

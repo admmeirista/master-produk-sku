@@ -371,3 +371,18 @@ test('pembaruan struktur otomatis tanpa setup manual', () => {
   assert.ok(G.sheets.get('PRODUCT_DIMENSIONS'), 'tab dibuat ulang otomatis');
   assert.equal(G.ctx.autoSchema_(), false);
 });
+
+test('GTIN boleh dikosongkan dulu → tersimpan & ditandai "GTIN belum didata" (direktori & Data Quality)', () => {
+  const d = save(T, { brandId: B.Viva.id, categoryId: C.Toner.id, name: 'Air Mawar Mini', baseUnit: 'BOTOL', acknowledgeSimilar: true, variants: [{ attributes: [{ name: 'Volume', value: '10 ml' }], barcode: { mode: 'gtin', code: '' } }] });
+  assert.equal(d.variants[0].skuName, 'Viva Air Mawar Mini 10 ml', 'produk tanpa variasi dengan ukuran');
+  assert.deepEqual([d.variants[0].gtin, d.variants[0].internalBarcode], ['', '']);
+  const rows2 = ok(call(V, 'product.list', { completeness: 'incomplete', status: 'all', pageSize: 200 })).rows;
+  assert.ok(rows2.some((r) => r.id === d.id), 'filter GTIN belum didata');
+  assert.ok(ok(call(V, 'quality.get', {})).sections.find((s) => s.key === 'variant_no_barcode').rows.some((r) => r.sku === d.variants[0].sku));
+  // dilengkapi kemudian setelah cek fisik → penanda hilang, SKU tetap
+  const x = toInput(d);
+  x.variants[0].barcode = { mode: 'gtin', code: g(90) };
+  const d2 = save(T, x);
+  assert.deepEqual([d2.variants[0].gtin, d2.variants[0].sku], [g(90), d.variants[0].sku]);
+  assert.ok(!ok(call(V, 'product.list', { completeness: 'incomplete', status: 'all', pageSize: 200 })).rows.some((r) => r.id === d.id));
+});
