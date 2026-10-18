@@ -10,7 +10,7 @@
 function productRefs_(p) {
   const b = db_('MASTER_BRANDS').byId(p.BrandID) || {};
   const c = db_('MASTER_CATEGORIES').byId(p.CategoryID) || {};
-  return { brand: { id: b.BrandID, name: b.BrandName, status: b.Status }, category: { id: c.CategoryID, name: c.CategoryName, status: c.Status } };
+  return { brand: { id: b.BrandID, name: b.BrandName, status: b.Status }, category: { id: c.CategoryID, name: c.CategoryName, path: catIsShopee_(c) ? catShortPath_(c) : '', shopeeId: catIsShopee_(c) ? c.ExternalID : '', status: c.Status } };
 }
 
 function productDetail_(id) {

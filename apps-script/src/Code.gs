@@ -216,7 +216,7 @@ function setup() {
  * setup() manual tetap diperlukan hanya untuk instalasi pertama (akun admin) atau bila Google meminta izin baru.
  */
 function schemaFingerprint_() {
-  const src = JSON.stringify([SCHEMA, COUNTER_NAMES_, Object.keys(DEFAULT_SETTINGS)]);
+  const src = JSON.stringify([SCHEMA, COUNTER_NAMES_, Object.keys(DEFAULT_SETTINGS), SHOPEE_CATEGORY_VERSION]);
   return Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, src, Utilities.Charset.UTF_8));
 }
 function setSchemaVersion_() {
@@ -302,6 +302,8 @@ function ensureData_(createAdmin) {
     });
     // migrasi dulu (menyalin penghitung lama), baru penghitung yang belum ada dibuat
     const migration = migrateLegacy_('setup');
+    // kategori standar Shopee (Perawatan & Kecantikan) disalin/diperbarui setelah migrasi — tidak menghapus kategori apa pun
+    syncShopeeCategories_();
     const seq = db_('SYSTEM_COUNTERS');
     // penghitung baru dimulai setelah nomor urut tertinggi yang sudah dipakai (tidak pernah dialokasikan ulang)
     const maxParent = db_('MASTER_PRODUCTS').rows().reduce((m, p) => Math.max(m, Number(p.ProductNo) || 0, Number(p.ParentCode) || 0), 0);

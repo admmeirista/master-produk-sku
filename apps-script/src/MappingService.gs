@@ -31,7 +31,7 @@ function sellables_(opts) {
     const p = prods[pid] || {};
     const b = brands[p.BrandID] || {};
     const c = cats[p.CategoryID] || {};
-    return { product_id: pid, product_code: p.ProductCode, legacy_code: p.LegacyCode || '', product_name: p.ProductName, product_status: p.Status, base_unit: p.BaseUnit, brand_name: b.BrandName, brand_code: b.BrandCode, category_name: c.CategoryName, category_code: c.CategoryCode };
+    return { product_id: pid, product_code: p.ProductCode, legacy_code: p.LegacyCode || '', product_name: p.ProductName, product_status: p.Status, base_unit: p.BaseUnit, brand_name: b.BrandName, brand_code: b.BrandCode, category_name: c.CategoryName, category_code: c.CategoryCode, shopee_category_id: catIsShopee_(c) ? c.ExternalID : '', category_path: catIsShopee_(c) ? c.FullPath : '' };
   };
   const ok = (...st) => st.every((s) => s !== STATUS.DELETED) && (opts.statuses ? st.every((s) => opts.statuses[s]) : opts.includeInactive || st.every((s) => s === STATUS.ACTIVE));
   const attrText = (vid) => (attrs[vid] || []).map((a) => a.name + ': ' + a.value).join(', ');
@@ -245,8 +245,8 @@ function exportMaster_() {
   const rows = sellables_({ statuses: INVENTORY_STATUSES });
   return {
     fileName: 'master-produk-sku-' + stamp_(),
-    headers: ['No', 'SKU', 'Jenis SKU', 'Parent SKU', 'Nama Produk SKU', 'Varian', 'Atribut', 'Satuan', 'Isi (Satuan Dasar)', 'Satuan Dasar', 'Barcode', 'Jenis Barcode', 'Brand', 'Kode Brand', 'Kategori', 'Kode Kategori', 'Stockable', 'SKU Lama', 'Kode Produk Lama', 'Status', 'Panjang (cm)', 'Lebar (cm)', 'Tinggi (cm)', 'Berat Kotor (g)', 'Foto'],
-    rows: rows.map((r, i) => [i + 1, r.sku, r.kind === 'pack' ? 'Kemasan' : r.kind === 'bundle' ? 'Bundle' : 'Child SKU', r.product_code, r.display_name, r.variant_name, r.attributes, r.unit, r.base_qty, r.base_unit, r.barcode, r.barcode_type, r.brand_name, r.brand_code, r.category_name, r.category_code, r.stockable ? 'Ya' : 'Tidak', r.legacy_sku, r.legacy_code, STATUS_LABEL[r.status] || r.status, r.length_cm, r.width_cm, r.height_cm, r.gross_weight_g, r.image_url || '']),
+    headers: ['No', 'SKU', 'Jenis SKU', 'Parent SKU', 'Nama Produk SKU', 'Varian', 'Atribut', 'Satuan', 'Isi (Satuan Dasar)', 'Satuan Dasar', 'Barcode', 'Jenis Barcode', 'Brand', 'Kode Brand', 'Kategori', 'Kode Kategori', 'Stockable', 'SKU Lama', 'Kode Produk Lama', 'Status', 'Panjang (cm)', 'Lebar (cm)', 'Tinggi (cm)', 'Berat Kotor (g)', 'Foto', 'ID Kategori Shopee', 'Jalur Kategori Shopee'],
+    rows: rows.map((r, i) => [i + 1, r.sku, r.kind === 'pack' ? 'Kemasan' : r.kind === 'bundle' ? 'Bundle' : 'Child SKU', r.product_code, r.display_name, r.variant_name, r.attributes, r.unit, r.base_qty, r.base_unit, r.barcode, r.barcode_type, r.brand_name, r.brand_code, r.category_name, r.category_code, r.stockable ? 'Ya' : 'Tidak', r.legacy_sku, r.legacy_code, STATUS_LABEL[r.status] || r.status, r.length_cm, r.width_cm, r.height_cm, r.gross_weight_g, r.image_url || '', r.shopee_category_id || '', r.category_path || '']),
     textColumns: [1, 3, 10, 17, 18],
   };
 }

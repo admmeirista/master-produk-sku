@@ -1,7 +1,7 @@
 /**
- * Master Kategori — disimpan terpusat, dipakai seluruh brand & produk.
- * User hanya mengisi Nama Kategori; Kode Kategori otomatis, unik, permanen.
- * Contoh: Parfum → PAR, Lipstick → LIP, Body Lotion → BOD, Facial Wash → FAC.
+ * Master Kategori — bertingkat mengikuti kategori Shopee Indonesia (Perawatan & Kecantikan), lihat ShopeeCategories.gs.
+ * Produk memilih KATEGORI AKHIR (mis. Perawatan Wajah > Toner); kelompok (Perawatan Wajah) tidak bisa dipilih.
+ * Kategori lama di luar standar tetap ada & tetap berlaku untuk produk yang sudah memakainya.
  * Logika bersama ada di MasterDataService.gs.
  */
 
@@ -33,6 +33,8 @@ function activeCategory_(id) {
   const c = db_('MASTER_CATEGORIES').byId(id);
   if (!c || c.Status === STATUS.DELETED) throw new AppError('Kategori tidak ditemukan', [{ path: 'categoryId', message: 'Pilih kategori dari daftar' }], 'VALIDATION_FAILED');
   if (c.Status !== STATUS.ACTIVE) throw new AppError(`Kategori ${c.CategoryName} sedang nonaktif`, [{ path: 'categoryId', message: 'Kategori nonaktif' }], 'VALIDATION_FAILED');
+  if (catIsShopee_(c) && !catIsLeaf_(c))
+    throw new AppError(`"${c.CategoryName}" adalah kelompok kategori. Pilih kategori paling akhir di bawahnya.`, [{ path: 'categoryId', message: 'Pilih kategori paling akhir (seperti di Shopee)' }], 'VALIDATION_FAILED');
   return c;
 }
 

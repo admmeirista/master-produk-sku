@@ -35,7 +35,11 @@ test('persiapan: setup, user, brand & kategori', () => {
   T = ok(call(null, 'auth.login', { email: 'entry@toko.local', password: 'Password#2026' })).token;
   V = ok(call(null, 'auth.login', { email: 'viewer@toko.local', password: 'Password#2026' })).token;
   for (const n of ['Wardah', 'Viva', 'Scarlett']) ids[n] = ok(call(T, 'brand.create', { name: n })).id;
-  for (const n of ['Face Mask', 'Toner', 'Parfum']) ids[n] = ok(call(T, 'category.create', { name: n })).id;
+  // Toner sudah ada sebagai kategori standar Shopee → dipakai langsung
+  for (const n of ['Face Mask', 'Toner', 'Parfum']) {
+    const r = call(T, 'category.create', { name: n, acknowledgeSimilar: true });
+    ids[n] = r.ok ? r.data.id : ok(call(T, 'category.list', {})).find((x) => x.name === n && x.leaf).id;
+  }
   ok(call(T, 'attribute.save', { name: 'Volume', value: '100 ml' }));
 });
 

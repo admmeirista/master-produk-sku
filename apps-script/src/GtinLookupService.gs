@@ -104,7 +104,7 @@ function externalGtinLookup_(gtin, force) {
 function gtinSuggestion_(gtin, ext) {
   const r = ext.result || {};
   const brands = db_('MASTER_BRANDS').filter((b) => b.Status === STATUS.ACTIVE);
-  const cats = db_('MASTER_CATEGORIES').filter((c) => c.Status === STATUS.ACTIVE);
+  const cats = db_('MASTER_CATEGORIES').filter((c) => c.Status === STATUS.ACTIVE && (!catIsShopee_(c) || catIsLeaf_(c)));
   // brand: dari field brand; bila kosong, coba awal nama produk ("Wardah nature daily …")
   let brand = null;
   const tryBrand = (txt) => {

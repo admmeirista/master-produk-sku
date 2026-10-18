@@ -18,7 +18,13 @@ function masterCfg_(kind) {
 }
 
 function masterView_(k, r, counts) {
-  return { id: r[k.id], name: r[k.name], status: r.Status, createdAt: r.CreatedAt, createdBy: r.CreatedBy, updatedAt: r.UpdatedAt, productCount: counts ? counts[r[k.id]] || 0 : undefined };
+  const v = { id: r[k.id], name: r[k.name], status: r.Status, createdAt: r.CreatedAt, createdBy: r.CreatedBy, updatedAt: r.UpdatedAt, productCount: counts ? counts[r[k.id]] || 0 : undefined };
+  if (k.table === 'MASTER_CATEGORIES') {
+    // kategori bertingkat (standar Shopee); kategori lama: source LOCAL, dianggap kategori akhir
+    const shopee = catIsShopee_(r);
+    Object.assign(v, { source: shopee ? SHOPEE_SOURCE : 'LOCAL', shopeeId: shopee ? r.ExternalID : '', parentId: r.ParentID || '', level: Number(r.Level) || 0, path: shopee ? catShortPath_(r) : '', leaf: shopee ? catIsLeaf_(r) : true });
+  }
+  return v;
 }
 
 function masterList_(kind, f) {
@@ -32,7 +38,7 @@ function masterList_(kind, f) {
     .rows()
     .filter((r) => r.Status !== STATUS.DELETED && (!f.activeOnly || r.Status === STATUS.ACTIVE))
     .map((r) => masterView_(k, r, counts))
-    .sort((a, b) => a.name.localeCompare(b.name, 'id'));
+    .sort((a, b) => (a.path || a.name).localeCompare(b.path || b.name, 'id'));
 }
 
 function masterCleanName_(k, name) {
@@ -118,6 +124,7 @@ function masterRename_(user, kind, id, input) {
   const k = masterCfg_(kind);
   const rec = db_(k.table).byId(id);
   if (!rec) throw new AppError(k.label + ' tidak ditemukan', [], 'NOT_FOUND');
+  if (catIsShopee_(rec)) throw new AppError('Nama kategori standar Shopee tidak dapat diubah', [], 'STANDARD');
   const name = masterCleanName_(k, input.name);
   if (name === rec[k.name]) return masterView_(k, rec, {});
   const chk = masterNameCheck_(k, name, id);
@@ -151,6 +158,7 @@ function masterDelete_(user, kind, id) {
   const k = masterCfg_(kind);
   const rec = db_(k.table).byId(id);
   if (!rec || rec.Status === STATUS.DELETED) throw new AppError(k.label + ' tidak ditemukan', [], 'NOT_FOUND');
+  if (catIsShopee_(rec)) throw new AppError('Kategori standar Shopee tidak dapat dihapus. Nonaktifkan saja bila tidak dipakai.', [], 'STANDARD');
   const used = db_('MASTER_PRODUCTS').filter((p) => p[k.id] === id && p.Status !== STATUS.DELETED).length;
   if (used) throw new AppError(`${k.label} ${rec[k.name]} dipakai ${used} produk sehingga tidak dapat dihapus. Nonaktifkan saja.`, [], 'IN_USE');
   db_(k.table).update(rec, { Status: STATUS.DELETED, UpdatedBy: user.email, UpdatedAt: now_() });
@@ -173,7 +181,7 @@ function masterDeleteMany_(user, kind, ids) {
       deleted.push(rec[k.name]);
     } catch (e) {
       if (!(e instanceof AppError)) throw e;
-      skipped.push({ id, name: rec ? rec[k.name] : id, reason: e.code === 'IN_USE' ? 'masih dipakai produk' : e.message });
+      skipped.push({ id, name: rec ? rec[k.name] : id, reason: e.code === 'IN_USE' ? 'masih dipakai produk' : e.code === 'STANDARD' ? 'kategori standar Shopee (nonaktifkan saja)' : e.message });
     }
   });
   return { deleted, skipped };

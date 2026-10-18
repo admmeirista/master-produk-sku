@@ -170,7 +170,8 @@ function importMaster__ref_(user, kind, name, legacyCode, row, rep, cache) {
   const key = masterNameKey(n);
   if (cache[key]) return cache[key];
   const T = db_(k.table);
-  let rec = T.find((r) => r.NameKey === key && r.Status !== STATUS.DELETED);
+  // kategori: utamakan kategori akhir Shopee dengan nama sama (bukan kelompoknya)
+  let rec = T.find((r) => r.NameKey === key && r.Status !== STATUS.DELETED && (!catIsShopee_(r) || catIsLeaf_(r))) || T.find((r) => r.NameKey === key && r.Status !== STATUS.DELETED);
   if (rec) {
     cache[key] = rec;
     return rec;

@@ -43,7 +43,7 @@ const SCHEMA = {
   GTIN_LOOKUP_CACHE: ['GTIN', 'Provider', 'Status', 'FetchedAt', 'ExpiresAt', 'ResultJson', 'Message'],
   // ---- master
   MASTER_BRANDS: ['BrandID', 'BrandCode', 'BrandName', 'NameKey', 'Status', 'CreatedBy', 'CreatedAt', 'UpdatedBy', 'UpdatedAt'],
-  MASTER_CATEGORIES: ['CategoryID', 'CategoryCode', 'CategoryName', 'NameKey', 'Status', 'CreatedBy', 'CreatedAt', 'UpdatedBy', 'UpdatedAt'],
+  MASTER_CATEGORIES: ['CategoryID', 'CategoryCode', 'CategoryName', 'NameKey', 'Status', 'CreatedBy', 'CreatedAt', 'UpdatedBy', 'UpdatedAt', 'ParentID', 'Level', 'FullPath', 'ExternalSource', 'ExternalID', 'IsLeaf'],
   MASTER_PRODUCTS: ['ProductID', 'ProductNo', 'BrandID', 'CategoryID', 'ProductName', 'NameKey', 'ProductCode', 'BaseUnit', 'HasVariants', 'Status', 'CreatedBy', 'CreatedAt', 'UpdatedBy', 'UpdatedAt', 'Version', 'LegacyCode', 'Description', 'ImageUrl', 'DataSource', 'ParentCode'],
   PRODUCT_VARIANTS: ['VariantID', 'ProductID', 'VariantCode', 'VariantName', 'VariantAttributes', 'AttributeKey', 'SKU', 'GTIN', 'InternalBarcode', 'IsDefault', 'Status', 'SortOrder', 'CreatedBy', 'CreatedAt', 'UpdatedAt', 'Stockable', 'BatchTracking', 'ExpiryTracking', 'ShelfLifeMonths', 'PurchaseUnit', 'SalesUnit', 'ReplacedByVariantID', 'BaseUnit', 'ProductSKUName', 'NameOverride', 'NameOverrideReason', 'ImageUrl', 'ImageFileId'],
   VARIANT_ATTRIBUTES: ['VariantAttributeID', 'VariantID', 'ProductID', 'AttributeName', 'AttributeValue', 'SortOrder'],
@@ -71,7 +71,7 @@ const TAB_DESCRIPTION = {
   IMPORT_ERRORS: 'Baris import yang ditolak / perlu dicek manual',
   GTIN_LOOKUP_CACHE: 'Cache hasil pencarian GTIN ke penyedia eksternal (Open Beauty Facts) — sumber, waktu, status',
   MASTER_BRANDS: 'Master brand: nama (atribut klasifikasi). Kolom BrandCode = metadata lama, tidak dipakai SKU',
-  MASTER_CATEGORIES: 'Master kategori: nama (atribut klasifikasi). Kolom CategoryCode = metadata lama, tidak dipakai SKU',
+  MASTER_CATEGORIES: 'Master kategori bertingkat mengikuti kategori Shopee (Perawatan & Kecantikan): ParentID, Level, FullPath, ExternalID = ID kategori Shopee, IsLeaf = kategori akhir yang dipilih produk. ExternalSource kosong = kategori lama di luar standar. CategoryCode = metadata lama',
   MASTER_PRODUCTS: 'PRODUCT PARENT (non-stockable): Parent SKU PRD000001 (ProductCode), brand, kategori, nama parent, satuan dasar default',
   PRODUCT_VARIANTS: 'CHILD SKU (barang fisik): SKU PRD000001-001, nama produk SKU otomatis (+ override beralasan), satuan dasar, foto, GTIN/barcode aktif (salinan dari VARIANT_BARCODES). Kolom batch/expiry lama dipertahankan tetapi tidak dipakai lagi',
   PRODUCT_DIMENSIONS: 'Dimensi (cm) & berat kotor (gram) per Child SKU per satuan (PCS, BOX, …) — disimpan terpisah, tidak dihitung dari satuan lain',

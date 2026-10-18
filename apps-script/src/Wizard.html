@@ -290,7 +290,7 @@ var Wiz = {
     var pre = function () { var el = $('#f-pre', body); if (el) { el.textContent = s.brand ? s.brand.name : 'Brand'; el.classList.toggle('muted', !s.brand); } };
     pre();
     refCombo($('#f-brand', body), 'brand', s.brand, function (it) { s.brand = it ? { id: it.id, name: it.name } : null; Wiz.clearErr('brandId'); pre(); Wiz.check(); Wiz.loadPreview(); Wiz.renderSide(); Wiz.persist(); var n = $('#f-name', body); if (it && n && !n.value) n.focus(); }, 'Cari brand…', false);
-    refCombo($('#f-cat', body), 'category', s.category, function (it) { s.category = it ? { id: it.id, name: it.name } : null; Wiz.clearErr('categoryId'); Wiz.renderSide(); Wiz.persist(); }, 'Cari kategori…', false);
+    refCombo($('#f-cat', body), 'category', s.category, function (it) { s.category = it ? { id: it.id, name: it.name } : null; Wiz.clearErr('categoryId'); Wiz.renderSide(); Wiz.persist(); }, 'Ketik kategori, mis. toner, serum, lipstik', false);
     $('#f-name', body).oninput = function (e) { s.name = e.target.value; Wiz.clearErr('name'); Wiz.check(); Wiz.renderSide(); Wiz.persist(); };
     $('#f-name', body).onblur = function (e) { var v = properCase(e.target.value); if (v !== e.target.value) { e.target.value = v; s.name = v; Wiz.renderSide(); Wiz.persist(); } };
     $('#nx', body).onclick = function () { Wiz.goStep(2); };

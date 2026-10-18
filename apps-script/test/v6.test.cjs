@@ -97,8 +97,9 @@ test('[T16][T17] import XLSX Master Brand & Kategori: hanya nama, tanpa kode; be
   assert.ok(rows('MASTER_BRANDS').every((r) => r[1] === ''), 'kolom BrandCode kosong untuk data baru');
   const cfile = xlsxOf([['Nama Kategori'], ['Pelembab Wajah'], ['Air Mawar'], ['Body Serum'], ['Sunscreen'], ['Toner']]);
   const cres = ok(call(T, 'category.import', { fileName: 'kategori.xlsx', rows: readMasterXlsx(cfile, ['nama kategori', 'kategori']) }));
-  assert.deepEqual(cres.counts, { success: 5, skipped: 0, failed: 0 });
-  ok(call(V, 'category.list', {})).forEach((c) => (C[c.name] = c));
+  // Pelembab Wajah & Toner sudah ada sebagai kategori standar Shopee → dilewati (tidak digandakan)
+  assert.deepEqual(cres.counts, { success: 3, skipped: 2, failed: 0 });
+  ok(call(V, 'category.list', {})).filter((c) => c.leaf).forEach((c) => (C[c.name] = c));
   assert.ok(Object.values(C).every((c) => c.code === undefined));
 });
 
@@ -217,7 +218,9 @@ test('[T15] Parent SKU tidak dapat dipakai sebagai stok fisik', () => {
 test('[T18][T19] ganti nama brand, kategori, nama produk, dimensi & berat tidak mengubah Parent/Child SKU', () => {
   const before = { p: P.han.productCode, c: P.han.variants.map((v) => v.sku) };
   ok(call(T, 'brand.rename', { id: B.Hanasui.id, name: 'Hanasui Official' }));
-  ok(call(T, 'category.rename', { id: C['Pelembab Wajah'].id, name: 'Pelembab' }));
+  // kategori standar Shopee tidak bisa diganti nama; kategori lokal bisa
+  fail(call(T, 'category.rename', { id: C['Pelembab Wajah'].id, name: 'Pelembab' }), 'STANDARD');
+  ok(call(T, 'category.rename', { id: C['Air Mawar'].id, name: 'Air Mawar Segar' }));
   const x = toInput(ok(call(V, 'product.get', { id: P.han.id })));
   x.name = 'Pelembab Wajah Moisturizer';
   x.categoryId = C.Toner.id;
@@ -447,4 +450,42 @@ test('brand/kategori: hapus massal — yang masih dipakai produk dilewati', () =
   const kl = ok(call(V, 'category.list', {})).filter((c) => /^Kat Massal/.test(c.name));
   assert.equal(ok(call(T, 'category.deleteMany', { ids: kl.map((c) => c.id) })).deleted.length, 2);
   fail(call(T, 'category.deleteMany', { ids: [] }));
+});
+
+test('kategori standar Shopee: 120 simpul bertingkat, 98 kategori akhir, hanya kategori akhir untuk produk', () => {
+  const all = ok(call(V, 'category.list', {})).filter((c) => c.source === 'SHOPEE');
+  assert.equal(all.length, 120);
+  assert.equal(all.filter((c) => c.leaf).length, 98);
+  const byId = {};
+  all.forEach((c) => (byId[c.id] = c));
+  assert.ok(all.every((c) => (c.level === 1 ? !c.parentId : byId[c.parentId] && byId[c.parentId].level === c.level - 1)), 'induk & tingkat konsisten');
+  const toner = all.find((c) => c.shopeeId === '100892');
+  assert.deepEqual([toner.name, toner.path, toner.leaf], ['Toner', 'Perawatan Wajah > Toner', true]);
+  // dua "Pembersih Wajah" (Perawatan Wajah & Perawatan Pria) tetap terpisah
+  assert.equal(all.filter((c) => c.name === 'Pembersih Wajah').length, 2);
+  const group = all.find((c) => c.name === 'Perawatan Wajah' && c.level === 2);
+  const e = fail(call(T, 'product.save', { input: { brandId: B.Wardah.id, categoryId: group.id, name: 'Produk Kategori Kelompok', baseUnit: 'PCS', acknowledgeSimilar: true, variants: [{ barcode: { mode: 'none' } }] } }), 'VALIDATION_FAILED');
+  assert.match(JSON.stringify(e), /kategori paling akhir/);
+  const p = save(T, { brandId: B.Wardah.id, categoryId: toner.id, name: 'Toner Kategori Shopee Uji', baseUnit: 'PCS', acknowledgeSimilar: true, variants: [{ barcode: { mode: 'none' } }] });
+  const d = ok(call(V, 'product.get', { id: p.id }));
+  assert.deepEqual([d.category.path, d.category.shopeeId], ['Perawatan Wajah > Toner', '100892']);
+  fail(call(T, 'category.delete', { id: toner.id }), 'STANDARD');
+});
+
+test('sinkron kategori Shopee: aman diulang, kategori lama bernama sama ditautkan (ID tetap), lainnya tidak diubah', () => {
+  const L = createGas();
+  L.ctx.ensureSheets_();
+  // kategori lama sebelum standar Shopee: "toner" (sama) & "Air Mawar" (di luar standar)
+  const T0 = L.ctx.db_('MASTER_CATEGORIES');
+  T0.insert({ CategoryID: 'old-toner', CategoryCode: 'TON', CategoryName: 'toner', NameKey: L.ctx.masterNameKey('toner'), Status: 'ACTIVE' });
+  T0.insert({ CategoryID: 'old-am', CategoryCode: 'AM', CategoryName: 'Air Mawar', NameKey: L.ctx.masterNameKey('Air Mawar'), Status: 'ACTIVE' });
+  const r1 = JSON.parse(JSON.stringify(L.ctx.syncShopeeCategories_()));
+  assert.deepEqual(r1, { created: 119, linked: 1, updated: 0 });
+  const r2 = JSON.parse(JSON.stringify(L.ctx.syncShopeeCategories_()));
+  assert.deepEqual(r2, { created: 0, linked: 0, updated: 0 }, 'diulang tidak menggandakan');
+  const t = L.ctx.db_('MASTER_CATEGORIES').byId('old-toner');
+  assert.deepEqual([t.CategoryName, t.ExternalID, t.CategoryCode], ['Toner', '100892', 'TON']);
+  const am = L.ctx.db_('MASTER_CATEGORIES').byId('old-am');
+  assert.deepEqual([am.CategoryName, am.ExternalSource || ''], ['Air Mawar', '']);
+  assert.equal(L.ctx.db_('MASTER_CATEGORIES').rows().length, 121);
 });

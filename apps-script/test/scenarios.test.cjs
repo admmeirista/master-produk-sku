@@ -64,7 +64,10 @@ test('[AC-5] Master Brand & Kategori: hanya nama (tanpa kode), unik, hapus hanya
   ok(call(entry, 'brand.create', { name: 'Vivelle' }));
   for (const n of ['viva', ' VIVA ', 'V.I.V.A']) fail(call(entry, 'brand.create', { name: n }), 'DUPLICATE');
   for (const [name, code] of Object.entries({ Parfum: 'PAR', Lipstick: 'LIP', 'Body Lotion': 'BOD', Toner: 'TON', 'Hair Styling': 'HAI' })) {
-    const c = ok(call(entry, 'category.create', { name }));
+    // nama yang sudah ada sebagai kategori standar Shopee (Toner, Hair Styling) dipakai langsung
+    const r = call(entry, 'category.create', { name, acknowledgeSimilar: true });
+    const c = r.ok ? r.data : ok(call(entry, 'category.list', {})).find((x) => x.name === name && x.leaf);
+    assert.ok(c, name);
     assert.equal(c.code, undefined, 'tidak ada kode kategori');
     ids['c' + code] = c.id;
   }
@@ -94,7 +97,7 @@ test('[AC-1][AC-6][AC-13] Quick Entry satu varian: kode produk, SKU, varian defa
   assert.equal(typeof row[1], 'string');
   // brand & kategori milik produk dipakai → tidak boleh dihapus
   fail(call(entry, 'brand.delete', { id: ids.VIV }), 'IN_USE');
-  fail(call(entry, 'category.delete', { id: ids.cTON }), 'IN_USE');
+  fail(call(entry, 'category.delete', { id: ids.cTON }), 'STANDARD'); // Toner = kategori standar Shopee: tidak bisa dihapus (nonaktifkan saja)
 });
 
 test('deteksi duplikat otomatis: nama mirip ditandai, tidak auto-merge; lanjut bila memang berbeda', () => {

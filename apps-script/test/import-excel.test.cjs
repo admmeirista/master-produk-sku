@@ -42,7 +42,8 @@ test('import template Excel lama: tanpa produk duplikat, SKU lama tertelusur, id
   const ms = Date.now() - t0;
   console.log(JSON.stringify({ reference: ref.created, refWarnings: ref.warningCount, internal: bc.created, master: rep.created, skipped: rep.skipped, errors: rep.errorCount, warnings: rep.warningCount, ms }));
 
-  assert.ok(ref.created.brands >= 100 && ref.created.categories >= 70);
+  // sebagian kategori lama bernama sama dengan kategori standar Shopee → dipakai, tidak dibuat ulang
+  assert.ok(ref.created.brands >= 100 && ref.created.categories >= 60);
   assert.equal(rep.created.products, preview.created.products, 'pratinjau = hasil import');
   // Viva Air Mawar: GTIN 8992796011501 dipakai VAM100 & AIM100 di template → tetap SATU varian
   const hit = api('barcode.lookup', { code: '8992796011501' });
