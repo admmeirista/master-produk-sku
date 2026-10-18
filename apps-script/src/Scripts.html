@@ -84,7 +84,100 @@ function normCode(s) { return String(s || '').toUpperCase().normalize('NFKD').re
 var STATUS_TXT = { ACTIVE: 'Aktif', INACTIVE: 'Nonaktif', allocated: 'Dialokasikan', assigned: 'Dipakai', retired: 'Dipensiunkan', void: 'Void', mapped: 'Dipetakan', exported: 'Diekspor', confirmed: 'Terkonfirmasi', mismatch: 'Tidak cocok', error: 'Error', admin: 'Admin', data_entry: 'Admin Data', viewer: 'Viewer', reviewer: 'Admin Data', ALLOCATED: 'Cadangan', RETIRED: 'Dipensiunkan', VOID: 'Void', DELETED: 'Dihapus', GTIN: 'GTIN produsen', INTERNAL: 'Barcode internal', legacy: 'SKU lama', DRAFT: 'Draft', DISCONTINUED: 'Discontinued', ARCHIVED: 'Diarsipkan', shopee: 'Shopee', tiktok: 'TikTok Shop', tokopedia: 'Tokopedia', beecloud: 'BeeCloud', lainnya: 'Kanal lain', unmapped: 'Belum dipetakan', MULTIPACK: 'Paket Produk Sama', MIXED: 'Paket Kombinasi', REQUEST_MIX: 'Paket Pilih Sendiri', VIRTUAL: 'Virtual', PREASSEMBLED: 'Dirakit' };
 function badge(s, txt) { return s ? '<span class="badge b-' + esc(s) + '">' + esc(txt || STATUS_TXT[s] || s) + '</span>' : ''; }
 /** Layar HP (≤ 760 px) — dipakai untuk memilih tampilan kartu alih-alih tabel lebar. */
+/** Nama lengkap "Brand Nama" tanpa mengulang brand bila nama sudah diawali brand. */
+function withBrand(brand, name) {
+  brand = String(brand || '').trim(); name = String(name || '').trim();
+  return !brand || (name + ' ').toLowerCase().indexOf(brand.toLowerCase() + ' ') === 0 ? name : brand + ' ' + name;
+}
 function isPhone() { return !!(window.matchMedia && window.matchMedia('(max-width:760px)').matches); }
+
+/* ───────── HP: tabel tampil sebagai kartu (tanpa geser ke samping) ───────── */
+/* Judul kolom ditempel ke tiap sel (data-l) → CSS menampilkannya sebagai "label : nilai". Berlaku untuk semua table.t kecuali yang punya tata letak sendiri. */
+function labelTables(root) {
+  $$('table.t:not(.lvt)', root || document).forEach(function (t) {
+    var heads = [], hr = t.tHead && t.tHead.rows[t.tHead.rows.length - 1];
+    if (hr) Array.prototype.forEach.call(hr.cells, function (c) { for (var k = 0; k < (c.colSpan || 1); k++) heads.push(c.textContent.replace(/\s+/g, ' ').trim()); });
+    var sig = heads.join('|') + '#' + t.rows.length;
+    if (t.getAttribute('data-lb') === sig) return;
+    t.setAttribute('data-lb', sig); t.classList.add('mt');
+    Array.prototype.forEach.call(t.tBodies, function (tb) {
+      Array.prototype.forEach.call(tb.rows, function (r) {
+        var col = 0;
+        Array.prototype.forEach.call(r.cells, function (c) {
+          var n = c.colSpan || 1;
+          if (n > 1 || !heads.length) c.classList.add('full');
+          else if (heads[col]) c.setAttribute('data-l', heads[col]);
+          // isi sel dibungkus satu elemen agar label & nilai tetap dua kolom
+          if (c.getAttribute('data-l') && !(c.childNodes.length === 1 && c.firstChild.className === 'cv')) {
+            var w = document.createElement('div'); w.className = 'cv';
+            while (c.firstChild) w.appendChild(c.firstChild);
+            c.appendChild(w);
+          }
+          col += n;
+        });
+      });
+    });
+  });
+}
+(function () {
+  var queued = false;
+  new MutationObserver(function () {
+    if (queued) return; queued = true;
+    requestAnimationFrame(function () { queued = false; labelTables(document); });
+  }).observe(document.documentElement, { childList: true, subtree: true });
+})();
+
+/* ───────── HP: tarik ke bawah lalu lepas untuk memuat ulang halaman ───────── */
+var PullRefresh = {
+  TH: 64,
+  /** di bawah bilah atas HP */
+  top: function () { var m = $('.mtop'); return m ? m.getBoundingClientRect().bottom : 0; },
+  init: function () {
+    if (PullRefresh.el) return;
+    var ind = PullRefresh.el = document.createElement('div');
+    ind.className = 'ptr'; ind.innerHTML = icon('refresh');
+    document.body.appendChild(ind);
+    var y0 = null, d = 0;
+    var blocked = function (t) {
+      return !isPhone() || !App.me || PullRefresh.busy || App.page === 'register' || document.querySelector('.modal') ||
+        ($('#side') && $('#side').classList.contains('open')) || (t && t.closest && t.closest('input,textarea,select,.cb-pop,.modal'));
+    };
+    document.addEventListener('touchstart', function (e) {
+      y0 = e.touches.length === 1 && window.scrollY <= 0 && !blocked(e.target) ? e.touches[0].clientY : null; d = 0;
+    }, { passive: true });
+    document.addEventListener('touchmove', function (e) {
+      if (y0 === null) return;
+      var dy = e.touches[0].clientY - y0;
+      if (window.scrollY > 0) { y0 = null; return PullRefresh.show(0); }
+      d = Math.max(0, Math.min(110, dy * 0.5));
+      PullRefresh.show(d);
+    }, { passive: true });
+    var end = function () {
+      if (y0 === null) return;
+      y0 = null;
+      if (d >= PullRefresh.TH) PullRefresh.run(); else PullRefresh.show(0);
+    };
+    document.addEventListener('touchend', end); document.addEventListener('touchcancel', end);
+  },
+  show: function (d) {
+    var el = PullRefresh.el; if (!el) return;
+    el.className = 'ptr drag' + (d >= PullRefresh.TH ? ' ready' : '');
+    el.style.opacity = d > 4 ? Math.min(1, d / PullRefresh.TH) : 0;
+    el.style.transform = 'translateY(' + (PullRefresh.top() + d - 44) + 'px) rotate(' + (d * 4) + 'deg)';
+    if (!d) el.className = 'ptr';
+  },
+  run: function () {
+    var el = PullRefresh.el; PullRefresh.busy = true;
+    el.className = 'ptr spin'; el.style.opacity = 1; el.style.transform = 'translateY(' + (PullRefresh.top() + PullRefresh.TH - 44) + 'px)';
+    ['brand', 'category'].forEach(function (k) { Ref.fetch(k).catch(function () {}); });
+    App.go(App.page || 'dashboard', App.pageArg, { force: true });
+    var t0 = Date.now();
+    (function wait() {
+      if ((Net.pending || $('#main .loading')) && Date.now() - t0 < 10000) return setTimeout(wait, 150);
+      setTimeout(function () { PullRefresh.busy = false; PullRefresh.show(0); }, 250);
+    })();
+  }
+};
 function can(p) { return !!(App.me && App.me.permissions.indexOf(p) >= 0); }
 function cfg() { return (App.me && App.me.config) || {}; }
 function emptyBox(title, sub, ic) { return '<div class="empty">' + icon(ic || 'package') + '<b>' + esc(title) + '</b>' + (sub ? '<div>' + sub + '</div>' : '') + '</div>'; }
@@ -375,6 +468,7 @@ var App = {
   enter: function (me) {
     App.remember(me);
     setTimeout(Ref.warm, 0);
+    PullRefresh.init();
     var u = me.user;
     var nav = function (n) { return can(n[3] || 'product.read') ? '<a class="nv" data-nav="' + n[0] + '">' + icon(n[2]) + '<span class="grow">' + n[1] + '</span></a>' : ''; };
     var closed = {};

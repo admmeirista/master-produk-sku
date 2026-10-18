@@ -609,5 +609,47 @@ tr.open .exp{transform:rotate(90deg)}
   .t.lvt tr.lv-trade td{grid-column:1;grid-row:auto}
   .t.lvt tr.lv-trade td::before{content:none}
 }
+/* ---- v6.3: tanpa geser ke samping di HP (tabel → kartu), tarik untuk memuat ulang ---- */
+.ptr{position:fixed;left:50%;top:0;z-index:19;width:40px;height:40px;margin-left:-20px;border-radius:50%;background:#fff;box-shadow:0 4px 14px rgba(0,0,0,.18);display:flex;align-items:center;justify-content:center;color:var(--muted);opacity:0;transform:translateY(-44px);pointer-events:none;transition:transform .22s ease,opacity .22s ease}
+.ptr.drag{transition:none}
+.ptr svg{width:20px;height:20px}
+.ptr.ready,.ptr.spin{color:var(--acc)}
+.ptr.spin svg{animation:spin .8s linear infinite}
+@media (max-width:760px){
+  html,body{overflow-x:hidden;overscroll-behavior-y:contain}
+  .main{max-width:100vw;overflow-x:clip}
+  .tablewrap:has(table.mt){overflow:visible;max-height:none!important;border:0;background:transparent;box-shadow:none;border-radius:0}
+  .tbl-x:has(table.mt){overflow:visible}
+  table.t.mt,table.t.mt tbody{display:block;width:100%;min-width:0!important}
+  table.t.mt thead{display:none}
+  table.t.mt tr{display:block;background:#fff;border:1px solid var(--line);border-radius:12px;padding:6px 12px;margin-bottom:8px;box-shadow:var(--shadow)}
+  table.t.mt td{display:flex;align-items:flex-start;gap:12px;padding:6px 0;border:0;text-align:left;white-space:normal!important;width:auto!important;min-width:0;max-width:none!important;font-size:13.5px}
+  table.t.mt td::before{content:attr(data-l);flex:0 0 36%;max-width:36%;font-size:11.5px;font-weight:700;color:var(--muted);line-height:1.5;padding-top:1px}
+  table.t.mt td:not([data-l])::before{display:none}
+  table.t.mt td:not([data-l]):not(.full){justify-content:flex-end;gap:6px;flex-wrap:wrap}
+  table.t.mt td .cv{flex:1;min-width:0;overflow-wrap:anywhere}
+  table.t.mt td.num .cv{text-align:left}
+  table.t.mt td.full{display:block}
+  table.t.mt td:empty,table.t.mt td[data-l]:has(.cv:empty){display:none}
+  table.t.mt tr>td:first-child[data-l]{font-weight:800;border-bottom:1px dashed var(--line);padding-bottom:8px;margin-bottom:2px}
+  table.t.mt tr>td:first-child[data-l]::before{display:none}
+  table.t.mt tr:has(>td.full:only-child){padding:0;border:0;box-shadow:none;background:transparent}
+  table.t.mt td input[type=checkbox]{width:20px;height:20px}
+  .card table.t.mt tr{box-shadow:none;background:#fbfaf6}
+  /* daftar ringkas (master brand/kategori): nama, satu baris info kecil, lalu tombol */
+  table.t.mt.compact tr{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;padding:10px 12px}
+  table.t.mt.compact td{display:inline-flex;align-items:center;gap:5px;padding:0;font-size:12.5px;order:2}
+  table.t.mt.compact td::before{flex:none;max-width:none;font-size:12px;font-weight:600;padding:0}
+  table.t.mt.compact tr>td:first-child[data-l]{flex:1 1 100%;order:1;border:0;padding:0 0 2px;margin:0;font-size:14.5px}
+  table.t.mt.compact td:not([data-l]):not(.full){flex:1 1 100%;order:3;padding-top:6px}
+  /* tab detail produk: dibungkus, bukan digeser */
+  .dtabs{flex-wrap:wrap;overflow:visible;gap:6px;border-bottom:0;margin:14px 0 12px}
+  .dtabs a{border:1px solid var(--line);border-radius:999px;padding:7px 12px;margin:0;background:#fff;font-size:12.5px}
+  .dtabs a.on{border-color:var(--acc);background:#fffaf7;color:var(--acc-ink,var(--fg))}
+  .pager{flex-wrap:wrap}
+  .hide-m{display:none!important}
+  .ph .act:not(:has(>:not(.hide-m))){display:none}
+  .scanbox .t{font-size:17px}
+}
 </style>
 
