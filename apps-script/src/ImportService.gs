@@ -3,12 +3,11 @@
  * baris dikirim ke server sebagai teks). Alur: Pratinjau (dry-run, tanpa menulis) → Import (di dalam lock, atomik).
  *
  * Prinsip kompatibilitas:
- *  - Kode brand/kategori lama dipakai bila belum ada; bila nama sudah terdaftar dengan kode lain, kode aplikasi TIDAK
- *    diubah (dilaporkan untuk diputuskan manual).
+ *  - Brand/kategori dicocokkan dengan NAMA; kode lama hanya disimpan sebagai metadata (tidak membentuk SKU).
  *  - 1 barcode fisik = 1 varian. Baris template dengan GTIN yang sama (mis. VAM100 & AIM100) TIDAK membuat produk ganda —
  *    SKU lamanya dicatat sebagai legacy SKU pada varian yang sama.
- *  - Baris "Isi" 1 → Child SKU (Parent SKU BRAND-KATEGORI-0001, Child SKU PARENT_SKU-BARCODE; barang tanpa GTIN valid
- *    mendapat barcode internal otomatis); Isi > 1 → multipack virtual (MP…), bukan Child SKU baru.
+ *  - Baris "Isi" 1 → Child SKU (Parent SKU PRD000001, Child SKU PRD000001-001; barcode disimpan terpisah, barang tanpa
+ *    GTIN valid mendapat barcode internal otomatis); Isi > 1 → multipack virtual (MP…), bukan Child SKU baru.
  *    Semua SKU lama tersimpan di EXTERNAL_SKU_MAPPINGS (system "legacy") → tetap bisa ditelusuri & dipindai.
  *  - Barcode yang bukan GTIN valid TIDAK disimpan sebagai GTIN (dilaporkan). Prefix 2xx valid → barcode internal.
  *  - Idempoten: SKU lama yang sudah tercatat dilewati; import ulang tidak menggandakan produk.
@@ -172,20 +171,12 @@ function importMaster__ref_(user, kind, name, legacyCode, row, rep, cache) {
   if (cache[key]) return cache[key];
   const T = db_(k.table);
   let rec = T.find((r) => r.NameKey === key && r.Status !== STATUS.DELETED);
-  const code = normalizeCode(legacyCode);
   if (rec) {
-    if (code && String(rec[k.code]).toUpperCase() !== code)
-      rep.warnings.push({ row, message: `${k.label} "${rec[k.name]}" sudah terdaftar dengan kode ${rec[k.code]}; kode lama ${code} tidak diterapkan otomatis (SKU lama tetap tercatat).` });
     cache[key] = rec;
     return rec;
   }
-  const used = masterUsedCodes_(k);
-  let finalCode = code;
-  if (!/^[A-Z0-9]{2,6}$/.test(code) || used[code]) {
-    finalCode = generateMasterCode(n, (c) => !!used[c], getSettings_().master_code_length);
-    if (code) rep.warnings.push({ row, message: `${k.label} "${n}": kode lama ${code} sudah dipakai/tidak valid → kode baru ${finalCode}` });
-  }
-  rec = T.insert({ [k.id]: uuid_(), [k.code]: finalCode, [k.name]: n, NameKey: key, Status: STATUS.ACTIVE, CreatedBy: user.email, CreatedAt: now_(), UpdatedBy: user.email, UpdatedAt: now_() });
+  // kode brand/kategori lama hanya disimpan sebagai metadata (tidak membentuk SKU)
+  rec = T.insert({ [k.id]: uuid_(), [k.code]: normalizeCode(legacyCode).slice(0, 10), [k.name]: n, NameKey: key, Status: STATUS.ACTIVE, CreatedBy: user.email, CreatedAt: now_(), UpdatedBy: user.email, UpdatedAt: now_() });
   rep.created[kind === 'brand' ? 'brands' : 'categories']++;
   cache[key] = rec;
   return rec;
@@ -284,9 +275,8 @@ function importMaster_(user, work, rep) {
       const pkey = brand.BrandID + '|' + (legacyCode || normalizeName(v.name));
       let p = productOf[pkey];
       if (!p) {
-        // kode produk lama (mis. VAM100, GSG30) dipakai sebagai Kode Produk Parent bila valid & belum dipakai
-        const pc = allocateParentSku_(brand, cat, uniqueParentCode_(brand, cat, legacyCode && !parentCodeError(legacyCode) ? legacyCode : suggestParentCode(v.name, brand.BrandName)));
-        p = db_('MASTER_PRODUCTS').insert({ ProductID: uuid_(), ProductNo: pc.no, BrandID: brand.BrandID, CategoryID: cat.CategoryID, ProductName: cleanText(v.name).slice(0, 120), NameKey: normalizeName(v.name), ProductCode: pc.code, ParentCode: pc.parentCode, BaseUnit: unit, HasVariants: false, Status: STATUS.ACTIVE, CreatedBy: user.email, CreatedAt: ts, UpdatedBy: user.email, UpdatedAt: ts, Version: 1, LegacyCode: legacyCode });
+        const pc = allocateProductCode_();
+        p = db_('MASTER_PRODUCTS').insert({ ProductID: uuid_(), ProductNo: pc.no, BrandID: brand.BrandID, CategoryID: cat.CategoryID, ProductName: cleanText(v.name).slice(0, 120), NameKey: normalizeName(v.name), ProductCode: pc.code, ParentCode: '', BaseUnit: unit, HasVariants: false, Status: STATUS.ACTIVE, CreatedBy: user.email, CreatedAt: ts, UpdatedBy: user.email, UpdatedAt: ts, Version: 1, LegacyCode: legacyCode });
         p._brandName = brand.BrandName;
         productOf[pkey] = p;
         rep.created.products++;
@@ -324,8 +314,7 @@ function importMaster_(user, work, rep) {
         rep.warnings.push({ row: w.row, message: `Barcode ${raw} bukan GTIN valid → Child SKU memakai barcode internal ${ib.Code}` });
         rep.created.barcodes++;
       }
-      const newSku = buildChildSku(p.ProductCode, nv.GTIN || nv.InternalBarcode);
-      if (skuOwner[newSku.toUpperCase()]) return rep.errors.push({ row: w.row, message: `SKU ${newSku} sudah dipakai ${skuOwner[newSku.toUpperCase()]}` });
+      const newSku = allocateChildSku_(p, skuOwner);
       db_('PRODUCT_VARIANTS').update(nv, { SKU: newSku });
       skuOwner[newSku.toUpperCase()] = p.ProductName;
       variantId = nv.VariantID;

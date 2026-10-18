@@ -54,27 +54,28 @@ test('setup: tab v3, admin awal, login & otorisasi di server', () => {
   fail(call(entry, 'import.commit', { type: 'reference', rows: [] }), 'FORBIDDEN');
 });
 
-test('[AC-5] Master Brand & Kategori: kode otomatis, unik, permanen, hapus hanya bila belum dipakai', () => {
+test('[AC-5] Master Brand & Kategori: hanya nama (tanpa kode), unik, hapus hanya bila belum dipakai', () => {
+  // kunci objek ids = alias lokal tes saja; aplikasi tidak lagi membuat kode brand/kategori
   for (const [name, code] of Object.entries({ Viva: 'VIV', Hanasui: 'HAN', Purbasari: 'PUR', Scarlett: 'SCA', Gatsby: 'GAT' })) {
     const b = ok(call(entry, 'brand.create', { name }));
-    assert.equal(b.code, code);
+    assert.equal(b.code, undefined, 'tidak ada kode brand');
     ids[code] = b.id;
   }
-  assert.notEqual(ok(call(entry, 'brand.create', { name: 'Vivelle' })).code, 'VIV');
+  ok(call(entry, 'brand.create', { name: 'Vivelle' }));
   for (const n of ['viva', ' VIVA ', 'V.I.V.A']) fail(call(entry, 'brand.create', { name: n }), 'DUPLICATE');
   for (const [name, code] of Object.entries({ Parfum: 'PAR', Lipstick: 'LIP', 'Body Lotion': 'BOD', Toner: 'TON', 'Hair Styling': 'HAI' })) {
     const c = ok(call(entry, 'category.create', { name }));
-    assert.equal(c.code, code);
+    assert.equal(c.code, undefined, 'tidak ada kode kategori');
     ids['c' + code] = c.id;
   }
   const ren = ok(call(entry, 'brand.rename', { id: ids.SCA, name: 'Scarlett Whitening' }));
-  assert.equal(ren.code, 'SCA');
-  // hapus: boleh selama belum dipakai produk; kode tetap dicadangkan
+  assert.equal(ren.id, ids.SCA);
+  // hapus: boleh selama belum dipakai produk; baris tetap tersimpan sebagai DELETED
   const tmp = ok(call(entry, 'brand.create', { name: 'Brand Uji' }));
   ok(call(entry, 'brand.delete', { id: tmp.id }));
   assert.ok(!ok(call(entry, 'brand.list', {})).some((b) => b.id === tmp.id));
   const again = ok(call(entry, 'brand.create', { name: 'Brand Uji' }));
-  assert.notEqual(again.code, tmp.code, 'kode brand yang dihapus tidak dipakai ulang');
+  assert.notEqual(again.id, tmp.id, 'ID baru, data lama tetap ada sebagai riwayat');
 });
 
 const quick = (o) => Object.assign({ brandId: ids.VIV, categoryId: ids.cTON, name: 'Viva Air Mawar 100ml', baseUnit: 'BOTOL', hasVariants: false, variants: [{ barcode: { mode: 'gtin', code: '8992796011501' } }] }, o);
@@ -82,10 +83,10 @@ const quick = (o) => Object.assign({ brandId: ids.VIV, categoryId: ids.cTON, nam
 test('[AC-1][AC-6][AC-13] Quick Entry satu varian: kode produk, SKU, varian default otomatis; tanpa BOX', () => {
   const d = ok(call(entry, 'product.save', { input: quick() }));
   ids.viva = d.id;
-  assert.equal(d.productCode, 'VIV-TON-AM100', 'Parent SKU = BRAND-KATEGORI-KODEPRODUK (usulan dari nama)');
+  assert.equal(d.productCode, 'PRD000001', 'Parent SKU = PRD + 6 digit urut global');
   assert.equal(d.variants.length, 1);
   assert.equal(d.variants[0].isDefault, true);
-  assert.equal(d.variants[0].sku, 'VIV-TON-AM100-8992796011501', 'Child SKU = Parent SKU + GTIN');
+  assert.equal(d.variants[0].sku, 'PRD000001-001', 'Child SKU = Parent SKU + urutan 3 digit (GTIN terpisah)');
   assert.equal(d.variants[0].gtin, '8992796011501');
   assert.deepEqual(d.variants[0].conversions.map((c) => c.unitName), ['BOTOL']);
   // barcode tersimpan sebagai teks
@@ -253,7 +254,7 @@ test('kemasan trade item opsional: SKU kemasan sendiri + GTIN kemasan, GTIN unit
   x.variants[0].conversions = [{ unitName: 'BOX', factor: 24, isTradeItem: true, barcode: { mode: 'gtin', code: gtin('899279601159') } }, { unitName: 'LUSIN', factor: 12 }];
   const d2 = ok(call(entry, 'product.save', { input: x }));
   const box = d2.variants[0].conversions[1];
-  assert.equal(box.sku, d2.productCode + '-' + gtin('899279601159'), 'kemasan ber-identitas: Parent SKU + GTIN kemasan');
+  assert.equal(box.sku, d2.productCode + '-002', 'kemasan ber-identitas: urutan berikutnya di parent yang sama');
   assert.notEqual(box.sku, d2.variants[0].sku);
   assert.equal(box.gtin, gtin('899279601159'));
   assert.equal(d2.variants[0].gtin, '8992796011501');
@@ -388,15 +389,15 @@ test('migrasi v2 → v3: barcode, mapping, penghitung & audit dipindahkan; SKU v
   assert.equal(api('mapping.list', { system: 'shopee' }).rows[0].internalSku, 'SCA-PAR-PEDP-OB50');
   // produk baru melanjutkan penghitung lama & barcode internal tidak bentrok
   const np = api('product.save', { input: { brandId: 'b1', categoryId: 'c1', name: 'Parfum Roll On', baseUnit: 'BOTOL', variants: [{ barcode: { mode: 'internal' } }] } });
-  assert.equal(np.productCode, 'SCA-PAR-PRO', 'produk baru memakai format Parent SKU v5');
-  assert.equal(np.variants[0].sku, 'SCA-PAR-PRO-2000000000060');
+  assert.equal(np.productCode, 'PRD000002', 'produk baru melanjutkan penghitung lama');
+  assert.equal(np.variants[0].sku, 'PRD000002-001');
   assert.equal(np.variants[0].internalBarcode, '2000000000060');
   assert.equal(L.sheets.get('BARCODE_REGISTRY').data.length, 4, 'tab lama tetap utuh');
   const again = JSON.parse(JSON.stringify(L.ctx.setup())).migration;
   assert.deepEqual([again.barcodes, again.mappings, again.audit], [0, 0, 0], 'idempoten');
 });
 
-test('migrasi v1 → v5: SKU lama jadi legacy SKU, Child SKU = Parent SKU + GTIN, multipack virtual, idempoten', () => {
+test('migrasi v1 → v6: SKU lama jadi legacy SKU, Child SKU PRD…-001, multipack virtual, idempoten', () => {
   const L = createGas();
   const put = (name, rows) => {
     const sh = L.ss.insertSheet(name);
@@ -421,9 +422,10 @@ test('migrasi v1 → v5: SKU lama jadi legacy SKU, Child SKU = Parent SKU + GTIN
   const tok = JSON.parse(JSON.stringify(L.ctx.api(null, 'auth.login', { email: out.admin.email, password: out.admin.password }))).data.token;
   const api = (a, p) => JSON.parse(JSON.stringify(L.ctx.api(tok, a, p))).data;
   const d = api('product.get', { id: 'p1' });
-  assert.equal(d.productCode, 'VIV-TON-VAM100', 'migrasi v1: kode produk lama dipakai sebagai Kode Produk Parent');
+  assert.equal(d.productCode, 'PRD000007', 'migrasi v1: nomor produk lama dipertahankan');
   assert.equal(d.legacyCode, 'VAM100');
-  assert.equal(d.variants[0].sku, 'VIV-TON-VAM100-8992796011501', 'Child SKU = Parent SKU + GTIN');
+  assert.equal(d.variants[0].sku, 'PRD000007-001', 'Child SKU = Parent SKU + urutan');
+  assert.equal(d.variants[0].gtin, '8992796011501', 'GTIN tersimpan terpisah');
   assert.deepEqual(d.variants[0].externalSkus.map((x) => x.sku), ['VIV-TON-VAM100-8992796011501-1']);
   assert.deepEqual(d.variants[0].conversions.map((c) => c.unitName), ['PCS'], 'paket jual tidak jadi konversi kemasan');
   const hit = api('barcode.lookup', { code: 'VIV-TON-VAM100-8992796011501-6' });

@@ -119,54 +119,11 @@ function asciiUpper_(s) {
     .toUpperCase();
 }
 
-// ---------------------------------------------------------------- Kode master brand / kategori
+// ---------------------------------------------------------------- Master brand / kategori
 
 /** Kunci duplikasi nama: abaikan huruf besar/kecil, spasi, tanda baca, aksen ("Make Over" = "MAKEOVER" = "make-over"). */
 function masterNameKey(name) {
   return normalizeName(name).replace(/[^a-z0-9+]/g, '');
-}
-
-/** Daftar kandidat kode (urutan prioritas). Default 3 huruf kapital dari nama: Viva→VIV, Body Lotion→BOD. */
-function masterCodeCandidates(name, len) {
-  len = Math.min(Math.max(Number(len) || 3, 2), 6);
-  const up = asciiUpper_(name);
-  const words = up.split(/[^A-Z0-9]+/).filter(Boolean);
-  const letters = up.replace(/[^A-Z]/g, '');
-  let src = letters.length >= len ? letters : up.replace(/[^A-Z0-9]/g, '');
-  while (src.length < len) src += 'X';
-  const out = [];
-  const seen = {};
-  const add = (c) => {
-    if (c && c.length === len && /^[A-Z0-9]+$/.test(c) && !seen[c] && out.length < 3000) {
-      seen[c] = 1;
-      out.push(c);
-    }
-  };
-  add(src.slice(0, len));
-  const wl = words.map((w) => w.replace(/[^A-Z]/g, '')).filter(Boolean);
-  if (wl.length >= len) add(wl.slice(0, len).map((w) => w[0]).join(''));
-  else if (wl.length >= 2) {
-    add(wl[0][0] + wl[1].slice(0, len - 1));
-    add(wl[0].slice(0, len - 1) + wl[1][0]);
-  }
-  // huruf pertama tetap, sisanya kombinasi huruf berikutnya sesuai urutan: VIVELLE → VIE, VIL, …
-  const pick = (start, need, acc) => {
-    if (out.length >= 3000) return;
-    if (!need) return add(src[0] + acc);
-    for (let i = start; i < src.length; i++) pick(i + 1, need - 1, acc + src[i]);
-  };
-  pick(1, len - 1, '');
-  for (let d = 1; d <= 9; d++) add(src.slice(0, len - 1) + d);
-  const width = len - 1;
-  for (let n = 1; n < Math.pow(10, width); n++) add(src[0] + String(n).padStart(width, '0'));
-  return out;
-}
-
-/** Kode unik pertama yang belum dipakai. isUsed(code) → boolean. */
-function generateMasterCode(name, isUsed, len) {
-  const list = masterCodeCandidates(name, len);
-  for (let i = 0; i < list.length; i++) if (!isUsed(list[i])) return list[i];
-  throw new AppError('Tidak menemukan kode unik untuk "' + name + '". Perbesar panjang kode di Pengaturan.');
 }
 
 // ---------------------------------------------------------------- Atribut & kombinasi varian
@@ -264,59 +221,6 @@ function buildSkuName(brandName, parentName, attrs, types) {
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 200);
-}
-
-const PARENT_CODE_STOPWORDS_ = { DAN: 1, AND: 1, WITH: 1, UNTUK: 1, FOR: 1, THE: 1, OF: 1, DENGAN: 1, DI: 1, KE: 1, YANG: 1, ISI: 1, NEW: 1 };
-
-/**
- * Usulan Kode Produk Parent dari nama: huruf awal tiap kata (tanpa kata brand & kata sambung, maks. 3 huruf)
- * + angka ukuran bila ada di nama. Contoh: "Johnny Andrean Styling Cream Natural & Moisture" → SCN,
- * "Gatsby Pomade Supreme Grease 30 g" → PSG30, "Air Mawar 100 ml" → AM100. Hanya usulan — user boleh mengubah.
- */
-function suggestParentCode(name, brandName) {
-  const up = asciiUpper_(formatAttrValue(name));
-  let words = up.split(/[^A-Z0-9,.]+/).filter(Boolean);
-  const bw = asciiUpper_(brandName).split(/[^A-Z0-9]+/).filter(Boolean);
-  if (bw.length && bw.every((w, i) => words[i] === w)) words = words.slice(bw.length);
-  let size = '';
-  const sized = [];
-  words.forEach((w, i) => {
-    const unit = words[i + 1] || '';
-    if (/^\d+([.,]\d+)?$/.test(w) && /^(ML|L|G|KG|MG|OZ|PCS|GR|GRAM|LITER)$/.test(unit)) {
-      if (!size) size = w.replace(/[.,]/g, '');
-      sized.push(i, i + 1);
-    } else if (/^\d+([.,]\d+)?(ML|L|G|KG|MG|OZ|GR)$/.test(w)) {
-      if (!size) size = w.replace(/[^0-9]/g, '');
-      sized.push(i);
-    }
-  });
-  const letters = words.filter((w, i) => sized.indexOf(i) < 0 && /[A-Z]/.test(w) && !PARENT_CODE_STOPWORDS_[w.replace(/[^A-Z]/g, '')]).map((w) => w.replace(/[^A-Z0-9]/g, '')).filter(Boolean);
-  let code = letters.map((w) => w[0]).join('').slice(0, 3);
-  if (code.length < 2 && letters.length) code = letters[0].replace(/[^A-Z]/g, '').slice(0, 3);
-  if (!code) code = 'PRD';
-  return (code + size).slice(0, 10);
-}
-
-/** Validasi Kode Produk Parent: 2–10 huruf/angka, minimal satu huruf (bukan hanya angka). */
-function cleanParentCode(code) {
-  return normalizeCode(code).slice(0, 10);
-}
-function parentCodeError(code) {
-  if (!code) return 'Kode produk parent wajib diisi';
-  if (code.length < 2) return 'Kode produk parent minimal 2 karakter';
-  if (!/[A-Z]/.test(code)) return 'Kode produk parent harus mengandung huruf (tidak boleh hanya angka)';
-  return '';
-}
-
-/** Parent SKU = KODE BRAND-KODE KATEGORI-KODE PRODUK PARENT (data lama: nomor 0001 tetap berlaku). */
-function buildParentSku(brandCode, categoryCode, parentCode) {
-  const pc = typeof parentCode === 'number' ? String(parentCode).padStart(PARENT_CODE_DIGITS, '0') : cleanParentCode(parentCode);
-  return [normalizeCode(brandCode), normalizeCode(categoryCode), pc].join('-');
-}
-
-/** Child SKU = Parent SKU + "-" + barcode (GTIN atau barcode internal). */
-function buildChildSku(parentSku, barcode) {
-  return String(parentSku || '') + '-' + cleanBarcode(barcode);
 }
 
 // ---------------------------------------------------------------- Satuan & konversi

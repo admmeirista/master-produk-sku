@@ -1,21 +1,21 @@
-# Master Produk & SKU — Google Apps Script (v5)
+# Master Produk & SKU — Google Apps Script (v6)
 
 Web App Apps Script dengan **Google Sheets sebagai database**, berbahasa Indonesia, tampilan mengikuti **FMS**
-(font Nunito, sidebar gelap, toast, modal). Hierarki data:
+(font Nunito, sidebar gelap, toast, modal). Kodifikasi SKU independen dari brand/kategori/GTIN:
 
 ```
-Brand + Kategori → Parent SKU  HAN-PLB-0001  (non-stockable)
-                     └→ Child SKU  HAN-PLB-0001-<GTIN / barcode internal>  — nama otomatis: Brand + Parent + atribut
-                           ├→ Kemasan & konversi (BOX, KARTON) — opsional
-                           └→ Dimensi & berat kotor per satuan — opsional
+Kode Produk Induk  PRD000001  (urut global, non-stockable)
+  └→ Kode SKU Produk  PRD000001-001  (urut per induk; barang fisik)
+       ├→ Barcode (GTIN / barcode internal) — terpisah, dicari lewat tabel barcode
+       └→ Kemasan, dimensi & berat — opsional
+Paket Produk Sama MP000001 · Paket Kombinasi BD000001 — isi paket (BOM) terstruktur
 ```
 
 Registrasi satu alur: **Identifikasi Produk → Varian & Barcode → Kemasan & Logistik (opsional) → Simpan** (atau Simpan Draft).
-Menu: Dashboard · Data Quality · Registrasi Produk · Master Produk · Cari SKU / Scan (F2) · Master Brand · Master Kategori (keduanya bisa Upload Excel) ·
-Packaging & Bundle · Channel SKU Mapping · Registry Barcode · Import & Export · Settings · Pengguna · Audit Log. Tanpa harga, approval, supplier, atau transaksi stok.
+Brand & kategori hanya nama (tanpa kode); keduanya bisa diimpor dari Excel.
 
-Dokumen v5 (perubahan, struktur sheet, migrasi, deployment, hasil uji, keterbatasan): **[REVISI-V5.md](REVISI-V5.md)**.
-Revisi sebelumnya: [REVISI-V4.md](REVISI-V4.md) (v4), [REVISI-ANALISIS.md](REVISI-ANALISIS.md) (v3).
+Dokumen v6 (format kode, struktur sheet, migrasi, hasil uji, keterbatasan): **[REVISI-V6.md](REVISI-V6.md)**.
+Revisi sebelumnya: [REVISI-V5.md](REVISI-V5.md), [REVISI-V4.md](REVISI-V4.md), [REVISI-ANALISIS.md](REVISI-ANALISIS.md).
 
 ## Struktur kode (`src/`)
 
@@ -87,7 +87,7 @@ npm test
 ```bash
 npm run dev
 ```
-Test menjalankan file `.gs` asli di emulator layanan Apps Script (`test/harness.cjs`) — 47 tes termasuk import workbook Excel asli, import XLSX brand/kategori, dan pemeriksaan statis frontend (lihat REVISI-V5.md §5).
+Test menjalankan file `.gs` asli di emulator layanan Apps Script (`test/harness.cjs`) — 52 tes termasuk import workbook Excel asli, import XLSX brand/kategori, dan skenario v6 (lihat REVISI-V6.md §5).
 Server pratinjau: http://localhost:8790 dengan data contoh (akun development tercantum di `dev/server.cjs`).
 
 ## Deploy otomatis dari GitHub

@@ -1,7 +1,8 @@
 /**
+/**
  * Child SKU = varian fisik (multi-atribut). Setiap kombinasi atribut = satu Child SKU dengan VariantID (identitas
- * internal), barcode sendiri (GTIN produsen atau barcode internal), dan SKU bisnis PARENT_SKU-BARCODE.
- * GTIN TIDAK disimpan di level Parent. Produk tanpa variasi punya satu Child SKU default (tanpa atribut).
+ * internal) dan SKU PRD000001-001 (urut per parent). Barcode (GTIN produsen / barcode internal) disimpan TERPISAH di
+ * VARIANT_BARCODES dan boleh kosong. GTIN tidak disimpan di level Parent. Produk tanpa variasi punya satu Child SKU default.
  * Nama Produk SKU dibentuk otomatis (brand + parent + atribut); override nama wajib beralasan dan tidak mengubah SKU.
  */
 
@@ -116,11 +117,9 @@ function planVariants_(input, ctx) {
         err(path + '.status', e.message);
       }
     }
-    // barcode wajib untuk Child SKU baru: GTIN produsen, atau barcode internal yang dialokasikan otomatis
+    // barcode opsional: GTIN produsen, barcode internal (dibuat otomatis), atau tanpa barcode
     const bm = iv.barcode && iv.barcode.mode;
-    if (!dbv && bm !== 'gtin' && bm !== 'internal') err(path + '.barcode', 'Pilih "Memiliki GTIN" lalu scan/ketik GTIN, atau "Tidak Memiliki GTIN" (barcode internal dibuat otomatis)');
-    if (bm === 'gtin' && !cleanBarcode(iv.barcode.code)) err(path + '.barcode', 'GTIN belum diisi');
-    if (dbv && (dbv.GTIN || dbv.InternalBarcode) && (!bm || bm === 'none')) err(path + '.barcode', 'Barcode Child SKU tidak boleh dikosongkan — ganti dengan barcode lain bila perlu');
+    if (bm === 'gtin' && !cleanBarcode(iv.barcode.code)) err(path + '.barcode', 'Barcode Produk (GTIN) belum diisi — pilih "Tanpa barcode" bila tidak ada');
     // satuan dasar per Child SKU (default dari produk)
     const curBase = dbv ? dbv.BaseUnit || dbBase[dbv.VariantID] || '' : '';
     const baseUnit = normalizeUnit(iv.baseUnit) || curBase || ctx.baseUnit;

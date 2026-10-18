@@ -288,11 +288,12 @@ function withLock_(fn, onCommitted) {
 // ------------------------------------------------------------------ penghitung kode (SYSTEM_COUNTERS)
 
 /** Ambil nomor berikutnya dan naikkan penghitung. Hanya dipanggil di dalam withLock_ (aman konkuren). */
-function nextSeq_(name, count) {
+function nextSeq_(name, count, scope) {
   const n = count === undefined ? 1 : count;
+  const sc = scope || '';
   const t = db_('SYSTEM_COUNTERS');
-  let rec = t.find((r) => r.CounterName === name);
-  if (!rec) rec = t.insert({ CounterName: name, Value: '1', UpdatedAt: now_() });
+  let rec = t.find((r) => r.CounterName === name && (r.ScopeID || '') === sc);
+  if (!rec) rec = t.insert({ CounterName: name, Value: '1', UpdatedAt: now_(), ScopeID: sc });
   const start = Number(rec.Value) || 1;
   if (n) t.update(rec, { Value: String(start + n), UpdatedAt: now_() });
   return start;
@@ -309,7 +310,7 @@ function padCode_(prefix, n) {
   return prefix + String(n).padStart(CODE_DIGITS, '0');
 }
 
-/** Product Code baru: PRD000123 (nomor urut permanen; kode yang sudah ada dilewati). */
+/** Parent SKU baru: PRD000123 — nomor urut global (bukan jumlah baris), permanen; kode yang sudah ada dilewati. */
 function allocateProductCode_() {
   const used = {};
   db_('MASTER_PRODUCTS')
@@ -324,36 +325,25 @@ function allocateProductCode_() {
 }
 
 /** Nilai penghitung berikutnya TANPA menaikkannya (untuk pratinjau; tidak menulis apa pun). */
-function peekSeq_(name) {
-  const rec = db_('SYSTEM_COUNTERS').find((r) => r.CounterName === name);
+function peekSeq_(name, scope) {
+  const rec = db_('SYSTEM_COUNTERS').find((r) => r.CounterName === name && (r.ScopeID || '') === (scope || ''));
   return rec ? Number(rec.Value) || 1 : 1;
 }
 
-/** Produk lain yang sudah memakai Parent SKU ini (null bila tersedia). */
-function parentSkuOwner_(sku, exceptProductId) {
-  const up = String(sku).toUpperCase();
-  return db_('MASTER_PRODUCTS').find((p) => p.ProductID !== exceptProductId && String(p.ProductCode).toUpperCase() === up) || null;
-}
-
-/** Kode parent pertama yang membuat Parent SKU unik: KODE, KODEB, KODEC, … (untuk usulan otomatis & import). */
-function uniqueParentCode_(brand, cat, base, exceptProductId) {
-  const b = cleanParentCode(base) || 'PRD';
-  const cands = [b].concat('BCDEFGHJKLMNPQRSTUVWXYZ'.split('').map((x) => (b + x).slice(-10)));
-  for (let i = 2; i < 1000; i++) cands.push((b.slice(0, 10 - String(i).length) + i));
-  const hit = cands.find((c) => !parentSkuOwner_(buildParentSku(brand.BrandCode, cat.CategoryCode, c), exceptProductId));
-  if (!hit) throw new AppError('Tidak menemukan kode produk parent yang tersedia');
-  return hit;
-}
-
 /**
- * Parent SKU baru BRAND-KATEGORI-KODEPRODUK. Kode produk dipilih user (diusulkan dari nama) dan harus membuat
- * Parent SKU unik. ProductNo = nomor urut internal (counter parent_no, tidak masuk SKU).
+ * Child SKU baru: PARENT_SKU-001, -002, … — urut per parent (counter child_no, ScopeID = ProductID), tidak pernah
+ * dipakai ulang walau varian lama nonaktif/discontinued. Lewat 999 → ditolak (tidak wraparound): pecah ke Parent
+ * baru, atau perluas format secara terkendali (CHILD_SEQ_DIGITS) setelah dicek sistem downstream.
  */
-function allocateParentSku_(brand, cat, parentCode) {
-  const code = buildParentSku(brand.BrandCode, cat.CategoryCode, parentCode);
-  const owner = parentSkuOwner_(code);
-  if (owner) throw new AppError(`Parent SKU ${code} sudah dipakai "${owner.ProductName}"`, [{ path: 'parentCode', message: `Sudah dipakai produk "${owner.ProductName}" — ganti kode produk`, code: 'DUPLICATE' }], 'VALIDATION_FAILED');
-  return { no: nextSeq_('parent_no'), parentCode: cleanParentCode(parentCode), code };
+function allocateChildSku_(p, skuOwner) {
+  for (let guard = 0; guard < 2000; guard++) {
+    const n = nextSeq_('child_no', 1, p.ProductID);
+    if (n > CHILD_SEQ_MAX)
+      throw new AppError(`Kapasitas Kode SKU Produk untuk ${p.ProductCode} sudah penuh (maks. ${CHILD_SEQ_MAX} varian per produk induk). Daftarkan sebagai produk induk baru.`, [{ path: 'variants', message: 'Kapasitas 999 varian per produk induk penuh', code: 'CAPACITY' }], 'VALIDATION_FAILED');
+    const sku = p.ProductCode + '-' + String(n).padStart(CHILD_SEQ_DIGITS, '0');
+    if (!skuOwner[sku.toUpperCase()]) return sku;
+  }
+  throw new AppError('Tidak menemukan Kode SKU Produk kosong');
 }
 
 /** SKU internal format lama (SKU000456) — hanya untuk migrasi data lama. */

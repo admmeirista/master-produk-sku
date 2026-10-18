@@ -123,7 +123,6 @@ function migrateV1_(r, actor) {
       const name = cleanText(o.name);
       const code = normalizeCode(o.code);
       if (!name || !code) return r.skipped.push(`${k.label} tanpa nama/kode (id ${o.id})`);
-      if (T.find((x) => String(x[k.code]).toUpperCase() === code)) return r.skipped.push(`${k.label} "${name}": kode ${code} sudah dipakai`);
       if (T.find((x) => x.NameKey === masterNameKey(name) && x.Status !== STATUS.DELETED)) return r.skipped.push(`${k.label} "${name}": nama sudah ada`);
       T.insert({ [k.id]: o.id, [k.code]: code, [k.name]: name, NameKey: masterNameKey(name), Status: o.status === 'active' ? STATUS.ACTIVE : STATUS.INACTIVE, CreatedBy: o.proposed_by || 'migrasi', CreatedAt: o.created_at || ts, UpdatedBy: 'migrasi', UpdatedAt: ts });
       r[kind === 'brand' ? 'brands' : 'categories']++;
@@ -150,9 +149,9 @@ function migrateV1_(r, actor) {
     const cat = db_('MASTER_CATEGORIES').byId(o.category_id);
     if (!brand || !cat) return r.skipped.push(`Produk "${o.name}": brand/kategori tidak ditemukan`);
     const baseUnit = normalizeUnit(o.base_unit) || 'PCS';
-    // Parent SKU format v5 (BRAND-KATEGORI-KODEPRODUK): kode produk v1 dipakai bila valid; juga disimpan sebagai LegacyCode
-    const lc = normalizeCode(o.product_code).slice(0, 10);
-    const pc = allocateParentSku_(brand, cat, uniqueParentCode_(brand, cat, lc && !parentCodeError(lc) ? lc : suggestParentCode(o.name, brand.BrandName)));
+    // Parent SKU format v6 (PRD000001): nomor produk v1 dipertahankan bila belum dipakai; kode produk v1 → LegacyCode
+    const keepNo = Number(o.product_no) && !db_('MASTER_PRODUCTS').find((x) => x.ProductCode === padCode_(PRODUCT_CODE_PREFIX, Number(o.product_no)));
+    const pc = keepNo ? { no: Number(o.product_no), code: padCode_(PRODUCT_CODE_PREFIX, Number(o.product_no)) } : allocateProductCode_();
     const code = pc.code;
     const no = pc.no;
     const variants = oldVariants.filter((v) => v.product_id === o.id).sort((a, b) => Number(a.sort_order) - Number(b.sort_order));
@@ -173,7 +172,7 @@ function migrateV1_(r, actor) {
       UpdatedAt: ts,
       Version: 1,
       LegacyCode: normalizeCode(o.product_code),
-      ParentCode: pc.parentCode,
+      ParentCode: '',
     });
     r.products++;
     variants.forEach((ov, vi) => {
@@ -187,7 +186,7 @@ function migrateV1_(r, actor) {
         bcType[ib.Code] = 'INTERNAL';
         vbc = ib.Code;
       }
-      const sku = buildChildSku(code, vbc);
+      const sku = allocateChildSku_(p, skuOwner);
       skuOwner[sku.toUpperCase()] = p.ProductName;
       const v = db_('PRODUCT_VARIANTS').insert({
         VariantID: ov.id,

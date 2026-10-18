@@ -10,7 +10,7 @@
  * Komponen selalu Child SKU (bukan bundle) → BOM tidak mungkin bersiklus.
  */
 
-const BUNDLE_TYPES = { MULTIPACK: 'Multipack', MIXED: 'Mixed bundle', REQUEST_MIX: 'Request mix' };
+const BUNDLE_TYPES = { MULTIPACK: 'Paket Produk Sama', MIXED: 'Paket Kombinasi', REQUEST_MIX: 'Paket Pilih Sendiri' };
 
 function bundleView_(b, ctx) {
   ctx = ctx || { variants: indexBy_(db_('PRODUCT_VARIANTS').rows(), 'VariantID'), products: indexBy_(db_('MASTER_PRODUCTS').rows(), 'ProductID') };
@@ -56,7 +56,7 @@ function bundleSave_(user, input, opts) {
   if (existing && input.version !== undefined && input.version !== null && Number(input.version) !== existing.Version) throw new AppError('Bundle baru saja diubah pengguna lain. Muat ulang.', [], 'STALE_VERSION');
   if (existing && existing.Status === STATUS.ARCHIVED) throw new AppError('Bundle yang diarsipkan tidak dapat diubah');
   const type = existing ? existing.BundleType : input.type;
-  if (!BUNDLE_TYPES[type]) err('type', 'Pilih jenis: Multipack, Mixed bundle, atau Request mix');
+  if (!BUNDLE_TYPES[type]) err('type', 'Pilih jenis: Paket Produk Sama, Paket Kombinasi, atau Paket Pilih Sendiri');
   if (existing && input.type && input.type !== existing.BundleType) err('type', 'Jenis bundle tidak dapat diubah setelah tersimpan (SKU permanen)');
   const name = cleanText(input.name);
   if (name.length < 3 || name.length > 120) err('name', 'Nama bundle 3–120 karakter');
@@ -80,8 +80,8 @@ function bundleSave_(user, input, opts) {
       }
     } else if (!v) err(path, 'Komponen tidak ditemukan');
   });
-  if (type === 'MULTIPACK' && (comps.length !== 1 || !(comps[0] && comps[0].quantity >= 2))) err('components', 'Multipack = tepat 1 Child SKU dengan jumlah minimal 2');
-  if (type === 'MIXED' && comps.length < 2) err('components', 'Mixed bundle minimal 2 Child SKU berbeda');
+  if (type === 'MULTIPACK' && (comps.length !== 1 || !(comps[0] && comps[0].quantity >= 2))) err('components', 'Paket Produk Sama = tepat 1 Kode SKU Produk dengan jumlah minimal 2');
+  if (type === 'MIXED' && comps.length < 2) err('components', 'Paket Kombinasi minimal 2 Kode SKU Produk berbeda');
   let pick = null;
   if (type === 'REQUEST_MIX') {
     pick = Number(input.pickQuantity);
@@ -98,7 +98,14 @@ function bundleSave_(user, input, opts) {
     });
     if (same) err('components', `Multipack yang sama sudah ada: ${same.BundleSKU} ${same.BundleName}`, 'DUPLICATE');
   }
-  if (errs.length) throw new AppError('Periksa kembali bundle (' + errs.length + ' masalah)', errs, 'VALIDATION_FAILED');
+  // paket yang sudah aktif/dipakai: komposisi & mode stok tidak boleh diubah (makna SKU paket tetap) → buat paket baru
+  if (existing && existing.Status !== STATUS.DRAFT) {
+    const cur = db_('BUNDLE_COMPONENTS').filter((x) => x.BundleID === existing.BundleID && x.Status === STATUS.ACTIVE);
+    const sig = (list) => list.map((x) => x.variantId + '×' + x.quantity).sort().join('|');
+    const changed = sig(cur.map((x) => ({ variantId: x.VariantID, quantity: x.Quantity }))) !== sig(comps) || (type === 'REQUEST_MIX' && Number(existing.PickQuantity) !== pick) || existing.StockMode !== stockMode;
+    if (changed) err('components', `Komposisi paket ${existing.BundleSKU} tidak dapat diubah karena sudah aktif. Buat paket baru (kode baru), lalu nonaktifkan paket lama.`, 'LOCKED');
+  }
+  if (errs.length) throw new AppError('Periksa kembali paket (' + errs.length + ' masalah)', errs, 'VALIDATION_FAILED');
 
   const ts = now_();
   let b;

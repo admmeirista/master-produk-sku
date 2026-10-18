@@ -3,14 +3,14 @@
  *
  * Satu kali simpan menyimpan Parent, seluruh Child SKU + atribut, barcode, kemasan, dan dimensi dalam SATU transaksi
  * (withLock_ + staging + jurnal): tidak pernah tersimpan setengah. Tanpa approval. "Simpan Draft" → status DRAFT.
- * User tidak mengisi kode: Parent SKU (BRAND-KATEGORI-0001) dan Child SKU (PARENT_SKU-BARCODE) dibentuk server
- * di dalam lock. Identitas permanen: ProductID, VariantID (relasi), dan SKU sejak produk aktif.
+ * User tidak mengisi kode: Parent SKU (PRD000001, urut global) dan Child SKU (PRD000001-001, urut per parent) dialokasikan
+ * server di dalam lock dan PERMANEN sejak dialokasikan. Brand, kategori, GTIN, nama, kemasan tidak membentuk SKU.
  */
 
 function productRefs_(p) {
   const b = db_('MASTER_BRANDS').byId(p.BrandID) || {};
   const c = db_('MASTER_CATEGORIES').byId(p.CategoryID) || {};
-  return { brand: { id: b.BrandID, code: b.BrandCode, name: b.BrandName, status: b.Status }, category: { id: c.CategoryID, code: c.CategoryCode, name: c.CategoryName, status: c.Status } };
+  return { brand: { id: b.BrandID, name: b.BrandName, status: b.Status }, category: { id: c.CategoryID, name: c.CategoryName, status: c.Status } };
 }
 
 function productDetail_(id) {
@@ -40,9 +40,8 @@ function productDetail_(id) {
     id: p.ProductID,
     productCode: p.ProductCode,
     parentSku: p.ProductCode,
-    parentCode: p.ParentCode || '',
     displayName: buildSkuName(refs.brand.name, p.ProductName, [], []),
-    skuFrozen: p.Status !== STATUS.DRAFT,
+    skuFrozen: true, // SKU tidak pernah dihitung ulang (v6)
     packagingComplete: variants.filter((v) => v.status === STATUS.ACTIVE || v.status === STATUS.DRAFT).every((v) => v.packagingComplete),
     productNo: p.ProductCode,
     legacyCode: p.LegacyCode || '',
@@ -143,10 +142,8 @@ function productIndex_() {
         updatedAt: p.UpdatedAt,
         brandId: p.BrandID,
         brandName: b.BrandName,
-        brandCode: b.BrandCode,
         categoryId: p.CategoryID,
         categoryName: c.CategoryName,
-        categoryCode: c.CategoryCode,
         variantCount: s.variants,
         activeVariants: s.active,
         withBarcode: s.withBarcode,
@@ -183,18 +180,18 @@ function productList_(f) {
 }
 
 /**
- * Pratinjau Parent SKU di tahap 1 (tidak menulis apa pun): usulan Kode Produk Parent dari nama, atau kode yang
- * diketik user, beserta ketersediaannya. Kode final divalidasi ulang di dalam lock saat disimpan.
+ * Pratinjau di tahap 1 (tidak menulis apa pun): perkiraan Parent SKU berikutnya & nama parent. Nomor final
+ * dialokasikan di dalam lock saat disimpan — bila pengguna lain menyimpan lebih dulu, nomor bergeser tetapi tetap unik.
  */
 function parentPreview_(p) {
-  const b = p.brandId ? db_('MASTER_BRANDS').byId(p.brandId) : null;
-  const c = p.categoryId ? db_('MASTER_CATEGORIES').byId(p.categoryId) : null;
-  const typed = cleanParentCode(p.parentCode);
-  const suggested = b && c && cleanText(p.name) ? uniqueParentCode_(b, c, suggestParentCode(p.name, b.BrandName), p.productId) : '';
-  const code = typed || suggested;
-  const sku = b && c && code ? buildParentSku(b.BrandCode, c.CategoryCode, code) : '';
-  const owner = sku ? parentSkuOwner_(sku, p.productId) : null;
-  return { parentCode: code, suggested, parentSku: sku, error: typed ? parentCodeError(typed) : '', taken: owner ? { id: owner.ProductID, name: owner.ProductName } : null, displayName: b ? buildSkuName(b.BrandName, p.name, [], []) : cleanText(p.name) };
+  const b = p && p.brandId ? db_('MASTER_BRANDS').byId(p.brandId) : null;
+  const used = {};
+  db_('MASTER_PRODUCTS')
+    .rows()
+    .forEach((x) => (used[String(x.ProductCode).toUpperCase()] = 1));
+  let n = peekSeq_('product_no');
+  while (used[padCode_(PRODUCT_CODE_PREFIX, n)]) n++;
+  return { parentSku: padCode_(PRODUCT_CODE_PREFIX, n), estimated: true, displayName: b ? buildSkuName(b.BrandName, p.name, [], []) : cleanText(p && p.name) };
 }
 
 /** Perbarui Nama Produk SKU otomatis setelah nama brand berubah (override & SKU tidak disentuh). */
@@ -287,21 +284,6 @@ function productSave_(user, input, opts) {
   const brand = existing && brandId === existing.BrandID ? db_('MASTER_BRANDS').byId(brandId) : collect(() => activeBrand_(brandId));
   const cat = existing && categoryId === existing.CategoryID ? db_('MASTER_CATEGORIES').byId(categoryId) : collect(() => activeCategory_(categoryId));
   const dbVariants = existing ? V.filter((v) => v.ProductID === existing.ProductID) : [];
-  // Kode Produk Parent: diusulkan dari nama, boleh diubah selama baru/DRAFT; beku sejak aktif
-  const frozen = existing && existing.Status !== STATUS.DRAFT;
-  let parentCode = cleanParentCode(input.parentCode);
-  if (frozen) {
-    if (parentCode && parentCode !== String(existing.ParentCode || '').toUpperCase()) err('parentCode', 'Kode produk parent tidak dapat diubah setelah produk aktif (SKU sudah dibekukan)');
-    parentCode = existing.ParentCode;
-  } else {
-    if (!parentCode) parentCode = existing && existing.ParentCode ? existing.ParentCode : brand && cat ? uniqueParentCode_(brand, cat, suggestParentCode(name, brand.BrandName), existing && existing.ProductID) : '';
-    const pe = parentCodeError(String(parentCode).toUpperCase());
-    if (pe && !(existing && parentCode === existing.ParentCode)) err('parentCode', pe);
-    if (!pe && brand && cat) {
-      const owner = parentSkuOwner_(buildParentSku(brand.BrandCode, cat.CategoryCode, parentCode), existing && existing.ProductID);
-      if (owner) err('parentCode', `Parent SKU ${buildParentSku(brand.BrandCode, cat.CategoryCode, parentCode)} sudah dipakai "${owner.ProductName}" — ganti kode produk`, 'DUPLICATE');
-    }
-  }
   // satuan dasar default produk (tiap Child SKU boleh override di tahap Kemasan & Logistik)
   const baseUnit = normalizeUnit(input.baseUnit) || (existing && existing.BaseUnit) || '';
   if (!baseUnit) err('baseUnit', 'Pilih satuan dasar');
@@ -377,14 +359,9 @@ function productSave_(user, input, opts) {
     p = existing;
     const patch = { ProductName: name, NameKey: normalizeName(name), BrandID: brand.BrandID, CategoryID: cat.CategoryID, BaseUnit: baseUnit, HasVariants: hasVariants, Description: description, UpdatedBy: user.email, UpdatedAt: ts, Version: (p.Version || 1) + 1 };
     if (imageUrl) patch.ImageUrl = imageUrl;
-    // Parent SKU dihitung ulang hanya selama DRAFT (brand/kategori dikoreksi); sejak aktif, Parent SKU dibekukan
-    if (p.Status === STATUS.DRAFT && parentCode) {
-      const code = buildParentSku(brand.BrandCode, cat.CategoryCode, /^d+$/.test(String(parentCode)) ? Number(parentCode) : parentCode);
-      if (code !== p.ProductCode) Object.assign(patch, { ProductCode: code, ParentCode: String(parentCode) });
-    }
     P.update(p, patch);
   } else {
-    const pc = allocateParentSku_(brand, cat, parentCode);
+    const pc = allocateProductCode_();
     p = P.insert({
       ProductID: uuid_(),
       ProductNo: pc.no,
@@ -405,7 +382,7 @@ function productSave_(user, input, opts) {
       Description: description,
       ImageUrl: imageUrl,
       DataSource: cleanText(input.dataSource).slice(0, 200),
-      ParentCode: pc.parentCode,
+      ParentCode: '',
     });
     recordLifecycle_(user, 'product', p.ProductID, p.ProductID, '', newStatus, 'Registrasi');
   }
@@ -508,38 +485,26 @@ function productSave_(user, input, opts) {
 }
 
 /**
- * Child SKU = PARENT_SKU-BARCODE (juga kemasan ber-identitas sendiri). SKU diberikan sekali saat barcode tersedia;
- * selama produk DRAFT dihitung ulang mengikuti barcode/Parent SKU terbaru. Sejak aktif, SKU dibekukan: koreksi GTIN
- * hanya mengganti barcode (histori tercatat), SKU lama tetap. SKU yang pernah dialokasikan tidak dipakai barang lain.
+ * Alokasi Child SKU (PRD000001-001, …) untuk Child SKU & kemasan ber-identitas yang belum punya SKU — tidak bergantung
+ * pada barcode. SKU yang sudah ada tidak pernah diubah (koreksi GTIN hanya mengganti barcode; histori tercatat).
  */
 function syncSkus_(p, vplans, ts) {
   const V = db_('PRODUCT_VARIANTS');
   const C = db_('UNIT_CONVERSIONS');
-  const draft = p.Status === STATUS.DRAFT;
   const owner = skuOwnerMap_();
-  const vars = V.filter((v) => v.ProductID === p.ProductID);
-  const convs = C.filter((c) => c.ProductID === p.ProductID && !c.IsBaseUnit && c.IsTradeItem);
-  // SKU milik produk draft ini sendiri boleh dipertukarkan (mis. GTIN dua varian ditukar)
-  if (draft) vars.concat(convs).forEach((r) => r.SKU && delete owner[String(r.SKU).toUpperCase()]);
-  const errs = [];
-  const pathOf = (variantId, conversionId) => {
-    const vp = (vplans || []).find((x) => x.v && x.v.VariantID === variantId);
-    if (!vp) return 'variants';
-    if (!conversionId) return vp.path + '.barcode';
-    const cx = (vp.convs || []).find((x) => x.dbc && x.dbc.ConversionID === conversionId);
-    return cx ? cx.path + '.barcode' : vp.path + '.barcode';
-  };
-  const assign = (T, rec, code, label, path) => {
-    if (!code || (rec.SKU && !draft)) return;
-    const sku = buildChildSku(p.ProductCode, code);
-    if (sku === rec.SKU) return (owner[sku.toUpperCase()] = label);
-    if (owner[sku.toUpperCase()]) return errs.push({ path, message: `SKU ${sku} sudah pernah dialokasikan untuk ${owner[sku.toUpperCase()]} — SKU tidak boleh dipakai ulang`, code: 'DUPLICATE' });
-    T.update(rec, { SKU: sku, UpdatedAt: ts });
-    owner[sku.toUpperCase()] = label;
-  };
-  vars.forEach((v) => assign(V, v, v.GTIN || v.InternalBarcode, `${p.ProductName} [${p.ProductCode}]`, pathOf(v.VariantID)));
-  convs.filter((c) => c.Status === STATUS.ACTIVE).forEach((c) => assign(C, c, c.GTIN || c.InternalBarcode, `${p.ProductName} (kemasan ${c.UnitName})`, pathOf(c.VariantID, c.ConversionID)));
-  if (errs.length) throw new AppError('SKU bentrok', errs, 'VALIDATION_FAILED');
+  const order = (vplans || []).map((x) => x.v && x.v.VariantID);
+  V.filter((v) => v.ProductID === p.ProductID && !v.SKU)
+    .sort((a, b) => order.indexOf(a.VariantID) - order.indexOf(b.VariantID) || a.SortOrder - b.SortOrder)
+    .forEach((v) => {
+      const sku = allocateChildSku_(p, owner);
+      V.update(v, { SKU: sku, UpdatedAt: ts });
+      owner[sku.toUpperCase()] = p.ProductName;
+    });
+  C.filter((c) => c.ProductID === p.ProductID && !c.IsBaseUnit && c.IsTradeItem && c.Status === STATUS.ACTIVE && !c.SKU).forEach((c) => {
+    const sku = allocateChildSku_(p, owner);
+    C.update(c, { SKU: sku, UpdatedAt: ts });
+    owner[sku.toUpperCase()] = p.ProductName + ' (kemasan ' + c.UnitName + ')';
+  });
 }
 
 /**

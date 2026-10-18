@@ -138,9 +138,9 @@ function gtinSuggestion_(gtin, ext) {
   const name = r.name ? r.name.charAt(0).toUpperCase() + r.name.slice(1) : '';
   return {
     name,
-    brand: brand ? { id: brand.BrandID, name: brand.BrandName, code: brand.BrandCode } : null,
+    brand: brand ? { id: brand.BrandID, name: brand.BrandName } : null,
     brandText: r.brand || '',
-    category: category ? { id: category.CategoryID, name: category.CategoryName, code: category.CategoryCode } : null,
+    category: category ? { id: category.CategoryID, name: category.CategoryName } : null,
     categoryText: (r.categories || []).slice(0, 3).join(', '),
     attributes: standardizeAttributes_(attrs),
     imageUrl: r.imageUrl || '',

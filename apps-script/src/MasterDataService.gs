@@ -1,12 +1,9 @@
 /**
- * Logika bersama Master Brand & Master Kategori.
- *  - User hanya mengisi NAMA; kode dibuat otomatis (default 3 huruf kapital), unik, dan PERMANEN
- *    (tidak berubah ketika nama diperbaiki, tidak pernah dipakai ulang walau datanya dinonaktifkan).
+ * Logika bersama Master Brand & Master Kategori (v6: atribut klasifikasi, TANPA kode).
+ *  - User hanya mengisi NAMA; relasi memakai ID internal (BrandID / CategoryID). Kolom kode lama = metadata, tidak dipakai SKU.
  *  - Duplikasi nama dicek dengan normalisasi (huruf besar/kecil, spasi, tanda baca, aksen) → diblokir.
  *    Nama yang MIRIP (fuzzy) → peringatan yang harus dikonfirmasi.
- *  - Hapus hanya untuk data yang belum dipakai produk; baris disimpan berstatus DELETED agar kodenya tidak dipakai ulang.
- *  - Pembuatan kode berjalan di dalam script lock (withLock_) sehingga dua user yang menyimpan bersamaan
- *    tidak mungkin mendapat kode yang sama.
+ *  - Hapus hanya untuk data yang belum dipakai produk; baris disimpan berstatus DELETED (riwayat tetap ada).
  */
 
 const MASTER_KIND = {
@@ -21,7 +18,7 @@ function masterCfg_(kind) {
 }
 
 function masterView_(k, r, counts) {
-  return { id: r[k.id], code: r[k.code], name: r[k.name], status: r.Status, createdAt: r.CreatedAt, createdBy: r.CreatedBy, updatedAt: r.UpdatedAt, productCount: counts ? counts[r[k.id]] || 0 : undefined };
+  return { id: r[k.id], name: r[k.name], status: r.Status, createdAt: r.CreatedAt, createdBy: r.CreatedBy, updatedAt: r.UpdatedAt, productCount: counts ? counts[r[k.id]] || 0 : undefined };
 }
 
 function masterList_(kind, f) {
@@ -58,32 +55,22 @@ function masterNameCheck_(k, name, exceptId) {
         .filter((x) => x.s >= 0.85)
         .sort((a, b) => b.s - a.s)
         .slice(0, 5)
-        .map((x) => ({ id: x.r[k.id], name: x.r[k.name], code: x.r[k.code], status: x.r.Status, score: x.s }));
+        .map((x) => ({ id: x.r[k.id], name: x.r[k.name], status: x.r.Status, score: x.s }));
   return { key, exact, similar };
 }
 
 function masterDuplicateError_(k, ex) {
   const inactive = ex.Status !== STATUS.ACTIVE ? ' (nonaktif — aktifkan kembali bila diperlukan)' : '';
-  return new AppError(`${k.label} "${ex[k.name]}" sudah terdaftar dengan kode ${ex[k.code]}${inactive}`, [{ path: 'name', message: 'Nama sudah terdaftar', code: 'DUPLICATE', data: { id: ex[k.id], code: ex[k.code], name: ex[k.name], status: ex.Status } }], 'DUPLICATE');
+  return new AppError(`${k.label} "${ex[k.name]}" sudah terdaftar${inactive}`, [{ path: 'name', message: 'Nama sudah terdaftar', code: 'DUPLICATE', data: { id: ex[k.id], name: ex[k.name], status: ex.Status } }], 'DUPLICATE');
 }
 
-function masterUsedCodes_(k) {
-  const used = {};
-  db_(k.table)
-    .rows()
-    .forEach((r) => (used[String(r[k.code]).toUpperCase()] = 1));
-  return used;
-}
-
-/** Pratinjau (tidak mengikat): kode yang AKAN dibuat + cek duplikasi. Kode final ditentukan saat simpan di dalam lock. */
+/** Pratinjau: cek duplikasi & nama mirip sebelum disimpan. */
 function masterPreview_(kind, name) {
   const k = masterCfg_(kind);
   const n = cleanText(name);
-  if (n.length < 2) return { code: '', exact: null, similar: [] };
+  if (n.length < 2) return { exact: null, similar: [] };
   const chk = masterNameCheck_(k, n);
-  const used = masterUsedCodes_(k);
-  const code = chk.exact ? chk.exact[k.code] : generateMasterCode(n, (c) => !!used[c], getSettings_().master_code_length);
-  return { code, exact: chk.exact ? masterView_(k, chk.exact) : null, similar: chk.similar };
+  return { exact: chk.exact ? masterView_(k, chk.exact) : null, similar: chk.similar };
 }
 
 function masterCreate_(user, kind, input) {
@@ -92,12 +79,10 @@ function masterCreate_(user, kind, input) {
   const chk = masterNameCheck_(k, name);
   if (chk.exact) throw masterDuplicateError_(k, chk.exact);
   if (chk.similar.length && !input.acknowledgeSimilar)
-    throw new AppError(`Ada ${k.label.toLowerCase()} dengan nama mirip. Pastikan bukan duplikat.`, chk.similar.map((s) => ({ path: 'name', message: `${s.name} (${s.code}) — kemiripan ${Math.round(s.score * 100)}%`, data: s })), 'SIMILAR_EXISTS');
-  const used = masterUsedCodes_(k);
-  const code = generateMasterCode(name, (c) => !!used[c], getSettings_().master_code_length);
+    throw new AppError(`Ada ${k.label.toLowerCase()} dengan nama mirip. Pastikan bukan duplikat.`, chk.similar.map((s) => ({ path: 'name', message: `${s.name} — kemiripan ${Math.round(s.score * 100)}%`, data: s })), 'SIMILAR_EXISTS');
   const rec = db_(k.table).insert({
     [k.id]: uuid_(),
-    [k.code]: code,
+    [k.code]: '',
     [k.name]: name,
     NameKey: chk.key,
     Status: STATUS.ACTIVE,
@@ -106,7 +91,7 @@ function masterCreate_(user, kind, input) {
     UpdatedBy: user.email,
     UpdatedAt: now_(),
   });
-  audit_(user.email, kind + '.create', kind, rec[k.id], null, { code, name });
+  audit_(user.email, kind + '.create', kind, rec[k.id], null, { name });
   return masterView_(k, rec, {});
 }
 
@@ -138,11 +123,11 @@ function masterRename_(user, kind, id, input) {
   const chk = masterNameCheck_(k, name, id);
   if (chk.exact) throw masterDuplicateError_(k, chk.exact);
   if (chk.similar.length && !input.acknowledgeSimilar)
-    throw new AppError(`Ada ${k.label.toLowerCase()} dengan nama mirip. Pastikan bukan duplikat.`, chk.similar.map((s) => ({ path: 'name', message: `${s.name} (${s.code}) — kemiripan ${Math.round(s.score * 100)}%`, data: s })), 'SIMILAR_EXISTS');
-  const before = { name: rec[k.name], code: rec[k.code] };
-  // KODE TIDAK BERUBAH — SKU yang sudah terbit tetap konsisten
+    throw new AppError(`Ada ${k.label.toLowerCase()} dengan nama mirip. Pastikan bukan duplikat.`, chk.similar.map((s) => ({ path: 'name', message: `${s.name} — kemiripan ${Math.round(s.score * 100)}%`, data: s })), 'SIMILAR_EXISTS');
+  const before = { name: rec[k.name] };
+  // SKU tidak bergantung pada nama brand/kategori — hanya nama tampilan Child SKU yang ikut diperbarui
   db_(k.table).update(rec, { [k.name]: name, NameKey: chk.key, UpdatedBy: user.email, UpdatedAt: now_() });
-  audit_(user.email, kind + '.rename', kind, id, before, { name, code: rec[k.code] });
+  audit_(user.email, kind + '.rename', kind, id, before, { name });
   // nama Produk SKU otomatis = brand + parent + atribut → ikut diperbarui (SKU tidak berubah)
   if (kind === 'brand') refreshSkuNames_(id);
   return masterView_(k, rec, {});
@@ -169,7 +154,7 @@ function masterDelete_(user, kind, id) {
   const used = db_('MASTER_PRODUCTS').filter((p) => p[k.id] === id).length;
   if (used) throw new AppError(`${k.label} ${rec[k.name]} dipakai ${used} produk sehingga tidak dapat dihapus. Nonaktifkan saja.`, [], 'IN_USE');
   db_(k.table).update(rec, { Status: STATUS.DELETED, UpdatedBy: user.email, UpdatedAt: now_() });
-  audit_(user.email, kind + '.delete', kind, id, { name: rec[k.name], code: rec[k.code], status: 'ACTIVE' }, { status: STATUS.DELETED });
+  audit_(user.email, kind + '.delete', kind, id, { name: rec[k.name], status: 'ACTIVE' }, { status: STATUS.DELETED });
   return true;
 }
 
@@ -178,8 +163,7 @@ function masterDelete_(user, kind, id) {
  * XLSX langsung — lalu baris dikirim sebagai teks: [{ row, name, code? }].
  *   Pratinjau (opts.dryRun) tidak menulis apa pun; Import berjalan di dalam lock (kode otomatis dialokasikan aman).
  *   Nama yang sudah terdaftar (normalisasi huruf/spasi/tanda baca) → Dilewati, sehingga import ulang tidak menggandakan.
- *   Kolom kode di file TIDAK menimpa kode existing dan tidak dipakai untuk data baru (kode selalu otomatis);
- *   mempertahankan kode lama = proses migrasi terpisah (Import & Export › Import › Referensi, dengan pratinjau).
+ *   Tidak ada kode brand/kategori; kolom kode di file (bila ada) disimpan sebagai metadata lama untuk data BARU saja.
  */
 function masterImport_(user, kind, p, opts) {
   const k = masterCfg_(kind);
@@ -187,7 +171,6 @@ function masterImport_(user, kind, p, opts) {
   const rows = (p && p.rows) || [];
   if (!rows.length) throw new AppError('File tidak berisi baris data');
   if (rows.length > 2000) throw new AppError('Maksimal 2.000 baris per file');
-  const used = masterUsedCodes_(k);
   const byKey = {};
   db_(k.table)
     .filter((r) => r.Status !== STATUS.DELETED)
@@ -197,7 +180,7 @@ function masterImport_(user, kind, p, opts) {
     const row = Number(x.row) || 0;
     const raw = cleanText(x.name);
     const fileCode = normalizeCode(x.code);
-    const res = { row, name: raw, fileCode, status: '', code: '', message: '' };
+    const res = { row, name: raw, status: '', message: '' };
     if (!raw) return Object.assign(res, { status: 'failed', message: 'Nama kosong' });
     let name;
     try {
@@ -209,20 +192,17 @@ function masterImport_(user, kind, p, opts) {
     const key = masterNameKey(name);
     const ex = byKey[key];
     if (ex) {
-      const note = fileCode && fileCode !== String(ex[k.code]).toUpperCase() ? ` Kode di file (${fileCode}) diabaikan — kode existing tidak ditimpa.` : '';
-      return Object.assign(res, { status: 'skipped', code: ex[k.code], message: `Sudah terdaftar sebagai "${ex[k.name]}" (${ex[k.code]}${ex.Status !== STATUS.ACTIVE ? ', ' + (STATUS_LABEL[ex.Status] || ex.Status) : ''}).${note}` });
+      return Object.assign(res, { status: 'skipped', message: `Sudah terdaftar sebagai "${ex[k.name]}"${ex.Status !== STATUS.ACTIVE ? ' (' + (STATUS_LABEL[ex.Status] || ex.Status) + ')' : ''}` });
     }
-    if (inFile[key]) return Object.assign(res, { status: 'skipped', code: inFile[key].code, message: `Duplikat dengan baris ${inFile[key].row} di file ini` });
-    const code = generateMasterCode(name, (c) => !!used[c], getSettings_().master_code_length);
-    used[code] = 1;
-    inFile[key] = { row, code };
+    if (inFile[key]) return Object.assign(res, { status: 'skipped', message: `Duplikat dengan baris ${inFile[key].row} di file ini` });
+    inFile[key] = { row };
     const similar = Object.keys(byKey)
       .map((kk) => byKey[kk])
       .filter((r) => nameSimilarity(name, r[k.name]) >= 0.85)
       .slice(0, 3);
-    Object.assign(res, { status: 'new', name, code, message: (similar.length ? 'Mirip: ' + similar.map((r) => `${r[k.name]} (${r[k.code]})`).join(', ') + '. ' : '') + (fileCode && fileCode !== code ? `Kode di file (${fileCode}) tidak dipakai — kode dibuat otomatis.` : '') });
+    Object.assign(res, { status: 'new', name, message: similar.length ? 'Mirip: ' + similar.map((r) => r[k.name]).join(', ') : '' });
     if (!opts.dryRun) {
-      const rec = db_(k.table).insert({ [k.id]: uuid_(), [k.code]: code, [k.name]: name, NameKey: key, Status: STATUS.ACTIVE, CreatedBy: user.email, CreatedAt: now_(), UpdatedBy: user.email, UpdatedAt: now_() });
+      const rec = db_(k.table).insert({ [k.id]: uuid_(), [k.code]: fileCode, [k.name]: name, NameKey: key, Status: STATUS.ACTIVE, CreatedBy: user.email, CreatedAt: now_(), UpdatedBy: user.email, UpdatedAt: now_() });
       byKey[key] = rec;
       res.status = 'success';
     }

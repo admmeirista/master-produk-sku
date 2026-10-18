@@ -81,8 +81,8 @@ test('[AC-1][AC-4][AC-14][AC-15] Quick Entry dari hasil auto-fill: Parent non-st
   const d = ok(call(T, 'product.save', { input: { brandId: ids.Wardah, categoryId: ids['Face Mask'], name: 'Wardah Nature Daily Mineral Clarifying Clay Mask', baseUnit: 'JAR', hasVariants: false, description: 'Masker clay', imageUrl: OBF_FOUND.product.image_front_url, dataSource: 'openbeautyfacts:8993137699549', variants: [{ barcode: { mode: 'gtin', code: '8993137699549' }, batchTracking: true, expiryTracking: true, shelfLifeMonths: 36 }] } }));
   ids.mask = d.id;
   assert.equal(d.stockable, false);
-  assert.match(d.productCode, /^WAR-[A-Z0-9]+-[A-Z0-9]+$/);
-  assert.equal(d.variants[0].sku, d.productCode + '-8993137699549');
+  assert.match(d.productCode, /^PRD\d{6}$/);
+  assert.equal(d.variants[0].sku, d.productCode + '-001');
   assert.deepEqual([d.variants[0].stockable, d.variants[0].batchTracking, d.variants[0].expiryTracking, d.variants[0].shelfLifeMonths], [true, true, true, 36]);
   assert.equal(d.dataSource, 'openbeautyfacts:8993137699549');
   // scan ulang → produk existing, bukan registrasi baru
@@ -202,7 +202,7 @@ test('[AC-11][AC-12][AC-13] multipack virtual 6 PCS, mixed bundle 3 SKU, request
   const res = ok(call(V, 'bundle.resolve', { id: mp.id }));
   assert.deepEqual(res.components.map((c) => [c.sku, c.quantity]), [[viva.variants[0].sku, 6]]);
   const mix = ok(call(T, 'bundle.save', { type: 'MIXED', name: 'Bundle 3 Parfum 50 ml', components: [p.variants[0], p.variants[2], p.variants[3]].map((v) => ({ variantId: v.id, quantity: 1 })) }));
-  assert.match(mix.sku, /^BDL\d{6}$/);
+  assert.match(mix.sku, /^BD\d{6}$/);
   assert.equal(mix.components.length, 3);
   const rm = ok(call(T, 'bundle.save', { type: 'REQUEST_MIX', name: 'Parfum Request Mix isi 3', pickQuantity: 3, components: [p.variants[0], p.variants[2], p.variants[3]].map((v) => ({ variantId: v.id, quantity: 3 })) }));
   fail(call(T, 'bundle.save', { type: 'REQUEST_MIX', name: 'RM rakit', pickQuantity: 2, stockMode: 'PREASSEMBLED', components: [p.variants[0], p.variants[2]].map((v) => ({ variantId: v.id, quantity: 2 })) }), 'VALIDATION_FAILED');

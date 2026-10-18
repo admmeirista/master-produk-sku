@@ -176,7 +176,7 @@ function meInfo_(user) {
     user,
     permissions: ROLE_PERMISSIONS[user.role] || [],
     appName: APP_NAME,
-    config: { photoUpload: PropertiesService.getScriptProperties().getProperty('drive_ok') === '1', parentCodeDigits: PARENT_CODE_DIGITS, maxCombinations: MAX_COMBINATIONS, maxVariants: MAX_VARIANTS, channels: s.channels, channelLabel: CHANNEL_LABEL, lifecycle: LIFECYCLE, statusLabel: STATUS_LABEL, gtinLookup: !!s.gtin_lookup_enabled, baseUnits: s.base_units, packUnits: s.pack_units, attributeTypes: s.attribute_types, codeLength: s.master_code_length, roles: ROLES.map((r) => ({ id: r, label: ROLE_LABEL[r] })) },
+    config: { photoUpload: PropertiesService.getScriptProperties().getProperty('drive_ok') === '1', childSeqMax: CHILD_SEQ_MAX, maxCombinations: MAX_COMBINATIONS, maxVariants: MAX_VARIANTS, channels: s.channels, channelLabel: CHANNEL_LABEL, lifecycle: LIFECYCLE, statusLabel: STATUS_LABEL, gtinLookup: !!s.gtin_lookup_enabled, baseUnits: s.base_units, packUnits: s.pack_units, attributeTypes: s.attribute_types, codeLength: s.master_code_length, roles: ROLES.map((r) => ({ id: r, label: ROLE_LABEL[r] })) },
   };
 }
 

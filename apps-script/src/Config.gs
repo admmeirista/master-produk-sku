@@ -1,11 +1,13 @@
 /**
- * SKU Master — Google Apps Script + Google Sheets (v5: registrasi sederhana 3 tahap).
+ * SKU Master — Google Apps Script + Google Sheets (v6: kodifikasi SKU sederhana & independen).
  *
  * Hierarki data:
- *   Brand + Kategori → Parent SKU  BRAND-KATEGORI-0001  (non-stockable)
- *                        └→ Child SKU  PARENT_SKU-BARCODE  (barang fisik; GTIN produsen atau barcode internal)
- *                              ├→ Kemasan & konversi (BOX, KARTON) — opsional, tidak mengubah SKU
- *                              └→ Dimensi & berat per satuan (PCS, BOX, …) — opsional, tidak mengubah SKU
+ *   Brand & Kategori = atribut klasifikasi (tanpa kode)
+ *   Parent SKU  PRD000001          (urut global, non-stockable)
+ *     └→ Child SKU  PRD000001-001  (urut per parent; barang fisik — identitas stok)
+ *          ├→ Barcode (GTIN produsen / barcode internal) — terpisah dari SKU, lookup lewat VARIANT_BARCODES
+ *          ├→ Kemasan & konversi, dimensi & berat — opsional, tidak membentuk SKU
+ *   Multipack MP000001 · Bundle BD000001 — komposisi (BOM) di BUNDLE_COMPONENTS
  *
  * Setiap tab spreadsheet = satu tabel. Baris 1 = header (jangan diubah manual).
  * Semua sel berformat TEKS ("@") agar barcode/SKU tidak berubah jadi angka / kehilangan nol di depan.
@@ -33,7 +35,7 @@ const SCHEMA = {
   // ---- sistem
   Settings: ['key', 'value', 'updated_by', 'updated_at'],
   Users: ['id', 'email', 'full_name', 'role', 'is_active', 'pw_salt', 'pw_hash', 'failed_logins', 'locked_until', 'last_login_at', 'created_at', 'updated_at'],
-  SYSTEM_COUNTERS: ['CounterName', 'Value', 'UpdatedAt'],
+  SYSTEM_COUNTERS: ['CounterName', 'Value', 'UpdatedAt', 'ScopeID'],
   AUDIT_LOGS: ['LogID', 'CreatedAt', 'Actor', 'Action', 'EntityType', 'EntityID', 'BeforeJson', 'AfterJson', 'MetaJson'],
   TX_JOURNAL: ['TxID', 'Part', 'Status', 'CreatedAt', 'Plan'],
   IMPORT_BATCHES: ['BatchID', 'ImportType', 'FileName', 'ContentHash', 'Status', 'TotalRows', 'CreatedRows', 'SkippedRows', 'ErrorRows', 'ReportJson', 'CreatedBy', 'CreatedAt'],
@@ -62,23 +64,23 @@ const SCHEMA = {
 const TAB_DESCRIPTION = {
   Settings: 'Pengaturan aplikasi (daftar satuan, jenis atribut, ambang kemiripan nama)',
   Users: 'Akun pengguna aplikasi & role (password tersimpan sebagai hash)',
-  SYSTEM_COUNTERS: 'Penghitung kode otomatis: kode Parent (parent_no → 0001), barcode internal, multipack (MP), bundle (BDL)',
+  SYSTEM_COUNTERS: 'Penghitung kode otomatis: Parent SKU (product_no → PRD000001), Child SKU per parent (child_no + ScopeID = ProductID), multipack (MP), bundle (BD), barcode internal',
   AUDIT_LOGS: 'Audit trail perubahan data penting (nilai sebelum & sesudah)',
   TX_JOURNAL: 'Jurnal transaksi penyimpanan (rollback otomatis bila penyimpanan multi-sheet terputus)',
   IMPORT_BATCHES: 'Riwayat import (migrasi Excel, supplier, channel) + ringkasan laporan',
   IMPORT_ERRORS: 'Baris import yang ditolak / perlu dicek manual',
   GTIN_LOOKUP_CACHE: 'Cache hasil pencarian GTIN ke penyedia eksternal (Open Beauty Facts) — sumber, waktu, status',
-  MASTER_BRANDS: 'Master brand: nama & kode otomatis (permanen)',
-  MASTER_CATEGORIES: 'Master kategori: nama & kode otomatis (permanen), dipakai lintas brand',
-  MASTER_PRODUCTS: 'PRODUCT PARENT (non-stockable): Parent SKU BRAND-KATEGORI-0001 (ProductCode), kode parent, brand, kategori, nama parent, satuan dasar default',
-  PRODUCT_VARIANTS: 'CHILD SKU (barang fisik): SKU = Parent SKU + barcode, nama produk SKU otomatis (+ override beralasan), satuan dasar, GTIN/barcode aktif. Kolom batch/expiry lama dipertahankan tetapi tidak dipakai lagi',
+  MASTER_BRANDS: 'Master brand: nama (atribut klasifikasi). Kolom BrandCode = metadata lama, tidak dipakai SKU',
+  MASTER_CATEGORIES: 'Master kategori: nama (atribut klasifikasi). Kolom CategoryCode = metadata lama, tidak dipakai SKU',
+  MASTER_PRODUCTS: 'PRODUCT PARENT (non-stockable): Parent SKU PRD000001 (ProductCode), brand, kategori, nama parent, satuan dasar default',
+  PRODUCT_VARIANTS: 'CHILD SKU (barang fisik): SKU PRD000001-001, nama produk SKU otomatis (+ override beralasan), satuan dasar, foto, GTIN/barcode aktif (salinan dari VARIANT_BARCODES). Kolom batch/expiry lama dipertahankan tetapi tidak dipakai lagi',
   PRODUCT_DIMENSIONS: 'Dimensi (cm) & berat kotor (gram) per Child SKU per satuan (PCS, BOX, …) — disimpan terpisah, tidak dihitung dari satuan lain',
   VARIANT_ATTRIBUTES: 'Atribut varian (Aroma, Volume, Shade, …) — satu baris per atribut',
   ATTRIBUTE_VALUES: 'Master nilai atribut terstandar (opsional) untuk generator varian',
   VARIANT_BARCODES: 'PRODUCT BARCODES: GTIN produsen & barcode internal per Child SKU / kemasan / bundle, termasuk histori',
   UNIT_CONVERSIONS: 'PACKAGING UNITS: satuan kemasan & faktor konversi per Child SKU (opsional identitas kemasan trade item)',
   PACKAGING_HISTORY: 'Histori perubahan faktor konversi kemasan (tanggal efektif)',
-  BUNDLE_MASTERS: 'Multipack & mixed bundle (virtual / dirakit), Bundle SKU',
+  BUNDLE_MASTERS: 'Paket Produk Sama (MULTIPACK, MP000001) & Paket Kombinasi (MIXED / REQUEST_MIX, BD000001) — virtual / dirakit',
   BUNDLE_COMPONENTS: 'Bill of Materials bundle: komponen Child SKU & jumlah',
   MASTER_SUPPLIERS: 'Master supplier (data lama v4 — modul tidak lagi ditampilkan, data dipertahankan)',
   SUPPLIER_PRODUCT_MAPPING: 'Kode produk supplier → Child SKU (data lama v4 — tidak dipakai untuk membentuk SKU)',
@@ -121,22 +123,23 @@ const GTIN_LOOKUP_CONTACT = 'MeiristaMasterSKU/4.0 (+https://github.com/admmeiri
 const CHANNEL_LABEL = { shopee: 'Shopee', tiktok: 'TikTok Shop', tokopedia: 'Tokopedia', beecloud: 'BeeCloud', lainnya: 'Kanal lain', legacy: 'SKU lama' };
 
 /**
- * Identifier bisnis (v5):
- *   Parent SKU : BRAND_CODE-CATEGORY_CODE-PARENT_CODE   contoh HAN-PLB-0001  (PARENT_CODE dari counter parent_no)
- *   Child SKU  : PARENT_SKU-BARCODE                     contoh HAN-PLB-0001-8991234567898
- *                (barcode = GTIN produsen, atau barcode internal EAN-13 prefix 200 bila tanpa GTIN)
- *   Kemasan ber-identitas sendiri (trade item, mis. BOX dengan GTIN): PARENT_SKU-BARCODE_KEMASAN
- * SKU boleh dihitung ulang selama produk masih DRAFT; sejak diaktifkan SKU dibekukan — koreksi GTIN, brand,
- * nama, kemasan, dimensi, atau berat tidak menulis ulang SKU. SKU yang pernah dialokasikan tidak dipakai ulang.
- * Relasi antar-tab tetap memakai ID internal (UUID), bukan string SKU.
- * Kode lama PRD000123 / SKU000456 (data v3–v4) tetap berlaku apa adanya.
+ * Kodifikasi SKU (v6) — empat namespace terpisah, semua dialokasikan backend di dalam lock, permanen, tidak dipakai ulang:
+ *   Parent SKU    PRD + 6 digit urut global   PRD000001        (counter product_no)
+ *   Child SKU     PARENT_SKU-3 digit urut     PRD000001-001    (counter child_no per ProductID; maks. 999 per parent)
+ *   Multipack SKU MP + 6 digit                MP000001         (counter multipack_no)
+ *   Bundle SKU    BD + 6 digit                BD000001         (counter bundle_no)
+ * Brand, kategori, GTIN, nama, dimensi, berat, dan konversi BUKAN bagian SKU — perubahan atribut itu tidak mengubah SKU.
+ * Nomor yang sudah dialokasikan boleh terlewat (mis. penyimpanan gagal), tetapi tidak pernah dipakai ulang.
+ * SKU format lama (SKU000456, BRAND-KAT-0001…, BDL000001) tetap berlaku apa adanya untuk data lama.
  */
-const PARENT_CODE_DIGITS = 4;
-const PRODUCT_CODE_PREFIX = 'PRD'; // format lama — hanya untuk data v3/v4 & migrasi
-const SKU_PREFIX = 'SKU'; // format lama — hanya untuk data v3/v4 & migrasi
+const PRODUCT_CODE_PREFIX = 'PRD';
 const CODE_DIGITS = 6;
+const CHILD_SEQ_DIGITS = 3;
+const CHILD_SEQ_MAX = 999;
+const PARENT_CODE_DIGITS = 4; // format v5 lama — hanya untuk menampilkan data lama
+const SKU_PREFIX = 'SKU'; // format v3/v4 lama — hanya untuk migrasi data lama
 const MULTIPACK_PREFIX = 'MP';
-const BUNDLE_PREFIX = 'BDL';
+const BUNDLE_PREFIX = 'BD';
 const SUPPLIER_PREFIX = 'SUP';
 const MAX_COMBINATIONS = 100; // kombinasi varian yang dibentuk sekaligus
 const MAX_VARIANTS = 300; // varian per produk

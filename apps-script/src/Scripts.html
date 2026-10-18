@@ -81,7 +81,7 @@ function fmtNum(n) { return Number(n || 0).toLocaleString('id-ID'); }
 function debounce(fn, ms) { var t; return function () { var a = arguments, s = this; clearTimeout(t); t = setTimeout(function () { fn.apply(s, a); }, ms); }; }
 function uid() { return Math.random().toString(36).slice(2, 10); }
 function normCode(s) { return String(s || '').toUpperCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^A-Z0-9]/g, ''); }
-var STATUS_TXT = { ACTIVE: 'Aktif', INACTIVE: 'Nonaktif', allocated: 'Dialokasikan', assigned: 'Dipakai', retired: 'Dipensiunkan', void: 'Void', mapped: 'Dipetakan', exported: 'Diekspor', confirmed: 'Terkonfirmasi', mismatch: 'Tidak cocok', error: 'Error', admin: 'Admin', data_entry: 'Admin Data', viewer: 'Viewer', reviewer: 'Admin Data', ALLOCATED: 'Cadangan', RETIRED: 'Dipensiunkan', VOID: 'Void', DELETED: 'Dihapus', GTIN: 'GTIN produsen', INTERNAL: 'Barcode internal', legacy: 'SKU lama', DRAFT: 'Draft', DISCONTINUED: 'Discontinued', ARCHIVED: 'Diarsipkan', shopee: 'Shopee', tiktok: 'TikTok Shop', tokopedia: 'Tokopedia', beecloud: 'BeeCloud', lainnya: 'Kanal lain', unmapped: 'Belum dipetakan', MULTIPACK: 'Multipack', MIXED: 'Mixed bundle', REQUEST_MIX: 'Request mix', VIRTUAL: 'Virtual', PREASSEMBLED: 'Dirakit' };
+var STATUS_TXT = { ACTIVE: 'Aktif', INACTIVE: 'Nonaktif', allocated: 'Dialokasikan', assigned: 'Dipakai', retired: 'Dipensiunkan', void: 'Void', mapped: 'Dipetakan', exported: 'Diekspor', confirmed: 'Terkonfirmasi', mismatch: 'Tidak cocok', error: 'Error', admin: 'Admin', data_entry: 'Admin Data', viewer: 'Viewer', reviewer: 'Admin Data', ALLOCATED: 'Cadangan', RETIRED: 'Dipensiunkan', VOID: 'Void', DELETED: 'Dihapus', GTIN: 'GTIN produsen', INTERNAL: 'Barcode internal', legacy: 'SKU lama', DRAFT: 'Draft', DISCONTINUED: 'Discontinued', ARCHIVED: 'Diarsipkan', shopee: 'Shopee', tiktok: 'TikTok Shop', tokopedia: 'Tokopedia', beecloud: 'BeeCloud', lainnya: 'Kanal lain', unmapped: 'Belum dipetakan', MULTIPACK: 'Paket Produk Sama', MIXED: 'Paket Kombinasi', REQUEST_MIX: 'Paket Pilih Sendiri', VIRTUAL: 'Virtual', PREASSEMBLED: 'Dirakit' };
 function badge(s, txt) { return s ? '<span class="badge b-' + esc(s) + '">' + esc(txt || STATUS_TXT[s] || s) + '</span>' : ''; }
 function can(p) { return !!(App.me && App.me.permissions.indexOf(p) >= 0); }
 function cfg() { return (App.me && App.me.config) || {}; }
@@ -296,11 +296,11 @@ var NAV = [
   ['RINGKASAN', [['dashboard', 'Dashboard', 'grid'], ['quality', 'Data Quality', 'shield']]],
   ['PRODUK', [['register', 'Registrasi Produk', 'plus', 'product.write'], ['products', 'Master Produk', 'package'], ['scan', 'Cari SKU / Scan', 'scan']]],
   ['MASTER DATA', [['brands', 'Master Brand', 'tag'], ['categories', 'Master Kategori', 'layers']]],
-  ['OPERASIONAL', [['bundles', 'Packaging & Bundle', 'boxes'], ['mapping', 'Channel SKU Mapping', 'link'], ['barcodes', 'Registry Barcode', 'barcode']]],
+  ['OPERASIONAL', [['bundles', 'Paket & Kemasan', 'boxes'], ['mapping', 'Channel SKU Mapping', 'link'], ['barcodes', 'Registry Barcode', 'barcode']]],
   ['SISTEM', [['io', 'Import & Export', 'upload', 'export.run'], ['settings', 'Settings', 'sliders'], ['users', 'Pengguna', 'users', 'user.manage'], ['audit', 'Audit Log', 'activity', 'audit.read']]]
 ];
 /** Breadcrumb otomatis dari struktur menu: "Grup › Halaman". */
-var CRUMB_EXTRA = { product: ['PRODUK', 'Master Produk'], profile: ['AKUN', 'Profil'], bundle: ['OPERASIONAL', 'Packaging & Bundle'] };
+var CRUMB_EXTRA = { product: ['PRODUK', 'Master Produk'], profile: ['AKUN', 'Profil'], bundle: ['OPERASIONAL', 'Paket & Kemasan'] };
 function crumb(page) {
   if (CRUMB_EXTRA[page]) return CRUMB_EXTRA[page];
   for (var i = 0; i < NAV.length; i++) for (var j = 0; j < NAV[i][1].length; j++) if (NAV[i][1][j][0] === page) return [NAV[i][0], NAV[i][1][j][1]];
