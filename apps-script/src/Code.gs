@@ -46,6 +46,7 @@ const ROUTES = {
   'brand.rename': { perm: 'master.write', write: true, fn: (u, p) => brandRename_(u, p) },
   'brand.setStatus': { perm: 'master.write', write: true, fn: (u, p) => brandSetStatus_(u, p) },
   'brand.delete': { perm: 'master.write', write: true, fn: (u, p) => brandDelete_(u, p) },
+  'brand.deleteMany': { perm: 'master.write', write: true, fn: (u, p) => masterDeleteMany_(u, 'brand', p.ids) },
   'brand.importPreview': { perm: 'master.write', fn: (u, p) => masterImport_(u, 'brand', p, { dryRun: true }) },
   'brand.import': { perm: 'master.write', write: true, fn: (u, p) => masterImport_(u, 'brand', p) },
 
@@ -56,6 +57,7 @@ const ROUTES = {
   'category.rename': { perm: 'master.write', write: true, fn: (u, p) => categoryRename_(u, p) },
   'category.setStatus': { perm: 'master.write', write: true, fn: (u, p) => categorySetStatus_(u, p) },
   'category.delete': { perm: 'master.write', write: true, fn: (u, p) => categoryDelete_(u, p) },
+  'category.deleteMany': { perm: 'master.write', write: true, fn: (u, p) => masterDeleteMany_(u, 'category', p.ids) },
   'category.importPreview': { perm: 'master.write', fn: (u, p) => masterImport_(u, 'category', p, { dryRun: true }) },
   'category.import': { perm: 'master.write', write: true, fn: (u, p) => masterImport_(u, 'category', p) },
 
@@ -68,6 +70,7 @@ const ROUTES = {
   'product.validate': { perm: 'product.write', fn: (u, p) => productSave_(u, p.input, { dryRun: true }) },
   'product.save': { perm: 'product.write', write: true, fn: (u, p) => productSave_(u, p.input) },
   'product.setStatus': { perm: 'product.write', write: true, fn: (u, p) => productSetStatus_(u, p) },
+  'product.delete': { perm: 'product.write', write: true, fn: (u, p) => productDelete_(u, p) },
   'product.audit': { perm: 'product.read', fn: (u, p) => productAudit_(p.id) },
   'product.lifecycle': { perm: 'product.read', fn: (u, p) => lifecycleHistory_(p.id) },
   'variant.deprecate': { perm: 'product.write', write: true, fn: (u, p) => variantDeprecate_(u, p) },

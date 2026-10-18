@@ -15,7 +15,7 @@ function productRefs_(p) {
 
 function productDetail_(id) {
   const p = db_('MASTER_PRODUCTS').byId(id);
-  if (!p) throw new AppError('Produk tidak ditemukan', [], 'NOT_FOUND');
+  if (!p || p.Status === STATUS.DELETED) throw new AppError('Produk tidak ditemukan atau sudah dihapus', [], 'NOT_FOUND');
   const convs = groupBy_(
     db_('UNIT_CONVERSIONS')
       .filter((c) => c.ProductID === id && c.Status !== STATUS.DELETED)
@@ -126,7 +126,7 @@ function productIndex_() {
     .rows()
     .forEach((m) => m.ProductID && m.IsActive && (st(m.ProductID).text += ' ' + m.ExternalSku));
   const rows = db_('MASTER_PRODUCTS')
-    .rows()
+    .filter((p) => p.Status !== STATUS.DELETED)
     .map((p) => {
       const s = stats[p.ProductID] || { variants: 0, active: 0, withBarcode: 0, skus: 0, packs: 0, text: '' };
       const b = brands[p.BrandID] || {};
@@ -225,7 +225,7 @@ function similarProducts_(name, brandId, exceptId) {
   const threshold = Number(getSettings_().fuzzy_threshold) || 0.82;
   const key = normalizeName(name);
   return db_('MASTER_PRODUCTS')
-    .filter((p) => p.ProductID !== exceptId && (!brandId || p.BrandID === brandId))
+    .filter((p) => p.ProductID !== exceptId && p.Status !== STATUS.DELETED && (!brandId || p.BrandID === brandId))
     .map((p) => {
       const exact = p.NameKey === key;
       return { p, exact, score: exact ? 1 : nameSimilarity(name, p.ProductName) };
@@ -263,7 +263,7 @@ function productSave_(user, input, opts) {
   const V = db_('PRODUCT_VARIANTS');
   const C = db_('UNIT_CONVERSIONS');
   const existing = input.productId ? P.byId(input.productId) : null;
-  if (input.productId && !existing) throw new AppError('Produk tidak ditemukan', [], 'NOT_FOUND');
+  if (input.productId && (!existing || existing.Status === STATUS.DELETED)) throw new AppError('Produk tidak ditemukan atau sudah dihapus', [], 'NOT_FOUND');
   if (existing && input.version !== undefined && input.version !== null && Number(input.version) !== existing.Version)
     throw new AppError('Produk ini baru saja diubah oleh pengguna lain. Muat ulang lalu ulangi perubahan Anda.', [], 'STALE_VERSION');
   const collect = (fn) => {

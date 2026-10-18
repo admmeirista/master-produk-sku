@@ -33,7 +33,7 @@ function sellables_(opts) {
     const c = cats[p.CategoryID] || {};
     return { product_id: pid, product_code: p.ProductCode, legacy_code: p.LegacyCode || '', product_name: p.ProductName, product_status: p.Status, base_unit: p.BaseUnit, brand_name: b.BrandName, brand_code: b.BrandCode, category_name: c.CategoryName, category_code: c.CategoryCode };
   };
-  const ok = (...st) => (opts.statuses ? st.every((s) => opts.statuses[s]) : opts.includeInactive || st.every((s) => s === STATUS.ACTIVE));
+  const ok = (...st) => st.every((s) => s !== STATUS.DELETED) && (opts.statuses ? st.every((s) => opts.statuses[s]) : opts.includeInactive || st.every((s) => s === STATUS.ACTIVE));
   const attrText = (vid) => (attrs[vid] || []).map((a) => a.name + ': ' + a.value).join(', ');
   const dims = dimensionsByVariant_();
   const dimOf = (vid, unit) => (dims[vid] || []).find((d) => d.unit === unit) || {};

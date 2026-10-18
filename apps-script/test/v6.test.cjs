@@ -398,3 +398,53 @@ test('nama diketik huruf kecil semua → huruf awal kapital (satuan tetap kecil;
   assert.equal(f.name, 'Prlembab Wajaj dan Leher');
   assert.equal(G.ctx.properCase('eau de parfum 50 ml'), 'Eau de Parfum 50 ml');
 });
+
+test('hapus produk: hapus lunak, alasan wajib, GTIN dilepas & bisa dipakai lagi, kode tidak dipakai ulang', () => {
+  ok(call(T, 'brand.createMany', { names: ['Hapus Uji'], acknowledgeSimilar: true }));
+  const hb = ok(call(V, 'brand.list', {})).find((b) => b.name === 'Hapus Uji');
+  const p = save(T, { brandId: hb.id, categoryId: C.Toner.id, name: 'Produk Salah Input', baseUnit: 'PCS', acknowledgeSimilar: true, variants: [{ barcode: { mode: 'gtin', code: g(900) } }] });
+  fail(call(V, 'product.delete', { id: p.id, reason: 'salah input' }), 'FORBIDDEN');
+  fail(call(T, 'product.delete', { id: p.id, reason: '' }), 'VALIDATION_FAILED');
+  const r = ok(call(T, 'product.delete', { id: p.id, reason: 'salah input brand' }));
+  assert.equal(r.barcodesVoided, 1);
+  // tidak tampil lagi, tapi baris tetap ada di sheet (data historis tidak dihapus)
+  assert.ok(!ok(call(V, 'product.list', { status: 'all', pageSize: 500 })).rows.some((x) => x.id === p.id));
+  fail(call(V, 'product.get', { id: p.id }), 'NOT_FOUND');
+  assert.ok(rows('MASTER_PRODUCTS').some((x) => x[0] === p.id && x.indexOf('DELETED') >= 0));
+  assert.equal(ok(call(V, 'barcode.lookup', { code: g(900) })).found, false);
+  assert.equal(ok(call(V, 'brand.list', {})).find((b) => b.id === hb.id).productCount, 0);
+  fail(call(T, 'product.delete', { id: p.id, reason: 'hapus lagi' }), 'NOT_FOUND');
+  // GTIN yang dilepas boleh dipakai produk yang benar; kode PRD baru (tidak memakai ulang)
+  const q = save(T, { brandId: B.Wardah.id, categoryId: C.Toner.id, name: 'Produk Benar Uji Hapus', baseUnit: 'PCS', acknowledgeSimilar: true, variants: [{ barcode: { mode: 'gtin', code: g(900) } }] });
+  assert.notEqual(q.productCode, p.productCode);
+  assert.notEqual(q.variants[0].sku, p.variants[0].sku);
+  assert.equal(ok(call(V, 'barcode.lookup', { code: g(900) })).matches[0].productId, q.id);
+  // brand tanpa produk aktif bisa dihapus
+  ok(call(T, 'brand.delete', { id: hb.id }));
+  assert.ok(ok(call(T, 'audit.list', { pageSize: 50 })).rows.some((a) => a.action === 'product.delete'));
+});
+
+test('hapus produk ditolak bila masih dipakai paket', () => {
+  const p = save(T, simple('Wardah', 'Toner', 'Produk Komponen Paket Uji', null, { acknowledgeSimilar: true }));
+  ok(call(T, 'bundle.save', { type: 'MULTIPACK', name: 'Paket 3 Komponen Paket Uji', components: [{ variantId: p.variants[0].id, quantity: 3 }] }));
+  const e = fail(call(T, 'product.delete', { id: p.id, reason: 'coba hapus' }), 'IN_USE');
+  assert.match(e.message, /paket/);
+  assert.ok(ok(call(V, 'product.get', { id: p.id })).id);
+});
+
+test('brand/kategori: hapus massal — yang masih dipakai produk dilewati', () => {
+  ok(call(T, 'brand.createMany', { names: ['Massal A', 'Massal B', 'Massal C'], acknowledgeSimilar: true }));
+  const bl = ok(call(V, 'brand.list', {}));
+  const pick = ['Massal A', 'Massal B', 'Massal C'].map((n) => bl.find((b) => b.name === n));
+  save(T, { brandId: pick[2].id, categoryId: C.Toner.id, name: 'Produk Massal C', baseUnit: 'PCS', acknowledgeSimilar: true, variants: [{ barcode: { mode: 'none' } }] });
+  fail(call(V, 'brand.deleteMany', { ids: pick.map((b) => b.id) }), 'FORBIDDEN');
+  const res = ok(call(T, 'brand.deleteMany', { ids: pick.map((b) => b.id) }));
+  assert.deepEqual(res.deleted.sort(), ['Massal A', 'Massal B']);
+  assert.deepEqual(res.skipped.map((s) => s.name), ['Massal C']);
+  const after = ok(call(V, 'brand.list', {})).map((b) => b.name);
+  assert.ok(after.indexOf('Massal A') < 0 && after.indexOf('Massal C') >= 0);
+  ok(call(T, 'category.createMany', { names: ['Kat Massal 1', 'Kat Massal 2'], acknowledgeSimilar: true }));
+  const kl = ok(call(V, 'category.list', {})).filter((c) => /^Kat Massal/.test(c.name));
+  assert.equal(ok(call(T, 'category.deleteMany', { ids: kl.map((c) => c.id) })).deleted.length, 2);
+  fail(call(T, 'category.deleteMany', { ids: [] }));
+});

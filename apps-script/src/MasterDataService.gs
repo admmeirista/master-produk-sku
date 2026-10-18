@@ -26,7 +26,7 @@ function masterList_(kind, f) {
   f = f || {};
   const counts = {};
   db_('MASTER_PRODUCTS')
-    .rows()
+    .filter((p) => p.Status !== STATUS.DELETED)
     .forEach((p) => (counts[p[k.id]] = (counts[p[k.id]] || 0) + 1));
   return db_(k.table)
     .rows()
@@ -151,11 +151,32 @@ function masterDelete_(user, kind, id) {
   const k = masterCfg_(kind);
   const rec = db_(k.table).byId(id);
   if (!rec || rec.Status === STATUS.DELETED) throw new AppError(k.label + ' tidak ditemukan', [], 'NOT_FOUND');
-  const used = db_('MASTER_PRODUCTS').filter((p) => p[k.id] === id).length;
+  const used = db_('MASTER_PRODUCTS').filter((p) => p[k.id] === id && p.Status !== STATUS.DELETED).length;
   if (used) throw new AppError(`${k.label} ${rec[k.name]} dipakai ${used} produk sehingga tidak dapat dihapus. Nonaktifkan saja.`, [], 'IN_USE');
   db_(k.table).update(rec, { Status: STATUS.DELETED, UpdatedBy: user.email, UpdatedAt: now_() });
   audit_(user.email, kind + '.delete', kind, id, { name: rec[k.name], status: 'ACTIVE' }, { status: STATUS.DELETED });
   return true;
+}
+
+/** Hapus banyak brand/kategori sekaligus. Yang masih dipakai produk dilewati (dilaporkan), sisanya dihapus. */
+function masterDeleteMany_(user, kind, ids) {
+  const k = masterCfg_(kind);
+  ids = (ids || []).filter((x, i, a) => x && a.indexOf(x) === i);
+  if (!ids.length) throw new AppError('Pilih minimal satu ' + k.label.toLowerCase());
+  if (ids.length > 500) throw new AppError('Maksimal 500 data sekali hapus');
+  const deleted = [];
+  const skipped = [];
+  ids.forEach((id) => {
+    const rec = db_(k.table).byId(id);
+    try {
+      masterDelete_(user, kind, id);
+      deleted.push(rec[k.name]);
+    } catch (e) {
+      if (!(e instanceof AppError)) throw e;
+      skipped.push({ id, name: rec ? rec[k.name] : id, reason: e.code === 'IN_USE' ? 'masih dipakai produk' : e.message });
+    }
+  });
+  return { deleted, skipped };
 }
 
 /**

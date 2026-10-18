@@ -1,7 +1,8 @@
 /**
  * Lifecycle Parent SKU (MASTER_PRODUCTS), Child SKU (PRODUCT_VARIANTS) dan bundle (BUNDLE_MASTERS).
  * Transisi eksplisit di LIFECYCLE (Config.gs); setiap perubahan dicatat di PRODUCT_LIFECYCLE_HISTORY + AUDIT_LOGS.
- * Tidak ada hapus — Discontinued/Archived tetap tertelusur beserta mapping & barcode-nya.
+ * Hapus produk = hapus lunak (status Dihapus): baris tetap ada di sheet, tercatat di histori & audit; kode SKU tidak dipakai ulang.
+ * Produk yang sudah dipakai (mapping channel, komponen paket, mapping supplier) tidak bisa dihapus — arsipkan saja.
  */
 
 function lifecycleCheck_(from, to, reason, label) {
@@ -46,6 +47,58 @@ function productSetStatus_(user, input) {
     });
   audit_(user.email, 'product.status', 'product', p.ProductID, { status: from }, { status: to }, { reason: cleanText(input.reason) });
   return productDetail_(p.ProductID);
+}
+
+/** Alasan produk tidak boleh dihapus (kosong = boleh). */
+function productDeleteBlockers_(p) {
+  const out = [];
+  const maps = db_('EXTERNAL_SKU_MAPPINGS').filter((m) => m.ProductID === p.ProductID && m.IsActive);
+  if (maps.length) out.push(maps.length + ' mapping SKU channel/marketplace');
+  const vids = {};
+  db_('PRODUCT_VARIANTS').filter((v) => v.ProductID === p.ProductID).forEach((v) => (vids[v.VariantID] = 1));
+  const bundles = {};
+  db_('BUNDLE_COMPONENTS')
+    .filter((c) => vids[c.VariantID] && c.Status !== STATUS.DELETED)
+    .forEach((c) => {
+      const b = db_('BUNDLE_MASTERS').byId(c.BundleID);
+      if (b && b.Status !== STATUS.ARCHIVED && b.Status !== STATUS.DELETED) bundles[b.BundleSKU] = 1;
+    });
+  if (Object.keys(bundles).length) out.push('komponen paket ' + Object.keys(bundles).join(', '));
+  const sup = db_('SUPPLIER_PRODUCT_MAPPING').filter((m) => m.ProductID === p.ProductID && m.Status !== STATUS.DELETED && m.Status !== STATUS.INACTIVE);
+  if (sup.length) out.push(sup.length + ' mapping supplier');
+  return out;
+}
+
+/**
+ * Hapus produk (hapus lunak). Parent + seluruh Child SKU berstatus Dihapus; GTIN/barcode dibatalkan (VOID) sehingga GTIN yang
+ * salah input bisa didaftarkan lagi di produk yang benar. Kode PRD/SKU & nomor internal tidak dipakai ulang.
+ */
+function productDelete_(user, input) {
+  const p = db_('MASTER_PRODUCTS').byId(input && input.id);
+  if (!p || p.Status === STATUS.DELETED) throw new AppError('Produk tidak ditemukan atau sudah dihapus', [], 'NOT_FOUND');
+  const reason = cleanText(input.reason);
+  if (reason.length < 5) throw new AppError('Alasan hapus wajib diisi (min. 5 karakter)', [{ path: 'reason', message: 'Wajib' }], 'VALIDATION_FAILED');
+  const blockers = productDeleteBlockers_(p);
+  if (blockers.length)
+    throw new AppError('Produk ' + p.ProductName + ' tidak dapat dihapus karena masih dipakai: ' + blockers.join('; ') + '. Ubah statusnya menjadi Discontinued / Diarsipkan saja.', [], 'IN_USE');
+  const from = p.Status;
+  const variants = db_('PRODUCT_VARIANTS').filter((v) => v.ProductID === p.ProductID);
+  const voided = [];
+  db_('VARIANT_BARCODES')
+    .filter((b) => b.ProductID === p.ProductID && (b.Status === 'ACTIVE' || b.Status === 'ALLOCATED'))
+    .forEach((b) => {
+      voided.push(b.Code);
+      db_('VARIANT_BARCODES').update(b, { Status: 'VOID', RetiredBy: user.email, RetiredAt: now_(), Reason: (b.Reason ? b.Reason + ' | ' : '') + 'produk dihapus: ' + reason });
+    });
+  variants.forEach((v) => {
+    if (v.Status === STATUS.DELETED) return;
+    recordLifecycle_(user, 'variant', v.VariantID, p.ProductID, v.Status, STATUS.DELETED, 'Produk dihapus: ' + reason);
+    db_('PRODUCT_VARIANTS').update(v, { Status: STATUS.DELETED, UpdatedAt: now_() });
+  });
+  db_('MASTER_PRODUCTS').update(p, { Status: STATUS.DELETED, UpdatedBy: user.email, UpdatedAt: now_(), Version: (p.Version || 1) + 1 });
+  recordLifecycle_(user, 'product', p.ProductID, p.ProductID, from, STATUS.DELETED, reason);
+  audit_(user.email, 'product.delete', 'product', p.ProductID, { status: from, name: p.ProductName, code: p.ProductCode, skus: variants.map((v) => v.SKU) }, { status: STATUS.DELETED }, { reason, barcodesVoided: voided });
+  return { id: p.ProductID, productCode: p.ProductCode, name: p.ProductName, skus: variants.length, barcodesVoided: voided.length };
 }
 
 /** Ubah status satu Child SKU (tanpa menghapus — SKU & barcode tetap tercatat). */

@@ -144,12 +144,13 @@ Pages.products = function (main) {
           return '<div class="pcard' + (r.status !== 'ACTIVE' ? ' off' : '') + '" data-id="' + esc(r.id) + '"><div class="pc-top"><span class="sku">' + esc(r.productCode) + '</span>' + badge(r.status) + '</div>' +
             '<div class="pc-nm">' + esc(withBrand(r.brandName, r.name)) + '</div><div class="muted pc-sub">' + esc(r.categoryName) + ' · ' + r.variantCount + ' SKU produk</div>' +
             (r.complete ? '' : '<div style="margin-top:6px">' + badge('NONE', (r.activeVariants - r.withBarcode) + ' GTIN belum didata') + '</div>') +
-            '<div class="pc-act"><button class="btn sm" data-exp>' + icon('chevron') + 'Lihat SKU</button>' + (can('product.write') ? '<button class="btn sm ghost" data-edit>' + icon('edit') + 'Edit</button>' : '') + '</div><div class="pc-sk"></div></div>';
+            '<div class="pc-act"><button class="btn sm" data-exp>' + icon('chevron') + 'Lihat SKU</button>' + (can('product.write') ? '<button class="btn sm ghost" data-edit>' + icon('edit') + 'Edit</button><button class="btn sm ghost danger pc-del" data-delp title="Hapus produk">' + icon('trash') + '</button>' : '') + '</div><div class="pc-sk"></div></div>';
         }).join('') + '</div>' + pager(d, function (p2) { f.page = p2; load(); });
         $$('.pcard', box).forEach(function (c) {
           var id = c.getAttribute('data-id');
           $('.pc-nm', c).onclick = function () { App.go('product', id); };
           if ($('[data-edit]', c)) $('[data-edit]', c).onclick = function () { App.go('register', { productId: id }); };
+          if ($('[data-delp]', c)) $('[data-delp]', c).onclick = function () { var r = d.rows.find(function (x) { return x.id === id; }); deleteProduct({ id: id, name: withBrand(r.brandName, r.name), productCode: r.productCode, status: r.status }, load); };
           $('[data-exp]', c).onclick = function () {
             var sk = $('.pc-sk', c);
             if (sk.innerHTML) { sk.innerHTML = ''; return; }
@@ -168,7 +169,7 @@ Pages.products = function (main) {
             '<td class="sku nowrap">' + esc(r.productCode) + '</td><td><div class="pcell"><b>' + esc(r.name) + '</b>' + (r.legacyCode ? '<small>kode lama ' + esc(r.legacyCode) + '</small>' : '') + '</div></td>' +
             '<td>' + esc(r.brandName) + '</td><td>' + esc(r.categoryName) + '</td><td class="num">' + r.variantCount + (r.skuCount > r.variantCount ? ' <span class="muted">+' + (r.skuCount - r.variantCount) + ' kemasan</span>' : '') + '</td>' +
             '<td>' + (r.complete ? badge('GTIN', 'Lengkap') : badge('NONE', (r.activeVariants - r.withBarcode) + ' GTIN belum didata')) + '</td><td>' + badge(r.status) + '</td>' +
-            '<td><div class="ra"><button class="btn sm ghost" data-open title="Detail">' + icon('eye') + '</button>' + (can('product.write') ? '<button class="btn sm ghost" data-edit title="Edit">' + icon('edit') + '</button><button class="btn sm ghost" data-dup title="Duplikat produk">' + icon('copy') + '</button>' : '') + '</div></td></tr>';
+            '<td><div class="ra"><button class="btn sm ghost" data-open title="Detail">' + icon('eye') + '</button>' + (can('product.write') ? '<button class="btn sm ghost" data-edit title="Edit">' + icon('edit') + '</button><button class="btn sm ghost" data-dup title="Duplikat produk">' + icon('copy') + '</button><button class="btn sm ghost danger" data-delp title="Hapus produk">' + icon('trash') + '</button>' : '') + '</div></td></tr>';
         }).join('') + '</tbody></table></div>' + pager(d, function (p) { f.page = p; load(); });
       $$('tr[data-id]', box).forEach(function (tr) {
         var id = tr.getAttribute('data-id');
@@ -176,6 +177,7 @@ Pages.products = function (main) {
         $('[data-open]', tr).onclick = function () { App.go('product', id); };
         if ($('[data-edit]', tr)) $('[data-edit]', tr).onclick = function () { App.go('register', { productId: id }); };
         if ($('[data-dup]', tr)) $('[data-dup]', tr).onclick = function () { App.go('register', { duplicateOf: id }); };
+        if ($('[data-delp]', tr)) $('[data-delp]', tr).onclick = function () { var r = d.rows.find(function (x) { return x.id === id; }); deleteProduct({ id: id, name: withBrand(r.brandName, r.name), productCode: r.productCode, status: r.status }, load); };
         $('.pcell', tr).style.cursor = 'pointer'; $('.pcell', tr).onclick = function () { toggleDrawer(tr, id); };
       });
       $$('th[data-sort]', box).forEach(function (h) { h.onclick = function () { var k = h.getAttribute('data-sort'); f.dir = f.sort === k && f.dir === 'asc' ? 'desc' : 'asc'; f.sort = k; load(); }; });
@@ -237,7 +239,7 @@ Pages.product = function (main, id, tab) {
   tab = tab || 'variants';
   api('product.get', { id: id }).then(function (p) {
     var w = can('product.write');
-    var act = w ? (p.status !== 'ARCHIVED' ? '<button class="btn pri" id="ed">' + icon('edit') + 'Edit</button>' : '') + '<button class="btn" id="dp">' + icon('copy') + 'Duplikat</button><button class="btn" id="st">' + icon('power') + 'Ubah status</button>' : '';
+    var act = w ? (p.status !== 'ARCHIVED' ? '<button class="btn pri" id="ed">' + icon('edit') + 'Edit</button>' : '') + '<button class="btn" id="dp">' + icon('copy') + 'Duplikat</button><button class="btn" id="st">' + icon('power') + 'Ubah status</button><button class="btn danger" id="dl">' + icon('trash') + 'Hapus</button>' : '';
     var tabs = [['variants', 'Kode SKU Produk', p.variants.length], ['packs', 'Kemasan & Logistik'], ['channels', 'Kanal'], ['bundles', 'Bundle'], ['history', 'Riwayat']];
     main.innerHTML = '<button class="back" id="bk">' + icon('arrowLeft') + 'Master Produk</button>' +
       '<div class="dt-head">' + (p.imageUrl ? '<img class="thumb" src="' + esc(p.imageUrl) + '" alt="" onerror="this.remove()">' : '') + '<div class="grow"><div class="eyebrow">Kode Produk Induk ' + esc(p.productCode) + (p.legacyCode ? ' · kode lama ' + esc(p.legacyCode) : '') + '</div><h2>' + esc(p.displayName || p.name) + '</h2><div class="dt-meta">' + badge(p.status) +
@@ -248,6 +250,7 @@ Pages.product = function (main, id, tab) {
     $$('[data-tab]', main).forEach(function (a) { a.onclick = function () { App.go('product', { id: p.id, tab: a.getAttribute('data-tab') }); }; });
     if ($('#ed', main)) $('#ed', main).onclick = function () { App.go('register', { productId: p.id }); };
     if ($('#dp', main)) $('#dp', main).onclick = function () { App.go('register', { duplicateOf: p.id }); };
+    if ($('#dl', main)) $('#dl', main).onclick = function () { deleteProduct({ id: p.id, name: p.displayName || p.name, productCode: p.productCode, status: p.status }, function () { App.go('products', null, { force: true }); }); };
     if ($('#st', main)) $('#st', main).onclick = function () {
       lifecyclePrompt(p.name, p.status).then(function (v) { if (!v) return; api('product.setStatus', { id: p.id, status: v.status, reason: v.reason }).then(function () { toast('Status produk: ' + (STATUS_TXT[v.status] || v.status), 'ok'); App.go('product', { id: p.id, tab: tab }); }).catch(function () {}); });
     };
@@ -338,6 +341,23 @@ function bindCalc(root, variants, unit) {
   fillUnits();
 }
 
+/** Hapus produk: alasan wajib; server menolak bila produk masih dipakai (mapping channel, paket, supplier). */
+function deleteProduct(p, after) {
+  var live = p.status !== 'DRAFT';
+  promptText('Hapus produk?', 'Alasan hapus (wajib, min. 5 karakter)', {
+    danger: true, ok: 'Hapus produk', min: 5, multiline: false, value: '',
+    html: '<div class="del-info"><b>' + esc(p.name) + '</b><div class="muted">' + esc(p.productCode) + '</div></div>' +
+      '<ul class="del-list"><li>Produk & semua Kode SKU Produk-nya hilang dari daftar, pencarian, dan ekspor.</li><li>GTIN-nya dilepas sehingga bisa didaftarkan lagi di produk yang benar.</li><li>Kode PRD / SKU tidak dipakai ulang. Riwayat tetap tersimpan di Audit Log.</li></ul>' +
+      (live ? '<div class="warn-box" style="margin-top:8px">' + icon('alert') + '<span>Produk ini sudah <b>' + esc(STATUS_TXT[p.status] || p.status) + '</b>. Bila SKU-nya sudah dipakai di POS / marketplace, lebih aman <b>Ubah status → Discontinued / Diarsipkan</b>.</span></div>' : '')
+  }).then(function (reason) {
+    if (!reason) return;
+    api('product.delete', { id: p.id, reason: reason }).then(function (r) {
+      toast(p.name + ' dihapus' + (r.barcodesVoided ? ' · ' + r.barcodesVoided + ' barcode dilepas' : ''), 'ok');
+      if (after) after();
+    }).catch(function () {});
+  });
+}
+
 /* ───────── Master Brand & Master Kategori ───────── */
 Pages.brands = function (main) { masterPage(main, 'brand'); };
 Pages.categories = function (main) { masterPage(main, 'category'); };
@@ -348,16 +368,42 @@ function masterPage(main, kind) {
   main.innerHTML = pageHead('Master data', L.t, w ? '<button class="btn" id="upx">' + icon('upload') + 'Upload Excel</button><button class="btn" id="bulk">' + icon('list') + 'Tambah banyak</button>' : '') +
     (w ? '<div class="card" style="margin-bottom:16px"><div class="add-card"><div><label class="f" style="margin-top:0">Nama ' + (kind === 'brand' ? 'Brand' : 'Kategori') + ' <span class="req">*</span></label><input class="in w100" id="nm" placeholder="Ketik nama ' + L.one + ', lalu Enter" maxlength="60" autocomplete="off"></div>' +
       '<button class="btn pri" id="sv" style="height:40px">' + icon('plus') + 'Simpan</button></div><div id="pw"></div></div>' : '') +
-    '<div class="toolbar"><div class="search">' + icon('search') + '<input class="in" id="q" placeholder="Cari nama…"></div><div class="seg" id="sg"><button data-s="ACTIVE" class="on">Aktif</button><button data-s="INACTIVE">Nonaktif</button><button data-s="">Semua</button></div><span class="muted right" id="cnt"></span></div><div id="ml">' + loadingBox() + '</div>';
-  var rows = [];
+    '<div class="toolbar"><div class="search">' + icon('search') + '<input class="in" id="q" placeholder="Cari nama…"></div><div class="seg" id="sg"><button data-s="ACTIVE" class="on">Aktif</button><button data-s="INACTIVE">Nonaktif</button><button data-s="">Semua</button></div>' + (w ? '<label class="chk-all"><input type="checkbox" id="ca"> Pilih semua</label>' : '') + '<span class="muted right" id="cnt"></span></div><div id="bb"></div><div id="ml">' + loadingBox() + '</div>';
+  var rows = [], cur = [], sel = {};
+  var selIds = function () { return Object.keys(sel).filter(function (id) { return rows.some(function (r) { return r.id === id; }); }); };
+  var bar = function () {
+    var ids = selIds(), ca = $('#ca', main);
+    if (ca) { var on = cur.filter(function (r) { return sel[r.id]; }).length; ca.checked = !!cur.length && on === cur.length; ca.indeterminate = on > 0 && on < cur.length; }
+    $('#bb', main).innerHTML = ids.length ? '<div class="bulkbar"><b>' + ids.length + ' dipilih</b><button class="btn sm danger" id="bdel">' + icon('trash') + 'Hapus terpilih</button><button class="btn sm ghost" id="bclr">Batal pilih</button></div>' : '';
+    if (!ids.length) return;
+    $('#bclr', main).onclick = function () { sel = {}; render(); };
+    $('#bdel', main).onclick = function () {
+      var picked = rows.filter(function (r) { return sel[r.id]; }), used = picked.filter(function (r) { return r.productCount; });
+      ask('Hapus ' + picked.length + ' ' + L.one + ' terpilih?' + (used.length ? ' ' + used.length + ' di antaranya masih dipakai produk dan akan dilewati (nonaktifkan saja).' : '') + ' Data tetap tercatat di audit log.', 'Hapus ' + (picked.length - used.length), true).then(function (y) {
+        if (!y) return;
+        busy($('#bdel', main), api(kind + '.deleteMany', { ids: picked.map(function (r) { return r.id; }) })).then(function (res) {
+          sel = {};
+          toast(res.deleted.length + ' ' + L.one + ' dihapus' + (res.skipped.length ? ', ' + res.skipped.length + ' dilewati' : ''), res.skipped.length ? 'warn' : 'ok', 6000);
+          if (res.skipped.length) modal('<h3>' + res.skipped.length + ' ' + L.one + ' tidak dihapus</h3><div class="muted" style="margin-bottom:10px">Masih dipakai produk. Nonaktifkan saja agar tidak dipilih di registrasi baru.</div><ul class="skip-list">' + res.skipped.map(function (s) { return '<li><b>' + esc(s.name) + '</b> — ' + esc(s.reason) + '</li>'; }).join('') + '</ul><div class="row" style="margin-top:14px"><button class="btn" data-close>Tutup</button></div>');
+          reload();
+        }).catch(function () {});
+      });
+    };
+  };
   var render = function () {
     var list = filterLocal(rows.filter(function (r) { return !f.status || r.status === f.status; }), f.q, ['name']);
+    cur = list;
     $('#cnt', main).textContent = list.length + ' dari ' + rows.length + ' ' + L.one;
-    $('#ml', main).innerHTML = list.length ? '<div class="tablewrap"><table class="t compact"><thead><tr><th>Nama</th><th class="num">Produk</th><th>Status</th><th>Dibuat</th>' + (w ? '<th></th>' : '') + '</tr></thead><tbody>' + list.map(function (r) {
-      return '<tr' + (r.status !== 'ACTIVE' ? ' class="off"' : '') + '><td><b>' + esc(r.name) + '</b></td><td class="num">' + r.productCount + '</td><td>' + badge(r.status) + '</td><td class="nowrap muted">' + fmtDate(r.createdAt, false) + '</td>' +
+    $('#ml', main).innerHTML = list.length ? '<div class="tablewrap"><table class="t compact"><thead><tr>' + (w ? '<th class="ck"><input type="checkbox" id="cah" title="Pilih semua"></th>' : '') + '<th>Nama</th><th class="num">Produk</th><th>Status</th><th>Dibuat</th>' + (w ? '<th></th>' : '') + '</tr></thead><tbody>' + list.map(function (r) {
+      return '<tr' + (r.status !== 'ACTIVE' ? ' class="off"' : '') + '>' + (w ? '<td class="ck"><input type="checkbox" data-ck="' + esc(r.id) + '"' + (sel[r.id] ? ' checked' : '') + ' aria-label="Pilih ' + esc(r.name) + '"></td>' : '') + '<td class="nm"><b>' + esc(r.name) + '</b></td><td class="num">' + r.productCount + '</td><td>' + badge(r.status) + '</td><td class="nowrap muted">' + fmtDate(r.createdAt, false) + '</td>' +
         (w ? '<td class="nowrap"><div class="ra"><button class="btn sm" data-rn="' + esc(r.id) + '">' + icon('edit') + 'Ubah nama</button><button class="btn sm ghost" data-st="' + esc(r.id) + '">' + (r.status === 'ACTIVE' ? 'Nonaktifkan' : 'Aktifkan') + '</button>' +
           (r.productCount ? '' : '<button class="btn sm ghost" data-del="' + esc(r.id) + '" title="Hapus (belum dipakai produk)">' + icon('trash') + '</button>') + '</div></td>' : '') + '</tr>';
     }).join('') + '</tbody></table></div>' : '<div class="tablewrap">' + emptyBox(rows.length ? 'Tidak ada yang cocok' : 'Belum ada ' + L.one, rows.length ? '' : 'Tambahkan ' + L.one + ' pertama di atas.', kind === 'brand' ? 'tag' : 'layers') + '</div>';
+    $$('[data-ck]', main).forEach(function (c) { c.onchange = function () { var id = c.getAttribute('data-ck'); if (c.checked) sel[id] = 1; else delete sel[id]; c.closest('tr').classList.toggle('sel', c.checked); bar(); }; c.closest('tr').classList.toggle('sel', c.checked); });
+    var all = function (on) { cur.forEach(function (r) { if (on) sel[r.id] = 1; else delete sel[r.id]; }); render(); };
+    if ($('#ca', main)) $('#ca', main).onchange = function (e) { all(e.target.checked); };
+    if ($('#cah', main)) { $('#cah', main).checked = !!cur.length && cur.every(function (r) { return sel[r.id]; }); $('#cah', main).onchange = function (e) { all(e.target.checked); }; }
+    bar();
     $$('[data-rn]', main).forEach(function (b) { b.onclick = function () { rename(rows.find(function (r) { return r.id === b.getAttribute('data-rn'); })); }; });
     $$('[data-st]', main).forEach(function (b) {
       b.onclick = function () {
@@ -371,7 +417,7 @@ function masterPage(main, kind) {
       b.onclick = function () {
         var r = rows.find(function (x) { return x.id === b.getAttribute('data-del'); });
         ask('Hapus ' + r.name + '? Hanya bisa karena belum dipakai produk.', 'Hapus', true).then(function (y) {
-          if (y) busy(b, api(kind + '.delete', { id: r.id })).then(function () { toast(r.name + ' dihapus', 'ok'); reload(); }).catch(function () {});
+          if (y) busy(b, api(kind + '.delete', { id: r.id })).then(function () { delete sel[r.id]; toast(r.name + ' dihapus', 'ok'); reload(); }).catch(function () {});
         });
       };
     });

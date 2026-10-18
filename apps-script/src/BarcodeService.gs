@@ -169,9 +169,9 @@ function barcodeLookup_(raw) {
     if (seen[key]) return;
     seen[key] = 1;
     const v = db_('PRODUCT_VARIANTS').byId(variantId);
-    if (!v) return;
+    if (!v || v.Status === STATUS.DELETED) return;
     const p = db_('MASTER_PRODUCTS').byId(v.ProductID);
-    if (!p) return;
+    if (!p || p.Status === STATUS.DELETED) return;
     const b = db_('MASTER_BRANDS').byId(p.BrandID) || {};
     const c = conversionId ? db_('UNIT_CONVERSIONS').byId(conversionId) : null;
     matches.push(Object.assign({ via, productId: p.ProductID, productCode: p.ProductCode, parentSku: p.ProductCode, productName: p.ProductName, productStatus: p.Status, brandName: b.BrandName, variantId: v.VariantID, variantName: v.IsDefault ? '' : v.VariantName, skuName: variantDisplayName_(v) || cleanText(p.ProductName + ' ' + (v.IsDefault ? '' : v.VariantName)), imageUrl: v.ImageUrl || '', variantStatus: v.Status, sku: v.SKU, childSku: c && c.SKU ? c.SKU : v.SKU, gtin: v.GTIN, internalBarcode: v.InternalBarcode, baseUnit: v.BaseUnit || p.BaseUnit, conversion: c ? { unitName: c.UnitName, baseUnitEquivalent: c.BaseUnitEquivalent, sku: c.SKU, gtin: c.GTIN, internalBarcode: c.InternalBarcode } : null }, extra || {}));
@@ -223,7 +223,7 @@ function barcodeLookup_(raw) {
     db_('PRODUCT_VARIANTS')
       .filter((v) => {
         const p = prods[v.ProductID];
-        if (!p) return false;
+        if (!p || p.Status === STATUS.DELETED || v.Status === STATUS.DELETED) return false;
         const text = ' ' + normalizeName([variantDisplayName_(v), (brands[p.BrandID] || {}).BrandName, p.ProductName, v.VariantName].join(' ')) + ' ';
         return words.every((w) => text.indexOf(w) >= 0);
       })
