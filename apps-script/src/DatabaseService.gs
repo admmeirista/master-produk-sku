@@ -329,26 +329,31 @@ function peekSeq_(name) {
   return rec ? Number(rec.Value) || 1 : 1;
 }
 
+/** Produk lain yang sudah memakai Parent SKU ini (null bila tersedia). */
+function parentSkuOwner_(sku, exceptProductId) {
+  const up = String(sku).toUpperCase();
+  return db_('MASTER_PRODUCTS').find((p) => p.ProductID !== exceptProductId && String(p.ProductCode).toUpperCase() === up) || null;
+}
+
+/** Kode parent pertama yang membuat Parent SKU unik: KODE, KODEB, KODEC, … (untuk usulan otomatis & import). */
+function uniqueParentCode_(brand, cat, base, exceptProductId) {
+  const b = cleanParentCode(base) || 'PRD';
+  const cands = [b].concat('BCDEFGHJKLMNPQRSTUVWXYZ'.split('').map((x) => (b + x).slice(-10)));
+  for (let i = 2; i < 1000; i++) cands.push((b.slice(0, 10 - String(i).length) + i));
+  const hit = cands.find((c) => !parentSkuOwner_(buildParentSku(brand.BrandCode, cat.CategoryCode, c), exceptProductId));
+  if (!hit) throw new AppError('Tidak menemukan kode produk parent yang tersedia');
+  return hit;
+}
+
 /**
- * Parent SKU baru BRAND-KATEGORI-0001. Nomor parent diambil dari counter parent_no di dalam lock (tidak pernah
- * dialokasikan ulang, termasuk bila produknya kemudian diarsipkan). Parent SKU yang sudah ada dilewati.
+ * Parent SKU baru BRAND-KATEGORI-KODEPRODUK. Kode produk dipilih user (diusulkan dari nama) dan harus membuat
+ * Parent SKU unik. ProductNo = nomor urut internal (counter parent_no, tidak masuk SKU).
  */
-function allocateParentSku_(brand, cat) {
-  const used = {};
-  const usedNo = {};
-  db_('MASTER_PRODUCTS')
-    .rows()
-    .forEach((p) => {
-      used[String(p.ProductCode).toUpperCase()] = 1;
-      if (p.ParentCode) usedNo[Number(p.ParentCode)] = 1;
-    });
-  for (let guard = 0; guard < 100000; guard++) {
-    const no = nextSeq_('parent_no');
-    const code = buildParentSku(brand.BrandCode, cat.CategoryCode, no);
-    // nomor parent unik global (lintas brand/kategori) & tidak pernah dialokasikan ulang
-    if (!used[code] && !usedNo[no]) return { no, parentCode: String(no).padStart(PARENT_CODE_DIGITS, '0'), code };
-  }
-  throw new AppError('Tidak menemukan kode parent kosong');
+function allocateParentSku_(brand, cat, parentCode) {
+  const code = buildParentSku(brand.BrandCode, cat.CategoryCode, parentCode);
+  const owner = parentSkuOwner_(code);
+  if (owner) throw new AppError(`Parent SKU ${code} sudah dipakai "${owner.ProductName}"`, [{ path: 'parentCode', message: `Sudah dipakai produk "${owner.ProductName}" — ganti kode produk`, code: 'DUPLICATE' }], 'VALIDATION_FAILED');
+  return { no: nextSeq_('parent_no'), parentCode: cleanParentCode(parentCode), code };
 }
 
 /** SKU internal format lama (SKU000456) — hanya untuk migrasi data lama. */

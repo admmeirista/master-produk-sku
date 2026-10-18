@@ -92,14 +92,21 @@ test('[T16][T17][T18] import Master Brand & Kategori dari XLSX: pratinjau, kode 
 const HAN = () => ids.Hanasui.id;
 const PLB = () => ids['Pelembab Wajah'].id;
 
-test('[T1][T2] Parent baru: pratinjau tidak mereservasi data, Parent SKU = BRAND-KATEGORI-0001 & non-stockable', () => {
+test('[T1][T2] Parent baru: Kode Produk Parent diusulkan dari nama (huruf), boleh diubah; pratinjau tidak menulis data', () => {
   const catCode = ids['Pelembab Wajah'].code;
   const pv = ok(call(T, 'product.parentPreview', { brandId: HAN(), categoryId: PLB(), name: 'Pelembab Wajah' }));
-  assert.equal(pv.parentSku, `HAN-${catCode}-0001`);
+  assert.equal(pv.parentCode, 'PW');
+  assert.equal(pv.parentSku, `HAN-${catCode}-PW`);
   assert.equal(pv.displayName, 'Hanasui Pelembab Wajah');
   assert.equal(rows('MASTER_PRODUCTS').length, 0, 'membatalkan registrasi tidak meninggalkan record Parent');
-  ok(call(T, 'product.parentPreview', { brandId: HAN(), categoryId: PLB() }));
-  assert.equal(ok(call(T, 'product.parentPreview', { brandId: HAN(), categoryId: PLB() })).parentCode, '0001', 'pratinjau tidak menaikkan nomor');
+  // usulan mengikuti contoh toko; kode boleh diketik sendiri
+  assert.equal(ok(call(T, 'product.parentPreview', { brandId: HAN(), categoryId: PLB(), name: 'Styling Cream Natural & Moisture' })).parentCode, 'SCN');
+  assert.equal(ok(call(T, 'product.parentPreview', { brandId: HAN(), categoryId: PLB(), name: 'Air Mawar 10 ml' })).parentCode, 'AM10');
+  const typed = ok(call(T, 'product.parentPreview', { brandId: HAN(), categoryId: PLB(), name: 'x', parentCode: 'gsg-30' }));
+  assert.deepEqual([typed.parentCode, typed.parentSku, typed.error], ['GSG30', `HAN-${catCode}-GSG30`, '']);
+  assert.ok(ok(call(T, 'product.parentPreview', { brandId: HAN(), categoryId: PLB(), parentCode: '1234' })).error.includes('huruf'), 'tidak boleh hanya angka');
+  fail(call(T, 'product.save', { input: { brandId: HAN(), categoryId: PLB(), name: 'Uji', parentCode: '0001', baseUnit: 'PCS', variants: [{ barcode: { mode: 'internal' } }] } }), 'VALIDATION_FAILED');
+  assert.equal(rows('MASTER_PRODUCTS').length, 0);
 });
 
 const g = (n) => gtin('8991234' + String(n).padStart(5, '0'));
@@ -109,8 +116,8 @@ test('[T4][T5][T10] kombinasi Warna × Volume: 4 Child SKU, SKU = Parent SKU + G
   const d = ok(call(T, 'product.save', { input: { brandId: HAN(), categoryId: PLB(), name: 'Pelembab Wajah', baseUnit: 'PCS', variants: combos.map(([w, v], i) => ({ attributes: [{ name: 'Volume', value: v }, { name: 'Warna', value: w }], barcode: { mode: 'gtin', code: g(i + 1) } })) } }));
   ids.han = d;
   const catCode = ids['Pelembab Wajah'].code;
-  assert.equal(d.productCode, `HAN-${catCode}-0001`);
-  assert.equal(d.parentCode, '0001');
+  assert.equal(d.productCode, `HAN-${catCode}-PW`);
+  assert.equal(d.parentCode, 'PW');
   assert.equal(d.stockable, false, 'Parent non-stockable');
   assert.deepEqual(
     d.variants.map((v) => v.skuName),
@@ -129,9 +136,12 @@ test('[T4][T5][T10] kombinasi Warna × Volume: 4 Child SKU, SKU = Parent SKU + G
   assert.deepEqual([bc[2], bc[4]], ['GTIN', 'ACTIVE']);
   // relasi memakai ID internal, bukan string SKU
   assert.equal(bc[6], d.variants[0].id);
-  // parent SKU kedua: nomor berikutnya
-  const pv = ok(call(T, 'product.parentPreview', { brandId: HAN(), categoryId: PLB() }));
-  assert.equal(pv.parentCode, '0002');
+  // nama sama → usulan kode berikutnya yang masih tersedia; kode yang sudah dipakai ditolak
+  const pv = ok(call(T, 'product.parentPreview', { brandId: HAN(), categoryId: PLB(), name: 'Pelembab Wajah' }));
+  assert.equal(pv.parentCode, 'PWB');
+  assert.equal(ok(call(T, 'product.parentPreview', { brandId: HAN(), categoryId: PLB(), parentCode: 'PW' })).taken.name, 'Pelembab Wajah');
+  const dupe = fail(call(T, 'product.save', { input: { brandId: HAN(), categoryId: PLB(), name: 'Toner Wajah', parentCode: 'pw', baseUnit: 'PCS', acknowledgeSimilar: true, variants: [{ barcode: { mode: 'internal' } }] } }), 'VALIDATION_FAILED');
+  assert.equal(dupe.details[0].path, 'parentCode');
 });
 
 test('[T3][T6] produk tanpa varian & tanpa GTIN: satu Child SKU default dengan barcode internal otomatis', () => {
@@ -389,9 +399,28 @@ test('pembaruan struktur otomatis: setelah kode baru di-push, permintaan pertama
   assert.ok(list.total > 0, 'data lama tetap ada');
   assert.ok(G.sheets.get('PRODUCT_DIMENSIONS'), 'tab baru dibuat otomatis');
   assert.deepEqual(G.sheets.get('PRODUCT_DIMENSIONS').data[0].slice(0, 4), ['DimensionID', 'VariantID', 'ProductID', 'PackagingUnit']);
-  assert.equal(Number(seq.data.find((r) => r[0] === 'parent_no')[1]), Number(before[1]), 'penghitung dibuat ulang mulai setelah kode parent tertinggi');
+  assert.equal(Number(seq.data.find((r) => r[0] === 'parent_no')[1]), Number(before[1]), 'penghitung dibuat ulang mulai setelah nomor urut tertinggi');
   assert.equal(G.ctx.PropertiesService.getScriptProperties().getProperty('schema_fp'), G.ctx.schemaFingerprint_());
   // permintaan berikutnya tidak menjalankan pembaruan lagi
   assert.equal(G.ctx.autoSchema_(), false);
   void before;
+});
+
+test('foto per Child SKU: link https tersimpan, tampil di lookup & ekspor; link tidak aman ditolak', () => {
+  const d = ok(call(V, 'product.get', { id: ids.pur.id }));
+  const url = 'https://cf.shopee.co.id/file/id-11134207-822wt-mlr01rub8bnlaa';
+  const x = toInput(d);
+  x.variants[0].imageUrl = 'http://contoh.local/foto.jpg';
+  assert.equal(fail(call(T, 'product.save', { input: x }), 'VALIDATION_FAILED').details[0].path, 'variants.0.imageUrl');
+  x.variants[0].imageUrl = url;
+  const d2 = ok(call(T, 'product.save', { input: x }));
+  assert.equal(d2.variants[0].imageUrl, url);
+  assert.equal(d2.variants[0].sku, d.variants[0].sku, 'foto tidak mengubah SKU');
+  assert.equal(ok(call(V, 'barcode.lookup', { code: d2.variants[0].sku })).matches[0].imageUrl, url);
+  const master = ok(call(T, 'export.data', { kind: 'master' }));
+  assert.equal(master.rows.find((r) => r[1] === d2.variants[0].sku)[master.headers.indexOf('Foto')], url);
+  // edit tanpa mengirim foto → foto tetap
+  const y = toInput(d2);
+  delete y.variants[0].imageUrl;
+  assert.equal(ok(call(T, 'product.save', { input: y })).variants[0].imageUrl, url);
 });

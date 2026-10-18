@@ -266,9 +266,52 @@ function buildSkuName(brandName, parentName, attrs, types) {
     .slice(0, 200);
 }
 
-/** Parent SKU dari kode brand, kode kategori, dan nomor parent (0001). */
-function buildParentSku(brandCode, categoryCode, parentNo) {
-  return [normalizeCode(brandCode), normalizeCode(categoryCode), String(parentNo).padStart(PARENT_CODE_DIGITS, '0')].join('-');
+const PARENT_CODE_STOPWORDS_ = { DAN: 1, AND: 1, WITH: 1, UNTUK: 1, FOR: 1, THE: 1, OF: 1, DENGAN: 1, DI: 1, KE: 1, YANG: 1, ISI: 1, NEW: 1 };
+
+/**
+ * Usulan Kode Produk Parent dari nama: huruf awal tiap kata (tanpa kata brand & kata sambung, maks. 3 huruf)
+ * + angka ukuran bila ada di nama. Contoh: "Johnny Andrean Styling Cream Natural & Moisture" → SCN,
+ * "Gatsby Pomade Supreme Grease 30 g" → PSG30, "Air Mawar 100 ml" → AM100. Hanya usulan — user boleh mengubah.
+ */
+function suggestParentCode(name, brandName) {
+  const up = asciiUpper_(formatAttrValue(name));
+  let words = up.split(/[^A-Z0-9,.]+/).filter(Boolean);
+  const bw = asciiUpper_(brandName).split(/[^A-Z0-9]+/).filter(Boolean);
+  if (bw.length && bw.every((w, i) => words[i] === w)) words = words.slice(bw.length);
+  let size = '';
+  const sized = [];
+  words.forEach((w, i) => {
+    const unit = words[i + 1] || '';
+    if (/^\d+([.,]\d+)?$/.test(w) && /^(ML|L|G|KG|MG|OZ|PCS|GR|GRAM|LITER)$/.test(unit)) {
+      if (!size) size = w.replace(/[.,]/g, '');
+      sized.push(i, i + 1);
+    } else if (/^\d+([.,]\d+)?(ML|L|G|KG|MG|OZ|GR)$/.test(w)) {
+      if (!size) size = w.replace(/[^0-9]/g, '');
+      sized.push(i);
+    }
+  });
+  const letters = words.filter((w, i) => sized.indexOf(i) < 0 && /[A-Z]/.test(w) && !PARENT_CODE_STOPWORDS_[w.replace(/[^A-Z]/g, '')]).map((w) => w.replace(/[^A-Z0-9]/g, '')).filter(Boolean);
+  let code = letters.map((w) => w[0]).join('').slice(0, 3);
+  if (code.length < 2 && letters.length) code = letters[0].replace(/[^A-Z]/g, '').slice(0, 3);
+  if (!code) code = 'PRD';
+  return (code + size).slice(0, 10);
+}
+
+/** Validasi Kode Produk Parent: 2–10 huruf/angka, minimal satu huruf (bukan hanya angka). */
+function cleanParentCode(code) {
+  return normalizeCode(code).slice(0, 10);
+}
+function parentCodeError(code) {
+  if (!code) return 'Kode produk parent wajib diisi';
+  if (code.length < 2) return 'Kode produk parent minimal 2 karakter';
+  if (!/[A-Z]/.test(code)) return 'Kode produk parent harus mengandung huruf (tidak boleh hanya angka)';
+  return '';
+}
+
+/** Parent SKU = KODE BRAND-KODE KATEGORI-KODE PRODUK PARENT (data lama: nomor 0001 tetap berlaku). */
+function buildParentSku(brandCode, categoryCode, parentCode) {
+  const pc = typeof parentCode === 'number' ? String(parentCode).padStart(PARENT_CODE_DIGITS, '0') : cleanParentCode(parentCode);
+  return [normalizeCode(brandCode), normalizeCode(categoryCode), pc].join('-');
 }
 
 /** Child SKU = Parent SKU + "-" + barcode (GTIN atau barcode internal). */

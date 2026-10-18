@@ -82,10 +82,10 @@ const quick = (o) => Object.assign({ brandId: ids.VIV, categoryId: ids.cTON, nam
 test('[AC-1][AC-6][AC-13] Quick Entry satu varian: kode produk, SKU, varian default otomatis; tanpa BOX', () => {
   const d = ok(call(entry, 'product.save', { input: quick() }));
   ids.viva = d.id;
-  assert.equal(d.productCode, 'VIV-TON-0001', 'Parent SKU = BRAND-KATEGORI-0001');
+  assert.equal(d.productCode, 'VIV-TON-AM100', 'Parent SKU = BRAND-KATEGORI-KODEPRODUK (usulan dari nama)');
   assert.equal(d.variants.length, 1);
   assert.equal(d.variants[0].isDefault, true);
-  assert.equal(d.variants[0].sku, 'VIV-TON-0001-8992796011501', 'Child SKU = Parent SKU + GTIN');
+  assert.equal(d.variants[0].sku, 'VIV-TON-AM100-8992796011501', 'Child SKU = Parent SKU + GTIN');
   assert.equal(d.variants[0].gtin, '8992796011501');
   assert.deepEqual(d.variants[0].conversions.map((c) => c.unitName), ['BOTOL']);
   // barcode tersimpan sebagai teks
@@ -388,8 +388,8 @@ test('migrasi v2 → v3: barcode, mapping, penghitung & audit dipindahkan; SKU v
   assert.equal(api('mapping.list', { system: 'shopee' }).rows[0].internalSku, 'SCA-PAR-PEDP-OB50');
   // produk baru melanjutkan penghitung lama & barcode internal tidak bentrok
   const np = api('product.save', { input: { brandId: 'b1', categoryId: 'c1', name: 'Parfum Roll On', baseUnit: 'BOTOL', variants: [{ barcode: { mode: 'internal' } }] } });
-  assert.equal(np.productCode, 'SCA-PAR-0001', 'produk baru memakai format Parent SKU v5');
-  assert.equal(np.variants[0].sku, 'SCA-PAR-0001-2000000000060');
+  assert.equal(np.productCode, 'SCA-PAR-PRO', 'produk baru memakai format Parent SKU v5');
+  assert.equal(np.variants[0].sku, 'SCA-PAR-PRO-2000000000060');
   assert.equal(np.variants[0].internalBarcode, '2000000000060');
   assert.equal(L.sheets.get('BARCODE_REGISTRY').data.length, 4, 'tab lama tetap utuh');
   const again = JSON.parse(JSON.stringify(L.ctx.setup())).migration;
@@ -421,9 +421,9 @@ test('migrasi v1 → v5: SKU lama jadi legacy SKU, Child SKU = Parent SKU + GTIN
   const tok = JSON.parse(JSON.stringify(L.ctx.api(null, 'auth.login', { email: out.admin.email, password: out.admin.password }))).data.token;
   const api = (a, p) => JSON.parse(JSON.stringify(L.ctx.api(tok, a, p))).data;
   const d = api('product.get', { id: 'p1' });
-  assert.equal(d.productCode, 'VIV-TON-0001', 'migrasi v1 memakai Parent SKU v5; kode lama di legacyCode');
+  assert.equal(d.productCode, 'VIV-TON-VAM100', 'migrasi v1: kode produk lama dipakai sebagai Kode Produk Parent');
   assert.equal(d.legacyCode, 'VAM100');
-  assert.equal(d.variants[0].sku, 'VIV-TON-0001-8992796011501', 'Child SKU = Parent SKU + GTIN');
+  assert.equal(d.variants[0].sku, 'VIV-TON-VAM100-8992796011501', 'Child SKU = Parent SKU + GTIN');
   assert.deepEqual(d.variants[0].externalSkus.map((x) => x.sku), ['VIV-TON-VAM100-8992796011501-1']);
   assert.deepEqual(d.variants[0].conversions.map((c) => c.unitName), ['PCS'], 'paket jual tidak jadi konversi kemasan');
   const hit = api('barcode.lookup', { code: 'VIV-TON-VAM100-8992796011501-6' });

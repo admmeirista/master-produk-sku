@@ -295,8 +295,8 @@ function ensureData_(createAdmin) {
     // migrasi dulu (menyalin penghitung lama), baru penghitung yang belum ada dibuat
     const migration = migrateLegacy_('setup');
     const seq = db_('SYSTEM_COUNTERS');
-    // penghitung baru dimulai setelah nomor tertinggi yang sudah dipakai (mis. kode parent 0007 → mulai 8)
-    const maxParent = db_('MASTER_PRODUCTS').rows().reduce((m, p) => Math.max(m, Number(p.ParentCode) || 0), 0);
+    // penghitung baru dimulai setelah nomor urut tertinggi yang sudah dipakai (tidak pernah dialokasikan ulang)
+    const maxParent = db_('MASTER_PRODUCTS').rows().reduce((m, p) => Math.max(m, Number(p.ProductNo) || 0, Number(p.ParentCode) || 0), 0);
     COUNTER_NAMES_.forEach((n) => !seq.find((r) => r.CounterName === n) && seq.insert({ CounterName: n, Value: String(n === 'parent_no' ? maxParent + 1 : 1), UpdatedAt: now_() }));
     let admin = null;
     if (createAdmin && !db_('Users').rows().length) {

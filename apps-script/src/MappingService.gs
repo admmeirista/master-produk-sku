@@ -48,7 +48,7 @@ function sellables_(opts) {
       const c = ctx(v.ProductID);
       if (!ok(c.product_status, v.Status)) return;
       const bu = v.BaseUnit || c.base_unit;
-      out.push(Object.assign(c, dimCols(v.VariantID, bu), { kind: 'variant', sku: v.SKU, variant_id: v.VariantID, conversion_id: '', bundle_id: '', variant_name: v.IsDefault ? '' : v.VariantName, attributes: attrText(v.VariantID), display_name: variantDisplayName_(v) || cleanText(c.product_name + (v.IsDefault ? '' : ' ' + v.VariantName)), base_unit: bu, unit: bu, base_qty: 1, packaging_complete: packagingComplete_(bu, dims[v.VariantID]), barcode: v.GTIN || v.InternalBarcode || '', barcode_type: v.GTIN ? 'GTIN' : v.InternalBarcode ? 'Internal' : '', legacy_sku: legacy[v.VariantID] || '', stockable: v.Stockable !== 'NON_STOCKABLE', batch: v.BatchTracking, expiry: v.ExpiryTracking, shelf_life: v.ShelfLifeMonths, status: c.product_status === STATUS.ACTIVE ? v.Status : c.product_status }));
+      out.push(Object.assign(c, dimCols(v.VariantID, bu), { kind: 'variant', sku: v.SKU, variant_id: v.VariantID, conversion_id: '', bundle_id: '', variant_name: v.IsDefault ? '' : v.VariantName, attributes: attrText(v.VariantID), display_name: variantDisplayName_(v) || cleanText(c.product_name + (v.IsDefault ? '' : ' ' + v.VariantName)), image_url: v.ImageUrl || '', base_unit: bu, unit: bu, base_qty: 1, packaging_complete: packagingComplete_(bu, dims[v.VariantID]), barcode: v.GTIN || v.InternalBarcode || '', barcode_type: v.GTIN ? 'GTIN' : v.InternalBarcode ? 'Internal' : '', legacy_sku: legacy[v.VariantID] || '', stockable: v.Stockable !== 'NON_STOCKABLE', batch: v.BatchTracking, expiry: v.ExpiryTracking, shelf_life: v.ShelfLifeMonths, status: c.product_status === STATUS.ACTIVE ? v.Status : c.product_status }));
     });
   db_('UNIT_CONVERSIONS')
     .rows()
@@ -245,8 +245,8 @@ function exportMaster_() {
   const rows = sellables_({ statuses: INVENTORY_STATUSES });
   return {
     fileName: 'master-produk-sku-' + stamp_(),
-    headers: ['No', 'SKU', 'Jenis SKU', 'Parent SKU', 'Nama Produk SKU', 'Varian', 'Atribut', 'Satuan', 'Isi (Satuan Dasar)', 'Satuan Dasar', 'Barcode', 'Jenis Barcode', 'Brand', 'Kode Brand', 'Kategori', 'Kode Kategori', 'Stockable', 'SKU Lama', 'Kode Produk Lama', 'Status', 'Panjang (cm)', 'Lebar (cm)', 'Tinggi (cm)', 'Berat Kotor (g)'],
-    rows: rows.map((r, i) => [i + 1, r.sku, r.kind === 'pack' ? 'Kemasan' : r.kind === 'bundle' ? 'Bundle' : 'Child SKU', r.product_code, r.display_name, r.variant_name, r.attributes, r.unit, r.base_qty, r.base_unit, r.barcode, r.barcode_type, r.brand_name, r.brand_code, r.category_name, r.category_code, r.stockable ? 'Ya' : 'Tidak', r.legacy_sku, r.legacy_code, STATUS_LABEL[r.status] || r.status, r.length_cm, r.width_cm, r.height_cm, r.gross_weight_g]),
+    headers: ['No', 'SKU', 'Jenis SKU', 'Parent SKU', 'Nama Produk SKU', 'Varian', 'Atribut', 'Satuan', 'Isi (Satuan Dasar)', 'Satuan Dasar', 'Barcode', 'Jenis Barcode', 'Brand', 'Kode Brand', 'Kategori', 'Kode Kategori', 'Stockable', 'SKU Lama', 'Kode Produk Lama', 'Status', 'Panjang (cm)', 'Lebar (cm)', 'Tinggi (cm)', 'Berat Kotor (g)', 'Foto'],
+    rows: rows.map((r, i) => [i + 1, r.sku, r.kind === 'pack' ? 'Kemasan' : r.kind === 'bundle' ? 'Bundle' : 'Child SKU', r.product_code, r.display_name, r.variant_name, r.attributes, r.unit, r.base_qty, r.base_unit, r.barcode, r.barcode_type, r.brand_name, r.brand_code, r.category_name, r.category_code, r.stockable ? 'Ya' : 'Tidak', r.legacy_sku, r.legacy_code, STATUS_LABEL[r.status] || r.status, r.length_cm, r.width_cm, r.height_cm, r.gross_weight_g, r.image_url || '']),
     textColumns: [1, 3, 10, 17, 18],
   };
 }

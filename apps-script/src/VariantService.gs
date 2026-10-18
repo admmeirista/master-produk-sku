@@ -46,6 +46,7 @@ function variantView_(v, convs, attrs, externals, dims, product) {
     id: v.VariantID,
     name: v.VariantName,
     skuName: variantDisplayName_(v),
+    imageUrl: v.ImageUrl || '',
     generatedName: v.ProductSKUName || '',
     nameOverride: v.NameOverride || '',
     nameOverrideReason: v.NameOverrideReason || '',
@@ -149,9 +150,15 @@ function planVariants_(input, ctx) {
       if (overrideReason.length < 5) err(path + '.nameOverride', 'Isi alasan perubahan nama (min. 5 karakter)');
     }
     if (!override) overrideReason = '';
+    // foto Child SKU: tautan https (mis. CDN marketplace) atau file yang diunggah ke Drive
+    let imageUrl = iv.imageUrl === undefined ? (dbv ? dbv.ImageUrl || '' : '') : cleanText(iv.imageUrl);
+    let imageFileId = iv.imageUrl === undefined ? (dbv ? dbv.ImageFileId || '' : '') : cleanText(iv.imageFileId);
+    if (imageUrl && !/^https:\/\/[^\s<>"']+$/i.test(imageUrl)) err(path + '.imageUrl', 'Link foto harus diawali https://');
+    if (imageUrl.length > 500) err(path + '.imageUrl', 'Link foto terlalu panjang (maks. 500 karakter)');
+    if (!imageUrl) imageFileId = '';
     if (keys[key] !== undefined) err(path + '.attributes', key ? `Kombinasi atribut ini sama dengan ${keys[key]}` : 'Child SKU default (tanpa atribut) sudah ada');
     keys[key] = 'baris varian ' + (i + 1);
-    return { i, path, iv, dbv, attrs, key, name, status, inv, invExplicit: { purchaseUnit: iv.purchaseUnit !== undefined, salesUnit: iv.salesUnit !== undefined }, baseUnit, generated, override, overrideReason, sku: dbv ? dbv.SKU : '' };
+    return { i, path, iv, dbv, attrs, key, name, status, imageUrl, imageFileId, inv, invExplicit: { purchaseUnit: iv.purchaseUnit !== undefined, salesUnit: iv.salesUnit !== undefined }, baseUnit, generated, override, overrideReason, sku: dbv ? dbv.SKU : '' };
   });
   // lebih dari satu Child SKU → setiap Child SKU wajib punya atribut pembeda
   const live = plans.filter((p) => p && [STATUS.ACTIVE, STATUS.DRAFT].indexOf(p.status) >= 0);

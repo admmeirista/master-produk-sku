@@ -284,7 +284,8 @@ function importMaster_(user, work, rep) {
       const pkey = brand.BrandID + '|' + (legacyCode || normalizeName(v.name));
       let p = productOf[pkey];
       if (!p) {
-        const pc = allocateParentSku_(brand, cat);
+        // kode produk lama (mis. VAM100, GSG30) dipakai sebagai Kode Produk Parent bila valid & belum dipakai
+        const pc = allocateParentSku_(brand, cat, uniqueParentCode_(brand, cat, legacyCode && !parentCodeError(legacyCode) ? legacyCode : suggestParentCode(v.name, brand.BrandName)));
         p = db_('MASTER_PRODUCTS').insert({ ProductID: uuid_(), ProductNo: pc.no, BrandID: brand.BrandID, CategoryID: cat.CategoryID, ProductName: cleanText(v.name).slice(0, 120), NameKey: normalizeName(v.name), ProductCode: pc.code, ParentCode: pc.parentCode, BaseUnit: unit, HasVariants: false, Status: STATUS.ACTIVE, CreatedBy: user.email, CreatedAt: ts, UpdatedBy: user.email, UpdatedAt: ts, Version: 1, LegacyCode: legacyCode });
         p._brandName = brand.BrandName;
         productOf[pkey] = p;

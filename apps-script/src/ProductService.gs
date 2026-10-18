@@ -183,15 +183,18 @@ function productList_(f) {
 }
 
 /**
- * Pratinjau Parent SKU di tahap 1 (tidak mengikat, tidak menulis apa pun). Nomor final dialokasikan di dalam lock saat
- * disimpan, sehingga membatalkan registrasi tidak meninggalkan record Parent atau nomor terpakai.
+ * Pratinjau Parent SKU di tahap 1 (tidak menulis apa pun): usulan Kode Produk Parent dari nama, atau kode yang
+ * diketik user, beserta ketersediaannya. Kode final divalidasi ulang di dalam lock saat disimpan.
  */
 function parentPreview_(p) {
   const b = p.brandId ? db_('MASTER_BRANDS').byId(p.brandId) : null;
   const c = p.categoryId ? db_('MASTER_CATEGORIES').byId(p.categoryId) : null;
-  const no = peekSeq_('parent_no');
-  const parentCode = String(no).padStart(PARENT_CODE_DIGITS, '0');
-  return { parentCode, parentSku: b && c ? buildParentSku(b.BrandCode, c.CategoryCode, no) : '', estimated: true, displayName: b ? buildSkuName(b.BrandName, p.name, [], []) : cleanText(p.name) };
+  const typed = cleanParentCode(p.parentCode);
+  const suggested = b && c && cleanText(p.name) ? uniqueParentCode_(b, c, suggestParentCode(p.name, b.BrandName), p.productId) : '';
+  const code = typed || suggested;
+  const sku = b && c && code ? buildParentSku(b.BrandCode, c.CategoryCode, code) : '';
+  const owner = sku ? parentSkuOwner_(sku, p.productId) : null;
+  return { parentCode: code, suggested, parentSku: sku, error: typed ? parentCodeError(typed) : '', taken: owner ? { id: owner.ProductID, name: owner.ProductName } : null, displayName: b ? buildSkuName(b.BrandName, p.name, [], []) : cleanText(p.name) };
 }
 
 /** Perbarui Nama Produk SKU otomatis setelah nama brand berubah (override & SKU tidak disentuh). */
@@ -284,6 +287,21 @@ function productSave_(user, input, opts) {
   const brand = existing && brandId === existing.BrandID ? db_('MASTER_BRANDS').byId(brandId) : collect(() => activeBrand_(brandId));
   const cat = existing && categoryId === existing.CategoryID ? db_('MASTER_CATEGORIES').byId(categoryId) : collect(() => activeCategory_(categoryId));
   const dbVariants = existing ? V.filter((v) => v.ProductID === existing.ProductID) : [];
+  // Kode Produk Parent: diusulkan dari nama, boleh diubah selama baru/DRAFT; beku sejak aktif
+  const frozen = existing && existing.Status !== STATUS.DRAFT;
+  let parentCode = cleanParentCode(input.parentCode);
+  if (frozen) {
+    if (parentCode && parentCode !== String(existing.ParentCode || '').toUpperCase()) err('parentCode', 'Kode produk parent tidak dapat diubah setelah produk aktif (SKU sudah dibekukan)');
+    parentCode = existing.ParentCode;
+  } else {
+    if (!parentCode) parentCode = existing && existing.ParentCode ? existing.ParentCode : brand && cat ? uniqueParentCode_(brand, cat, suggestParentCode(name, brand.BrandName), existing && existing.ProductID) : '';
+    const pe = parentCodeError(String(parentCode).toUpperCase());
+    if (pe && !(existing && parentCode === existing.ParentCode)) err('parentCode', pe);
+    if (!pe && brand && cat) {
+      const owner = parentSkuOwner_(buildParentSku(brand.BrandCode, cat.CategoryCode, parentCode), existing && existing.ProductID);
+      if (owner) err('parentCode', `Parent SKU ${buildParentSku(brand.BrandCode, cat.CategoryCode, parentCode)} sudah dipakai "${owner.ProductName}" — ganti kode produk`, 'DUPLICATE');
+    }
+  }
   // satuan dasar default produk (tiap Child SKU boleh override di tahap Kemasan & Logistik)
   const baseUnit = normalizeUnit(input.baseUnit) || (existing && existing.BaseUnit) || '';
   if (!baseUnit) err('baseUnit', 'Pilih satuan dasar');
@@ -360,14 +378,13 @@ function productSave_(user, input, opts) {
     const patch = { ProductName: name, NameKey: normalizeName(name), BrandID: brand.BrandID, CategoryID: cat.CategoryID, BaseUnit: baseUnit, HasVariants: hasVariants, Description: description, UpdatedBy: user.email, UpdatedAt: ts, Version: (p.Version || 1) + 1 };
     if (imageUrl) patch.ImageUrl = imageUrl;
     // Parent SKU dihitung ulang hanya selama DRAFT (brand/kategori dikoreksi); sejak aktif, Parent SKU dibekukan
-    if (p.Status === STATUS.DRAFT && p.ParentCode && (brand.BrandID !== p.BrandID || cat.CategoryID !== p.CategoryID)) {
-      const code = buildParentSku(brand.BrandCode, cat.CategoryCode, p.ParentCode);
-      if (P.find((x) => x.ProductID !== p.ProductID && String(x.ProductCode).toUpperCase() === code)) throw new AppError(`Parent SKU ${code} sudah dipakai produk lain`, [{ path: 'brandId', message: 'Parent SKU bentrok' }], 'VALIDATION_FAILED');
-      patch.ProductCode = code;
+    if (p.Status === STATUS.DRAFT && parentCode) {
+      const code = buildParentSku(brand.BrandCode, cat.CategoryCode, /^d+$/.test(String(parentCode)) ? Number(parentCode) : parentCode);
+      if (code !== p.ProductCode) Object.assign(patch, { ProductCode: code, ParentCode: String(parentCode) });
     }
     P.update(p, patch);
   } else {
-    const pc = allocateParentSku_(brand, cat);
+    const pc = allocateParentSku_(brand, cat, parentCode);
     p = P.insert({
       ProductID: uuid_(),
       ProductNo: pc.no,
@@ -403,7 +420,7 @@ function productSave_(user, input, opts) {
   let order = dbVariants.reduce((m, v) => Math.max(m, v.SortOrder || 0), 0);
   vplans.forEach((vp) => {
     let v = vp.dbv;
-    const named = { ProductSKUName: vp.generated, NameOverride: vp.override, NameOverrideReason: vp.overrideReason };
+    const named = { ProductSKUName: vp.generated, NameOverride: vp.override, NameOverrideReason: vp.overrideReason, ImageUrl: vp.imageUrl, ImageFileId: vp.imageFileId };
     if (!v) {
       v = V.insert(
         Object.assign(

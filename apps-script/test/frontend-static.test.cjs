@@ -31,3 +31,7 @@ test('frontend: hasil $() (satu elemen) tidak dipakai sebagai daftar', () => {
   }
   assert.deepEqual(bad, []);
 });
+
+test('backend: semua file .gs lolos parse', () => {
+  for (const f of fs.readdirSync(SRC).filter((x) => x.endsWith('.gs'))) assert.doesNotThrow(() => new Function(fs.readFileSync(path.join(SRC, f), 'utf8')), f);
+});

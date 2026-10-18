@@ -81,7 +81,7 @@ test('[AC-1][AC-4][AC-14][AC-15] Quick Entry dari hasil auto-fill: Parent non-st
   const d = ok(call(T, 'product.save', { input: { brandId: ids.Wardah, categoryId: ids['Face Mask'], name: 'Wardah Nature Daily Mineral Clarifying Clay Mask', baseUnit: 'JAR', hasVariants: false, description: 'Masker clay', imageUrl: OBF_FOUND.product.image_front_url, dataSource: 'openbeautyfacts:8993137699549', variants: [{ barcode: { mode: 'gtin', code: '8993137699549' }, batchTracking: true, expiryTracking: true, shelfLifeMonths: 36 }] } }));
   ids.mask = d.id;
   assert.equal(d.stockable, false);
-  assert.match(d.productCode, /^WAR-[A-Z0-9]+-\d{4}$/);
+  assert.match(d.productCode, /^WAR-[A-Z0-9]+-[A-Z0-9]+$/);
   assert.equal(d.variants[0].sku, d.productCode + '-8993137699549');
   assert.deepEqual([d.variants[0].stockable, d.variants[0].batchTracking, d.variants[0].expiryTracking, d.variants[0].shelfLifeMonths], [true, true, true, 36]);
   assert.equal(d.dataSource, 'openbeautyfacts:8993137699549');

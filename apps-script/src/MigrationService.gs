@@ -150,8 +150,9 @@ function migrateV1_(r, actor) {
     const cat = db_('MASTER_CATEGORIES').byId(o.category_id);
     if (!brand || !cat) return r.skipped.push(`Produk "${o.name}": brand/kategori tidak ditemukan`);
     const baseUnit = normalizeUnit(o.base_unit) || 'PCS';
-    // Parent SKU format v5 (BRAND-KATEGORI-0001); kode produk v1 disimpan sebagai LegacyCode
-    const pc = allocateParentSku_(brand, cat);
+    // Parent SKU format v5 (BRAND-KATEGORI-KODEPRODUK): kode produk v1 dipakai bila valid; juga disimpan sebagai LegacyCode
+    const lc = normalizeCode(o.product_code).slice(0, 10);
+    const pc = allocateParentSku_(brand, cat, uniqueParentCode_(brand, cat, lc && !parentCodeError(lc) ? lc : suggestParentCode(o.name, brand.BrandName)));
     const code = pc.code;
     const no = pc.no;
     const variants = oldVariants.filter((v) => v.product_id === o.id).sort((a, b) => Number(a.sort_order) - Number(b.sort_order));
