@@ -90,19 +90,27 @@ function productAuditSummary_(d) {
 /**
  * Indeks direktori (satu baris per produk + teks pencarian). Dibangun dari batch read seluruh tabel terkait,
  * lalu disimpan di CacheService per versi data — halaman Direktori tidak membaca ulang semua sheet setiap kali dibuka.
+ * Setiap baris membawa ringkasan Kode SKU Produk (v) & foto, sehingga daftar varian & thumbnail tampil tanpa panggilan
+ * server tambahan.
  */
 function productIndex_() {
-  const key = 'dir:' + dataVersion_();
+  const key = 'dir2:' + dataVersion_();
   const cached = cacheGetBig_(key);
   if (cached) return cached;
   const brands = indexBy_(db_('MASTER_BRANDS').rows(), 'BrandID');
   const cats = indexBy_(db_('MASTER_CATEGORIES').rows(), 'CategoryID');
   const stats = {};
-  const st = (pid) => (stats[pid] = stats[pid] || { variants: 0, active: 0, withBarcode: 0, skus: 0, packs: 0, text: '' });
+  const st = (pid) => (stats[pid] = stats[pid] || { variants: 0, active: 0, withBarcode: 0, skus: 0, packs: 0, text: '', v: [], img: '' });
   db_('PRODUCT_VARIANTS')
     .rows()
+    .slice()
+    .sort((a, b) => (Number(a.SortOrder) || 0) - (Number(b.SortOrder) || 0))
     .forEach((v) => {
       const s = st(v.ProductID);
+      if (v.Status !== STATUS.DELETED) {
+        s.v.push({ id: v.VariantID, sku: v.SKU, name: variantDisplayName_(v), gtin: v.GTIN || '', internal: v.InternalBarcode || '', status: v.Status, img: v.ImageUrl || '', attrs: (Array.isArray(v.VariantAttributes) ? v.VariantAttributes : []).map((a) => [a.name, a.value]) });
+        if (!s.img && v.ImageUrl) s.img = v.ImageUrl;
+      }
       s.variants++;
       const live = v.Status === STATUS.ACTIVE || v.Status === STATUS.DRAFT;
       if (live) s.active++;
@@ -128,7 +136,7 @@ function productIndex_() {
   const rows = db_('MASTER_PRODUCTS')
     .filter((p) => p.Status !== STATUS.DELETED)
     .map((p) => {
-      const s = stats[p.ProductID] || { variants: 0, active: 0, withBarcode: 0, skus: 0, packs: 0, text: '' };
+      const s = stats[p.ProductID] || { variants: 0, active: 0, withBarcode: 0, skus: 0, packs: 0, text: '', v: [], img: '' };
       const b = brands[p.BrandID] || {};
       const c = cats[p.CategoryID] || {};
       return {
@@ -137,6 +145,9 @@ function productIndex_() {
         legacyCode: p.LegacyCode || '',
         productNoNum: p.ProductNo,
         name: p.ProductName,
+        displayName: buildSkuName(b.BrandName || '', p.ProductName, [], []),
+        img: p.ImageUrl || s.img,
+        v: s.v,
         baseUnit: p.BaseUnit,
         hasVariants: p.HasVariants,
         status: p.Status,
@@ -151,7 +162,7 @@ function productIndex_() {
         skuCount: s.skus,
         packCount: s.packs,
         complete: s.active > 0 && s.withBarcode === s.active,
-        q: ((p.NameKey || '') + ' ' + (p.ProductCode || '') + ' ' + (p.LegacyCode || '') + ' ' + s.text).toUpperCase(),
+        q: ((p.NameKey || '') + ' ' + normalizeName(b.BrandName) + ' ' + (p.ProductCode || '') + ' ' + (p.LegacyCode || '') + ' ' + s.text).toUpperCase(),
       };
     });
   cachePutBig_(key, rows);
@@ -168,7 +179,7 @@ function productList_(f) {
     .filter((r) => (!f.brandId || r.brandId === f.brandId) && (!f.categoryId || r.categoryId === f.categoryId))
     .filter((r) => (f.completeness === 'incomplete' ? !r.complete : f.completeness === 'complete' ? r.complete : true))
     .filter((r) => !q || r.q.indexOf(qn) >= 0 || r.q.indexOf(qu) >= 0);
-  const key = { name: 'name', brand: 'brandName', category: 'categoryName', productNo: 'productNoNum', skus: 'skuCount' }[f.sort] || 'updatedAt';
+  const key = { name: 'displayName', brand: 'brandName', category: 'categoryName', productNo: 'productNoNum', skus: 'skuCount' }[f.sort] || 'updatedAt';
   const dir = f.dir === 'asc' ? 1 : -1;
   rows.sort((a, b) => (a[key] > b[key] ? 1 : a[key] < b[key] ? -1 : 0) * dir);
   const page = paginate_(rows, f.page, Math.min(Number(f.pageSize) || 25, 200));

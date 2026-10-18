@@ -386,9 +386,12 @@ function cacheGetBig_(key) {
   const head = c.get(key + ':n');
   if (!head) return null;
   const n = Number(head);
+  const keys = [];
+  for (let i = 0; i < n; i++) keys.push(key + ':' + i);
+  const got = c.getAll(keys); // satu panggilan untuk semua potongan
   const parts = [];
   for (let i = 0; i < n; i++) {
-    const p = c.get(key + ':' + i);
+    const p = got[keys[i]];
     if (p === null || p === undefined) return null;
     parts.push(p);
   }
@@ -406,8 +409,11 @@ function cachePutBig_(key, value) {
     const size = 90000;
     const n = Math.ceil(s.length / size) || 1;
     if (n > 80) return; // terlalu besar untuk cache — dibaca langsung dari sheet
-    for (let i = 0; i < n; i++) c.put(key + ':' + i, s.slice(i * size, (i + 1) * size), 600);
-    c.put(key + ':n', String(n), 600);
+    // kunci sudah memuat versi data (berganti setiap ada perubahan) → aman disimpan selama maksimum 6 jam
+    const all = {};
+    for (let i = 0; i < n; i++) all[key + ':' + i] = s.slice(i * size, (i + 1) * size);
+    c.putAll(all, 21600);
+    c.put(key + ':n', String(n), 21600);
   } catch (e) {
     console.error('Cache gagal: ' + e);
   }

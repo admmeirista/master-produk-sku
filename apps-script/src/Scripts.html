@@ -268,6 +268,8 @@ function api(action, payload, opts) {
     var done = function (r) {
       netEnd(opts.quiet);
       if (typeof r === 'string') { try { r = JSON.parse(r); } catch (e) { r = null; } }
+      // perubahan data dari perangkat ini → cache daftar produk di browser dikosongkan
+      if (r && r.ok && window.ProductCache && /\.(save|delete|deleteMany|setStatus|commit|import|rename|create|createMany|deprecate|upload|verify)$/.test(action)) ProductCache.clear();
       if (r && r.ok) return resolve(r.data);
       var e = (r && r.error) || { message: 'Respon server tidak valid.', code: 'BAD_RESPONSE' };
       var err = { code: e.code || 'ERROR', message: e.message || 'Terjadi kesalahan.', details: e.details || [] };

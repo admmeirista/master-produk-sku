@@ -126,7 +126,7 @@ function createGas({ ownerEmail = 'owner@toko.local' } = {}) {
       getFolderById: (id) => folderOf(id),
     },
     PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => (props.has(k) ? props.get(k) : null), setProperty: (k, v) => props.set(k, String(v)), deleteProperty: (k) => props.delete(k) }) },
-    CacheService: { getScriptCache: () => ({ get: (k) => cache.get(k) ?? null, put: (k, v) => cache.set(k, v), remove: (k) => cache.delete(k) }) },
+    CacheService: { getScriptCache: () => ({ get: (k) => cache.get(k) ?? null, put: (k, v) => cache.set(k, v), remove: (k) => cache.delete(k), getAll: (ks) => Object.fromEntries(ks.filter((k) => cache.has(k)).map((k) => [k, cache.get(k)])), putAll: (o) => Object.keys(o).forEach((k) => cache.set(k, o[k])) }) },
     Session: { getEffectiveUser: () => ({ getEmail: () => ownerEmail }), getActiveUser: () => ({ getEmail: () => '' }) },
     Utilities: {
       getUuid: () => crypto.randomUUID(),
