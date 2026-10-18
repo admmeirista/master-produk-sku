@@ -14,6 +14,23 @@
  */
 
 const IMPORT_TYPES = {
+  // format sistem: 1 baris = 1 SKU produk; baris dengan Brand + Nama Produk Induk sama = satu produk induk
+  products: {
+    label: 'Produk baru (format sistem)',
+    sheet: /import produk|produk baru/i,
+    fields: {
+      brand: ['brand', 'nama brand'],
+      name: ['nama produk induk', 'nama produk'],
+      category: ['kategori', 'jalur kategori'],
+      v1n: ['jenis variasi 1'],
+      v1v: ['pilihan variasi 1', 'variasi 1'],
+      v2n: ['jenis variasi 2'],
+      v2v: ['pilihan variasi 2', 'variasi 2'],
+      barcode: ['gtin / barcode', 'gtin', 'barcode'],
+      unit: ['satuan terkecil', 'satuan'],
+    },
+    required: ['brand', 'name', 'category'],
+  },
   reference: {
     label: 'Referensi Brand & Kategori',
     sheet: /referensi/i,
@@ -128,7 +145,8 @@ function importRun_(user, p, opts) {
   });
   const rep = { type: p.type, label: def.label, fileName: cleanText(p.fileName), totalRows: work.length, created: { brands: 0, categories: 0, products: 0, variants: 0, conversions: 0, bundles: 0, legacySkus: 0, barcodes: 0, mappings: 0, suppliers: 0 }, skipped: 0, errors: [], warnings: [], dryRun: !!opts.dryRun };
   const hash = Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, p.type + JSON.stringify(rows), Utilities.Charset.UTF_8));
-  if (p.type === 'reference') importReference_(user, work, rep);
+  if (p.type === 'products') importProducts_(user, work, rep);
+  else if (p.type === 'reference') importReference_(user, work, rep);
   else if (p.type === 'internal_barcodes') importInternalBarcodes_(user, work, rep);
   else if (p.type === 'channel_listing') importChannelListing_(user, work, rep, p);
   else if (p.type === 'supplier_mapping') importSupplierMapping_(user, work, rep);
@@ -158,6 +176,133 @@ function importHistory_() {
     .reverse()
     .slice(0, 50)
     .map((b) => ({ id: b.BatchID, type: b.ImportType, label: (IMPORT_TYPES[b.ImportType] || {}).label, fileName: b.FileName, totalRows: b.TotalRows, createdRows: b.CreatedRows, skippedRows: b.SkippedRows, errorRows: b.ErrorRows, createdBy: b.CreatedBy, createdAt: b.CreatedAt, report: b.ReportJson }));
+}
+
+// ------------------------------------------------------------------ produk baru (format sistem)
+
+/**
+ * Produk induk + varian dari file "Import Produk". Jalur sama untuk Pratinjau & Import (pratinjau tidak di-commit),
+ * sehingga kode PRD/SKU, nama SKU & penolakan di pratinjau = hasil import.
+ *  - Brand belum ada → dibuat. Kategori dicocokkan dengan jalur kategori baku ("Perawatan Wajah > Toner") atau nama
+ *    kategori akhir yang unik; kelompok kategori ditolak.
+ *  - GTIN divalidasi; barcode berawalan 2 (internal lama dari template) dicadangkan lalu dipakai apa adanya; kosong =
+ *    "GTIN belum didata".
+ *  - Produk dengan brand + nama sama yang sudah terdaftar dilewati (import ulang aman). Produk bermasalah ditolak utuh,
+ *    produk lain tetap diproses.
+ */
+function importProducts_(user, work, rep) {
+  const S = getSettings_();
+  const B = db_('MASTER_BRANDS');
+  const P = db_('MASTER_PRODUCTS');
+  const leafByPath = {};
+  const leafByName = {};
+  db_('MASTER_CATEGORIES')
+    .filter((c) => c.Status !== STATUS.DELETED && (!catIsShopee_(c) || catIsLeaf_(c)))
+    .forEach((c) => {
+      if (catIsShopee_(c)) leafByPath[normalizeName(catShortPath_(c))] = c;
+      (leafByName[normalizeName(c.CategoryName)] = leafByName[normalizeName(c.CategoryName)] || []).push(c);
+    });
+  const groupOf = db_('MASTER_CATEGORIES').filter((c) => catIsShopee_(c) && !catIsLeaf_(c));
+  const findCat = (txt) => {
+    const k = normalizeName(String(txt).replace(/^perawatan & kecantikan\s*>\s*/i, ''));
+    if (leafByPath[k]) return { c: leafByPath[k] };
+    const byName = leafByName[normalizeName(String(txt).split('>').pop())] || [];
+    if (byName.length === 1) return { c: byName[0] };
+    if (byName.length > 1) return { err: 'Nama kategori ada di beberapa kelompok — tulis jalurnya, mis. ' + byName.map((c) => catShortPath_(c) || c.CategoryName).join(' / ') };
+    if (groupOf.some((c) => normalizeName(c.CategoryName) === normalizeName(String(txt).split('>').pop()))) return { err: 'Kategori "' + txt + '" adalah kelompok — pilih kategori paling akhir di bawahnya' };
+    return { err: 'Kategori "' + txt + '" tidak ditemukan di daftar kategori' };
+  };
+  // kelompokkan baris → produk induk
+  const groups = [];
+  const byKey = {};
+  work.forEach((w) => {
+    const v = w.v;
+    if (!v.brand && !v.name) return;
+    const key = masterNameKey(v.brand) + '|' + normalizeName(v.name);
+    if (!byKey[key]) groups.push((byKey[key] = { key, rows: [] }));
+    byKey[key].rows.push(w);
+  });
+  const seenCode = {};
+  rep.items = [];
+  groups.forEach((g) => {
+    const f = g.rows[0].v;
+    const rowsTxt = g.rows.map((w) => w.row).join(', ');
+    const fail = (msg, row) => rep.errors.push({ row: row || g.rows[0].row, message: f.brand + ' ' + f.name + ': ' + msg });
+    const errs0 = rep.errors.length;
+    if (!f.brand) fail('Brand wajib diisi');
+    if (cleanText(f.name).length < 3) fail('Nama produk induk minimal 3 karakter');
+    const cat = findCat(f.category || '');
+    if (cat.err) fail(cat.err);
+    let brand = B.find((b) => b.Status !== STATUS.DELETED && b.NameKey === masterNameKey(f.brand));
+    if (brand && brand.Status !== STATUS.ACTIVE) fail('Brand ' + brand.BrandName + ' sedang nonaktif');
+    const name = properCase(f.name);
+    const exists = brand && P.find((p) => p.Status !== STATUS.DELETED && p.BrandID === brand.BrandID && p.NameKey === normalizeName(name));
+    if (exists) {
+      rep.skipped += g.rows.length;
+      rep.warnings.push({ row: g.rows[0].row, message: f.brand + ' ' + name + ': sudah terdaftar (' + exists.ProductCode + ') — dilewati' });
+      return;
+    }
+    const multi = g.rows.length > 1;
+    const keys = {};
+    const variants = g.rows.map((w) => {
+      const v = w.v;
+      const attributes = [[v.v1n, v.v1v], [v.v2n, v.v2v]].filter((a) => cleanText(a[1])).map((a) => ({ name: cleanAttrName(a[0]) || 'Varian', value: cleanText(a[1]) }));
+      if (multi && !attributes.length) fail('baris dengan nama produk induk sama wajib punya pilihan variasi', w.row);
+      const ak = attributes.map((a) => normalizeName(a.name) + '=' + normalizeName(a.value)).sort().join('|');
+      if (keys[ak]) fail('kombinasi variasi sama dengan baris ' + keys[ak], w.row);
+      keys[ak] = w.row;
+      const code = cleanBarcode(v.barcode);
+      let barcode = { mode: 'none' };
+      if (code) {
+        if (seenCode[code]) fail('barcode ' + code + ' sudah dipakai baris ' + seenCode[code] + ' di file ini', w.row);
+        seenCode[code] = w.row;
+        const live = liveBarcodeRow_(code);
+        if (live && live.Status === 'ACTIVE') {
+          const o = ownerInfo_(live);
+          fail('barcode ' + code + ' sudah dipakai ' + (o ? o.label : 'barang lain'), w.row);
+        }
+        if (/^2/.test(code) && validateGtin(code).ok) barcode = { mode: 'internal', code, legacy: !live };
+        else {
+          const gv = validateManufacturerGtin(code);
+          if (!gv.ok) fail('GTIN ' + code + ' tidak valid: ' + gv.message, w.row);
+          barcode = { mode: 'gtin', code: gv.code || code };
+        }
+      }
+      return { attributes, barcode, row: w.row };
+    });
+    if (rep.errors.length > errs0) return;
+    try {
+      if (!brand) {
+        const nb = masterCreate_(user, 'brand', { name: properCase(f.brand), acknowledgeSimilar: true });
+        brand = B.byId(nb.id);
+        rep.created.brands++;
+        rep.warnings.push({ row: g.rows[0].row, message: 'Brand baru dibuat: ' + nb.name });
+      }
+      // barcode internal lama dari template: dicadangkan dulu agar tidak dialokasikan ke barang lain
+      variants.forEach((x) => {
+        if (x.barcode.legacy) {
+          db_('VARIANT_BARCODES').insert({ BarcodeID: uuid_(), Code: x.barcode.code, BarcodeType: 'INTERNAL', Symbology: 'EAN13', Status: 'ALLOCATED', VerifiedOfficial: false, Notes: 'Barcode internal template lama', CreatedBy: user.email, CreatedAt: now_() });
+          rep.created.barcodes++;
+        }
+      });
+      const d = productSave_(user, {
+        brandId: brand.BrandID,
+        categoryId: cat.c.CategoryID,
+        name,
+        baseUnit: normalizeUnit(f.unit) || 'PCS',
+        acknowledgeSimilar: true,
+        dataSource: 'Import ' + (rep.fileName || 'file'),
+        variants: variants.map((x) => ({ attributes: x.attributes, barcode: { mode: x.barcode.mode, code: x.barcode.code || '' } })),
+      });
+      rep.created.products++;
+      rep.created.variants += d.variants.length;
+      rep.items.push({ rows: rowsTxt, productCode: d.productCode, brand: brand.BrandName, name: d.name, category: catShortPath_(cat.c) || cat.c.CategoryName, skus: d.variants.map((v) => ({ sku: v.sku, name: v.skuName, barcode: v.gtin || v.internalBarcode || '' })) });
+    } catch (e) {
+      if (!(e instanceof AppError)) throw e;
+      fail(e.message + (e.details && e.details.length ? ' — ' + e.details.map((x) => x.message).join('; ') : ''));
+    }
+  });
+  rep.items = rep.items.slice(0, 500);
 }
 
 // ------------------------------------------------------------------ referensi brand / kategori

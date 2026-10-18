@@ -59,8 +59,10 @@ function nameKey(name) {
   return s.replace(/(\d)\s+(ml|l|g|kg|pcs)\b/g, '$1$2').replace(/\s+/g, ' ').trim();
 }
 function orderAttrs(attrs) {
-  var types = (cfg().attributeTypes || []).map(nameKey);
-  return (attrs || []).map(function (a, i) { var p = types.indexOf(nameKey(a.name)); return { a: a, i: i, p: p < 0 ? 1000 + i : p }; }).sort(function (x, y) { return x.p - y.p || x.i - y.i; }).map(function (x) { return x.a; });
+  var types = (cfg().attributeTypes || []).map(nameKey), size = ['ukuran', 'berat isi', 'volume', 'isi', 'berat', 'berat bersih', 'netto'];
+  var fs0 = types.findIndex(function (t) { return size.indexOf(t) >= 0; }), other = (fs0 < 0 ? types.length : fs0) - 0.5;
+  // jenis variasi lain (Tipe, Motif, …) sebelum ukuran/berat/volume — sama dengan Lib.gs orderAttributes
+  return (attrs || []).map(function (a, i) { var k = nameKey(a.name), p = types.indexOf(k); return { a: a, i: i, p: p >= 0 ? p : size.indexOf(k) >= 0 ? 1000 + i : other }; }).sort(function (x, y) { return x.p - y.p || x.i - y.i; }).map(function (x) { return x.a; });
 }
 function skuNameOf(brand, parent, attrs) {
   brand = properCase(brand); parent = fmtAttr(parent);

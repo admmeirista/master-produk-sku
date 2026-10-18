@@ -504,3 +504,29 @@ test('jenis variasi: daftar bawaan lama diganti otomatis; daftar buatan user tid
   L2.ctx.ensureData_(false);
   assert.deepEqual(JSON.parse(JSON.stringify(L2.ctx.getSettings_().attribute_types)), ['Warna', 'Motif']);
 });
+
+test('import produk (format sistem): varian, brand baru, kategori baku, GTIN & barcode internal lama; import ulang dilewati', () => {
+  const L = createGas();
+  const o = JSON.parse(JSON.stringify(L.ctx.setup()));
+  const tk = JSON.parse(JSON.stringify(L.ctx.api(null, 'auth.login', { email: o.admin.email, password: o.admin.password }))).data.token;
+  const c = (a, p) => JSON.parse(JSON.stringify(L.ctx.api(tk, a, p)));
+  c('brand.createMany', { names: ['Viva'] });
+  const H = ['No', 'Brand', 'Nama Produk Induk', 'Kategori', 'Jenis Variasi 1', 'Pilihan Variasi 1', 'Jenis Variasi 2', 'Pilihan Variasi 2', 'GTIN / Barcode', 'Satuan Terkecil'];
+  const rows = [['Import Produk'], H,
+    ['1', 'Viva', 'Liquid Foundation', 'Kosmetik > Kosmetik Wajah > Foundation', 'Warna', 'Natural', 'Volume', '30 ml', gtin('899279604504'), 'PCS'],
+    ['2', 'Viva', 'Liquid Foundation', 'Kosmetik > Kosmetik Wajah > Foundation', 'Warna', 'Kuning Langsat', 'Volume', '30 ml', '', 'PCS'],
+    ['3', 'Gatsby', 'Water Gloss', 'Hair Styling', 'Tipe', 'Hyper Solid', 'Berat Isi', '30 g', '2000000000015', 'PCS'],
+    ['4', 'Viva', 'Produk Kelompok', 'Perawatan Wajah', '', '', '', '', '', 'PCS'],
+    ['5', 'Viva', 'GTIN Salah', 'Toner', '', '', '', '', '8992796011509', 'PCS'],
+  ];
+  const pv = c('import.preview', { type: 'products', rows, fileName: 't.xlsx' }).data;
+  assert.equal(c('product.list', { status: 'all' }).data.total, 0, 'pratinjau tidak menulis');
+  assert.deepEqual([pv.created.products, pv.created.variants, pv.created.brands, pv.errorCount], [2, 3, 1, 2]);
+  assert.match(pv.errors.map((e) => e.message).join(' | '), /kelompok.*\|.*GTIN 8992796011509 tidak valid/);
+  const r = c('import.commit', { type: 'products', rows, fileName: 't.xlsx' }).data;
+  assert.deepEqual(r.items.map((i) => i.skus.map((k) => k.name)), [['Viva Liquid Foundation Natural 30 ml', 'Viva Liquid Foundation Kuning Langsat 30 ml'], ['Gatsby Water Gloss Hyper Solid 30 g']]);
+  assert.deepEqual(r.items[1].skus.map((k) => k.barcode), ['2000000000015'], 'barcode internal lama dipakai apa adanya');
+  assert.equal(r.items[0].category, 'Kosmetik > Kosmetik Wajah > Foundation');
+  const again = c('import.commit', { type: 'products', rows: rows.slice(0, 5), fileName: 't.xlsx' }).data;
+  assert.deepEqual([again.created.products, again.skipped], [0, 3]);
+});

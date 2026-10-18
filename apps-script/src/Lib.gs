@@ -202,11 +202,15 @@ function properCase(text) {
 }
 
 /** Urutkan atribut sesuai urutan jenis atribut di Pengaturan (Warna, Shade, Aroma, Ukuran, Volume, …); sisanya di belakang. */
+const SIZE_ATTRS_ = ['ukuran', 'berat isi', 'volume', 'isi', 'berat', 'berat bersih', 'netto'];
 function orderAttributes(attrs, types) {
   const pos = {};
   (types || []).forEach((t, i) => (pos[normalizeName(t)] = i));
+  // jenis variasi lain (Tipe, Motif, …) diletakkan sebelum ukuran/berat/volume: "Water Gloss Hyper Solid 30 g"
+  const firstSize = (types || []).findIndex((t) => SIZE_ATTRS_.indexOf(normalizeName(t)) >= 0);
+  const other = (firstSize < 0 ? (types || []).length : firstSize) - 0.5;
   return (attrs || [])
-    .map((a, i) => ({ a, i, p: pos[normalizeName(a.name)] === undefined ? 1000 + i : pos[normalizeName(a.name)] }))
+    .map((a, i) => ({ a, i, p: pos[normalizeName(a.name)] !== undefined ? pos[normalizeName(a.name)] : SIZE_ATTRS_.indexOf(normalizeName(a.name)) >= 0 ? 1000 + i : other }))
     .sort((x, y) => x.p - y.p || x.i - y.i)
     .map((x) => x.a);
 }
