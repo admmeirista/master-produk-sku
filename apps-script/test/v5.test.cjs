@@ -424,3 +424,18 @@ test('foto per Child SKU: link https tersimpan, tampil di lookup & ekspor; link 
   delete y.variants[0].imageUrl;
   assert.equal(ok(call(T, 'product.save', { input: y })).variants[0].imageUrl, url);
 });
+
+test('unggah foto Child SKU ke Drive: file dibagikan via link, URL dipakai sebagai foto; format salah ditolak', () => {
+  // gambar PNG 1×1
+  const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  const r = ok(call(T, 'photo.upload', { dataUrl: png, fileName: 'foto.png' }));
+  assert.match(r.url, /^https:\/\/lh3\.googleusercontent\.com\/d\/file-\d+$/);
+  assert.equal(G.ctx.DriveApp._files.at(-1).sharing, 'ANYONE_WITH_LINK:VIEW');
+  fail(call(T, 'photo.upload', { dataUrl: 'data:text/html;base64,PGI+', fileName: 'x.html' }));
+  fail(call(V, 'photo.upload', { dataUrl: png }), 'FORBIDDEN');
+  const x = toInput(ok(call(V, 'product.get', { id: ids.pur.id })));
+  x.variants[0].imageUrl = r.url;
+  x.variants[0].imageFileId = r.fileId;
+  assert.equal(ok(call(T, 'product.save', { input: x })).variants[0].imageUrl, r.url);
+  assert.equal(ok(call(T, 'auth.me', {})).config.photoUpload, true, 'tombol unggah aktif setelah Drive diizinkan');
+});

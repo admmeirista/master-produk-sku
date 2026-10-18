@@ -109,17 +109,29 @@ function createGas({ ownerEmail = 'owner@toko.local' } = {}) {
   };
   const cache = new Map();
   const props = new Map();
+  const drive = [];
+  const folderOf = (id) => ({ getId: () => id, createFolder: (n) => folderOf('folder-' + n), createFile: (blob) => { const f = { id: 'file-' + (drive.length + 1), blob, sharing: null }; drive.push(f); return { getId: () => f.id, setSharing: (a, p) => (f.sharing = a + ':' + p) }; } });
   const state = { lockBusy: false, fetch: null, fetchLog: [] }; // simulasi user lain sedang memegang lock
   const toSigned = (buf) => [...buf].map((b) => (b > 127 ? b - 256 : b));
   const ctx = {
     console: { log() {}, error: (...a) => console.error(...a) },
     SpreadsheetApp: { getActive: () => ss, openById: () => ss, flush() {}, ProtectionType: { SHEET: 'SHEET' } },
     LockService: { getScriptLock: () => ({ tryLock: () => !state.lockBusy, waitLock() {}, releaseLock() {} }) },
+    // DriveApp tiruan: folder & file di memori (unggah foto)
+    DriveApp: {
+      Access: { ANYONE_WITH_LINK: 'ANYONE_WITH_LINK' }, Permission: { VIEW: 'VIEW' },
+      _files: drive,
+      getFileById: () => ({ getParents: () => ({ hasNext: () => false }) }),
+      getRootFolder: () => folderOf('root'),
+      getFolderById: (id) => folderOf(id),
+    },
     PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => (props.has(k) ? props.get(k) : null), setProperty: (k, v) => props.set(k, String(v)), deleteProperty: (k) => props.delete(k) }) },
     CacheService: { getScriptCache: () => ({ get: (k) => cache.get(k) ?? null, put: (k, v) => cache.set(k, v), remove: (k) => cache.delete(k) }) },
     Session: { getEffectiveUser: () => ({ getEmail: () => ownerEmail }), getActiveUser: () => ({ getEmail: () => '' }) },
     Utilities: {
       getUuid: () => crypto.randomUUID(),
+      base64Decode: (s) => [...Buffer.from(String(s), 'base64')],
+      newBlob: (bytes, mime, name) => ({ bytes, mime, name }),
       DigestAlgorithm: { SHA_256: 'sha256', MD5: 'md5' },
       Charset: { UTF_8: 'utf8' },
       computeDigest: (alg, s) => toSigned(crypto.createHash(alg).update(String(s), 'utf8').digest()),

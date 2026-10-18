@@ -60,6 +60,7 @@ const ROUTES = {
   'product.get': { perm: 'product.read', fn: (u, p) => productDetail_(p.id) },
   'product.check': { perm: 'product.read', fn: (u, p) => productCheck_(p) },
   'product.parentPreview': { perm: 'product.read', fn: (u, p) => parentPreview_(p) },
+  'photo.upload': { perm: 'product.write', write: true, fn: (u, p) => photoUpload_(u, p) },
   'product.validate': { perm: 'product.write', fn: (u, p) => productSave_(u, p.input, { dryRun: true }) },
   'product.save': { perm: 'product.write', write: true, fn: (u, p) => productSave_(u, p.input) },
   'product.setStatus': { perm: 'product.write', write: true, fn: (u, p) => productSetStatus_(u, p) },
@@ -175,7 +176,7 @@ function meInfo_(user) {
     user,
     permissions: ROLE_PERMISSIONS[user.role] || [],
     appName: APP_NAME,
-    config: { parentCodeDigits: PARENT_CODE_DIGITS, maxCombinations: MAX_COMBINATIONS, maxVariants: MAX_VARIANTS, channels: s.channels, channelLabel: CHANNEL_LABEL, lifecycle: LIFECYCLE, statusLabel: STATUS_LABEL, gtinLookup: !!s.gtin_lookup_enabled, baseUnits: s.base_units, packUnits: s.pack_units, attributeTypes: s.attribute_types, codeLength: s.master_code_length, roles: ROLES.map((r) => ({ id: r, label: ROLE_LABEL[r] })) },
+    config: { photoUpload: PropertiesService.getScriptProperties().getProperty('drive_ok') === '1', parentCodeDigits: PARENT_CODE_DIGITS, maxCombinations: MAX_COMBINATIONS, maxVariants: MAX_VARIANTS, channels: s.channels, channelLabel: CHANNEL_LABEL, lifecycle: LIFECYCLE, statusLabel: STATUS_LABEL, gtinLookup: !!s.gtin_lookup_enabled, baseUnits: s.base_units, packUnits: s.pack_units, attributeTypes: s.attribute_types, codeLength: s.master_code_length, roles: ROLES.map((r) => ({ id: r, label: ROLE_LABEL[r] })) },
   };
 }
 
