@@ -83,6 +83,8 @@ function uid() { return Math.random().toString(36).slice(2, 10); }
 function normCode(s) { return String(s || '').toUpperCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^A-Z0-9]/g, ''); }
 var STATUS_TXT = { ACTIVE: 'Aktif', INACTIVE: 'Nonaktif', allocated: 'Dialokasikan', assigned: 'Dipakai', retired: 'Dipensiunkan', void: 'Void', mapped: 'Dipetakan', exported: 'Diekspor', confirmed: 'Terkonfirmasi', mismatch: 'Tidak cocok', error: 'Error', admin: 'Admin', data_entry: 'Admin Data', viewer: 'Viewer', reviewer: 'Admin Data', ALLOCATED: 'Cadangan', RETIRED: 'Dipensiunkan', VOID: 'Void', DELETED: 'Dihapus', GTIN: 'GTIN produsen', INTERNAL: 'Barcode internal', legacy: 'SKU lama', DRAFT: 'Draft', DISCONTINUED: 'Discontinued', ARCHIVED: 'Diarsipkan', shopee: 'Shopee', tiktok: 'TikTok Shop', tokopedia: 'Tokopedia', beecloud: 'BeeCloud', lainnya: 'Kanal lain', unmapped: 'Belum dipetakan', MULTIPACK: 'Paket Produk Sama', MIXED: 'Paket Kombinasi', REQUEST_MIX: 'Paket Pilih Sendiri', VIRTUAL: 'Virtual', PREASSEMBLED: 'Dirakit' };
 function badge(s, txt) { return s ? '<span class="badge b-' + esc(s) + '">' + esc(txt || STATUS_TXT[s] || s) + '</span>' : ''; }
+/** Layar HP (≤ 760 px) — dipakai untuk memilih tampilan kartu alih-alih tabel lebar. */
+function isPhone() { return !!(window.matchMedia && window.matchMedia('(max-width:760px)').matches); }
 function can(p) { return !!(App.me && App.me.permissions.indexOf(p) >= 0); }
 function cfg() { return (App.me && App.me.config) || {}; }
 function emptyBox(title, sub, ic) { return '<div class="empty">' + icon(ic || 'package') + '<b>' + esc(title) + '</b>' + (sub ? '<div>' + sub + '</div>' : '') + '</div>'; }
@@ -380,12 +382,13 @@ var App = {
     $app().innerHTML = '<div class="adm"><div class="mtop"><button class="icon-btn" id="m-open" aria-label="Menu">' + icon('menu') + '</button>' + brand('sm') + '</div>' +
       '<div class="side-bg" id="side-bg"></div><nav class="side" id="side">' + brand() +
       NAV.map(function (s, i) { var links = s[1].map(nav).join(''); return links ? '<div class="navgrp' + (closed[s[0]] ? ' closed' : '') + '"><button type="button" class="sec" data-grp="' + s[0] + '"' + (i ? ' style="margin-top:6px"' : '') + '>' + s[0] + icon('chevDown', 'gch') + '</button><div class="grp-links">' + links + '</div></div>' : ''; }).join('') +
-      '<div class="me"><a class="avatar" data-nav="profile" style="cursor:pointer" title="Profil & password">' + esc(initials(u.fullName)) + '</a><div style="min-width:0;cursor:pointer" data-nav="profile"><div class="n">' + esc(u.fullName) + '</div><div class="r">' + esc(STATUS_TXT[u.role] || u.role) + '</div></div><button id="adm-out" title="Keluar">' + icon('logout') + '</button></div></nav><main class="main" id="main"></main></div>';
+      '<div class="me"><a class="avatar" data-nav="profile" style="cursor:pointer" title="Profil & password">' + esc(initials(u.fullName)) + '</a><div style="min-width:0;cursor:pointer" data-nav="profile"><div class="n">' + esc(u.fullName) + '</div><div class="r">' + esc(STATUS_TXT[u.role] || u.role) + '</div></div><button id="adm-out" title="Keluar">' + icon('logout') + '</button></div></nav><main class="main" id="main"></main>' + App.tabbar() + '</div>';
     $$('[data-nav]').forEach(function (a) { a.onclick = function () { App.go(a.getAttribute('data-nav')); }; });
     $$('[data-grp]').forEach(function (b) { b.onclick = function () { var g = b.parentNode; g.classList.toggle('closed'); closed[b.getAttribute('data-grp')] = g.classList.contains('closed'); Store.set('rpm_nav', JSON.stringify(closed)); }; });
     $('#adm-out').onclick = function () { ask('Keluar dari aplikasi?', 'Keluar').then(function (y) { if (y) App.logout(); }); };
     var side = $('#side'), bg = $('#side-bg');
     $('#m-open').onclick = function () { side.classList.add('open'); bg.classList.add('open'); };
+    $$('#tabbar [data-tab]').forEach(function (b) { b.onclick = function () { var t = b.getAttribute('data-tab'); if (t === 'menu') { side.classList.add('open'); bg.classList.add('open'); } else App.go(t); }; });
     bg.onclick = function () { side.classList.remove('open'); bg.classList.remove('open'); };
     App.go(App.page || 'dashboard', App.pageArg);
     if (!App.keysBound) {
@@ -404,11 +407,19 @@ var App = {
     if (!Pages[page]) page = 'dashboard';
     App.page = page; App.pageArg = arg;
     $$('.side a.nv').forEach(function (a) { a.classList.toggle('on', a.getAttribute('data-nav') === page || (page === 'product' && a.getAttribute('data-nav') === 'products')); });
+    document.body.setAttribute('data-page', page);
+    var tabOf = { product: 'products' }[page] || page;
+    $$('#tabbar [data-tab]').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-tab') === tabOf || (b.getAttribute('data-tab') === 'menu' && ['dashboard', 'scan', 'register', 'products'].indexOf(tabOf) < 0)); });
     var side = $('#side'); if (side) { side.classList.remove('open'); $('#side-bg').classList.remove('open'); }
     var main = $('#main');
     main.innerHTML = loadingBox();
     window.scrollTo(0, 0);
     try { Pages[page](main, arg); } catch (e) { main.innerHTML = errBox('Halaman gagal dimuat: ' + e.message); console.error(e); }
+  },
+  /** Navigasi bawah untuk tampilan HP (≤ 760 px). */
+  tabbar: function () {
+    var t = [['dashboard', 'grid', 'Beranda'], ['scan', 'scan', 'Cari SKU'], can('product.write') ? ['register', 'plus', 'Registrasi'] : null, ['products', 'package', 'Produk'], ['menu', 'menu', 'Menu']].filter(Boolean);
+    return '<nav class="tabbar" id="tabbar">' + t.map(function (x) { return '<button type="button" data-tab="' + x[0] + '"' + (x[0] === 'register' ? ' class="fab"' : '') + '><span class="ti">' + icon(x[1]) + '</span><span class="tl">' + x[2] + '</span></button>'; }).join('') + '</nav>';
   },
   logout: function () {
     api('auth.logout', {}, { silent: true }).catch(function () {});

@@ -174,7 +174,7 @@ const ATTR_UNIT_FORMAT_ = [
 
 /** Format standar nilai atribut: "50ml" / "50 ML" / "50 ml ml" → "50 ml", "1,5L" → "1,5 L". Teks lain hanya dirapikan. */
 function formatAttrValue(v) {
-  let s = cleanText(v);
+  let s = properCase(v); // diketik huruf kecil semua → huruf awal kapital (satuan tetap kecil)
   s = s.replace(/(\d)\s*([a-zA-Z]+)\b/g, (m, d, u) => {
     const hit = ATTR_UNIT_FORMAT_.find((x) => x[0].test(u));
     return hit ? d + ' ' + hit[1] : m;
@@ -182,6 +182,20 @@ function formatAttrValue(v) {
   // satuan berulang: "50 ml ml" → "50 ml"
   s = s.replace(/\b(ml|L|g|kg|mg|oz|pcs)(\s+\1\b)+/gi, '$1');
   return s.replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Huruf awal kapital untuk teks yang diketik huruf kecil semua: "pelembab wajah" → "Pelembab Wajah".
+ * Teks yang sudah mengandung huruf kapital (mis. "BB Cream", "SPF") tidak diubah; satuan (ml, g, kg) tetap kecil.
+ */
+const PROPER_KEEP_ = /^(ml|g|gr|kg|mg|oz|pcs|x)$/;
+function properCase(text) {
+  const s = cleanText(text);
+  if (!s || /[A-Z]/.test(s)) return s;
+  return s
+    .split(' ')
+    .map((t) => (PROPER_KEEP_.test(t) || /^d/.test(t) ? t : t.replace(/(^|[-/(&+.])([a-z])/g, (m, p, c) => p + c.toUpperCase())))
+    .join(' ');
 }
 
 /** Urutkan atribut sesuai urutan jenis atribut di Pengaturan (Warna, Shade, Aroma, Ukuran, Volume, …); sisanya di belakang. */
@@ -200,7 +214,7 @@ function orderAttributes(attrs, types) {
  * tanpa spasi ganda. Contoh: Hanasui + Pelembab Wajah + [Red, 50ml] → "Hanasui Pelembab Wajah Red 50 ml".
  */
 function buildSkuName(brandName, parentName, attrs, types) {
-  const brand = cleanText(brandName);
+  const brand = properCase(brandName);
   const parent = formatAttrValue(parentName);
   const parts = [];
   const contains = (txt) => {

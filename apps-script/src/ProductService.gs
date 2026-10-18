@@ -277,7 +277,7 @@ function productSave_(user, input, opts) {
   };
 
   // ---------------- Tahap 1: identifikasi produk (Parent)
-  const name = cleanText(input.name);
+  const name = properCase(input.name); // diketik huruf kecil semua → huruf awal kapital
   if (name.length < 3) err('name', 'Nama produk parent minimal 3 karakter');
   if (name.length > 120) err('name', 'Nama produk parent maksimal 120 karakter');
   const brandId = input.brandId || (existing && existing.BrandID);

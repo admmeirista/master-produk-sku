@@ -499,5 +499,42 @@ tr.open .exp{transform:rotate(90deg)}
 @media (max-width:900px){.mode2{grid-template-columns:1fr}.vgrid{grid-template-columns:1fr}.vcard2{flex-direction:column}.ph-btn.big{width:64px;height:64px;flex-basis:64px}}
 .in.code::placeholder{text-transform:none;letter-spacing:0;font-weight:500}
 .bc{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.bc .in{flex:1;min-width:150px}
+/* ---- Tampilan HP (≤ 760 px): navigasi bawah, tombol aksi menempel di bawah, kartu produk, target sentuh besar ---- */
+.tabbar{display:none}
+@media (max-width:760px){
+  .tabbar{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:40;background:#fff;border-top:1px solid var(--line);padding:6px 4px calc(6px + env(safe-area-inset-bottom));box-shadow:0 -4px 16px rgba(0,0,0,.06)}
+  .tabbar button{flex:1;border:0;background:none;display:flex;flex-direction:column;align-items:center;gap:3px;font:inherit;font-size:10.5px;font-weight:800;color:var(--muted);padding:2px 0;cursor:pointer;-webkit-tap-highlight-color:transparent}
+  .tabbar .ti{display:flex;align-items:center;justify-content:center;height:24px}
+  .tabbar .ti svg{width:22px;height:22px}
+  .tabbar button.on{color:var(--acc)}
+  .tabbar button.fab .ti{width:46px;height:46px;border-radius:15px;background:var(--acc);color:#fff;margin-top:-20px;box-shadow:0 6px 14px rgba(232,108,58,.35)}
+  .tabbar button.fab.on{color:var(--fg)}
+  .main{padding:14px 12px 100px}
+  body[data-page=register] .tabbar{display:none}
+  body[data-page=register] .main{padding-bottom:20px}
+  .card{padding:14px}
+  .wz-foot{position:sticky;bottom:0;z-index:15;background:#fff;margin:16px -14px -14px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));border-top:1px solid var(--line);border-radius:0 0 var(--r) var(--r);box-shadow:0 -6px 16px rgba(0,0,0,.06);gap:8px}
+  .wz-foot .btn{flex:1 1 auto;justify-content:center}
+  .wz-foot .right{margin-left:0}
+  .in,select.in,textarea.in,.in-pre input{font-size:16px}
+  .in,.in-pre{min-height:44px}
+  .btn{min-height:42px}
+  .btn.sm{min-height:36px}
+  .kpi4{grid-template-columns:1fr 1fr}
+  .ph{flex-wrap:wrap;gap:10px}.ph h2{font-size:22px}.ph .act{width:100%}.ph .act .btn{flex:1;justify-content:center}
+  .filters{flex-wrap:wrap}.filters .search{flex:1 1 100%}.filters>div,.filters select{flex:1 1 45%;width:auto!important}
+  .pcards{display:flex;flex-direction:column;gap:10px}
+  .pcard{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 14px;box-shadow:var(--shadow)}
+  .pcard.off{opacity:.65}
+  .pc-top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .pc-nm{font-weight:800;font-size:15px;margin-top:6px;cursor:pointer;line-height:1.3}
+  .pc-sub{font-size:12.5px;margin-top:2px}
+  .pc-act{display:flex;gap:8px;margin-top:10px}.pc-act .btn{flex:1;justify-content:center}
+  .pc-sk:not(:empty){margin-top:8px}
+  .pc-v{border-top:1px dashed var(--line);padding:8px 0;font-size:13px;display:flex;flex-direction:column;gap:2px}
+  .modal{width:calc(100vw - 20px)!important;max-height:88vh;overflow:auto}
+  #toasts{top:auto;bottom:calc(84px + env(safe-area-inset-bottom))}
+  .lvt .dim3 .in.sm{width:56px}
+}
 </style>
 

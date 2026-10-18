@@ -41,8 +41,14 @@ function computeEq(base, rows) {
 
 /* ---- Nama Produk SKU (sama dengan aturan server: Lib.gs buildSkuName) ---- */
 var UNIT_FMT = [[/^(ml|mls|mililiter|milliliter)$/i, 'ml'], [/^(l|lt|ltr|liter|litre)$/i, 'L'], [/^(g|gr|grs|grm|gram|grams)$/i, 'g'], [/^(kg|kgs|kilogram|kilograms)$/i, 'kg'], [/^(mg|miligram|milligram)$/i, 'mg'], [/^(oz)$/i, 'oz'], [/^(pcs|pc|pieces?)$/i, 'pcs']];
-function fmtAttr(v) {
+/** Huruf awal kapital bila diketik huruf kecil semua (sama dengan Lib.gs properCase). */
+function properCase(v) {
   var s = String(v === null || v === undefined ? '' : v).replace(/\s+/g, ' ').trim();
+  if (!s || /[A-Z]/.test(s)) return s;
+  return s.split(' ').map(function (t) { return /^(ml|g|gr|kg|mg|oz|pcs|x)$/.test(t) || /^\d/.test(t) ? t : t.replace(/(^|[-/(&+.])([a-z])/g, function (m, p, c) { return p + c.toUpperCase(); }); }).join(' ');
+}
+function fmtAttr(v) {
+  var s = properCase(v);
   s = s.replace(/(\d)\s*([a-zA-Z]+)\b/g, function (m, d, u) { for (var i = 0; i < UNIT_FMT.length; i++) if (UNIT_FMT[i][0].test(u)) return d + ' ' + UNIT_FMT[i][1]; return m; });
   return s.replace(/\b(ml|L|g|kg|mg|oz|pcs)(\s+\1\b)+/gi, '$1').replace(/\s+/g, ' ').trim();
 }
@@ -57,7 +63,7 @@ function orderAttrs(attrs) {
   return (attrs || []).map(function (a, i) { var p = types.indexOf(nameKey(a.name)); return { a: a, i: i, p: p < 0 ? 1000 + i : p }; }).sort(function (x, y) { return x.p - y.p || x.i - y.i; }).map(function (x) { return x.a; });
 }
 function skuNameOf(brand, parent, attrs) {
-  brand = String(brand || '').replace(/\s+/g, ' ').trim(); parent = fmtAttr(parent);
+  brand = properCase(brand); parent = fmtAttr(parent);
   var parts = [], contains = function (t) { var k = nameKey(t); return !!k && (' ' + nameKey(parts.join(' ')) + ' ').indexOf(' ' + k + ' ') >= 0; };
   var nb = nameKey(brand), np = nameKey(parent);
   if (brand && !(np === nb || np.indexOf(nb + ' ') === 0)) parts.push(brand);
@@ -280,13 +286,13 @@ var Wiz = {
       '<div class="fgrid"><div class="fld"><label class="f">Brand <span class="req">*</span></label><div id="f-brand"></div>' + Wiz.fe('brandId') + '</div>' +
       '<div class="fld"><label class="f">Kategori Produk <span class="req">*</span></label><div id="f-cat"></div>' + Wiz.fe('categoryId') + '</div>' +
       '<div class="fld full"><label class="f">Nama Produk <span class="req">*</span></label><div class="in-pre' + Wiz.errCls('name') + '"><span class="pre" id="f-pre">' + esc(s.brand ? s.brand.name : 'Brand') + '</span><input id="f-name" maxlength="120" placeholder="mis. Pelembab Wajah" value="' + esc(s.name) + '"></div>' + Wiz.fe('name') + '<div id="f-sim"></div></div></div>' +
-      '<div class="wz-foot">' + (s.productId ? '' : '<button class="btn ghost" id="to-parent">' + icon('layers') + 'Tambah varian ke produk yang ada</button>') + '<button class="btn pri right" id="nx">Selanjutnya ' + icon('arrowRight') + '</button></div></div>';
+      '<div class="wz-foot"><button class="btn pri right" id="nx">Selanjutnya ' + icon('arrowRight') + '</button></div></div>';
     var pre = function () { var el = $('#f-pre', body); if (el) { el.textContent = s.brand ? s.brand.name : 'Brand'; el.classList.toggle('muted', !s.brand); } };
     pre();
     refCombo($('#f-brand', body), 'brand', s.brand, function (it) { s.brand = it ? { id: it.id, name: it.name } : null; Wiz.clearErr('brandId'); pre(); Wiz.check(); Wiz.loadPreview(); Wiz.renderSide(); Wiz.persist(); var n = $('#f-name', body); if (it && n && !n.value) n.focus(); }, 'Cari brand…', false);
     refCombo($('#f-cat', body), 'category', s.category, function (it) { s.category = it ? { id: it.id, name: it.name } : null; Wiz.clearErr('categoryId'); Wiz.renderSide(); Wiz.persist(); }, 'Cari kategori…', false);
     $('#f-name', body).oninput = function (e) { s.name = e.target.value; Wiz.clearErr('name'); Wiz.check(); Wiz.renderSide(); Wiz.persist(); };
-    if ($('#to-parent', body)) $('#to-parent', body).onclick = function () { pickProduct('Tambah varian ke produk…').then(function (p) { if (p) { Wiz.done = true; App.go('register', { productId: p.id }, { force: true }); } }); };
+    $('#f-name', body).onblur = function (e) { var v = properCase(e.target.value); if (v !== e.target.value) { e.target.value = v; s.name = v; Wiz.renderSide(); Wiz.persist(); } };
     $('#nx', body).onclick = function () { Wiz.goStep(2); };
     Wiz.renderSimilar();
     if (!s.productId) Wiz.loadPreview();

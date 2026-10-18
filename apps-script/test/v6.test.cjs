@@ -386,3 +386,11 @@ test('GTIN boleh dikosongkan dulu → tersimpan & ditandai "GTIN belum didata" (
   assert.deepEqual([d2.variants[0].gtin, d2.variants[0].sku], [g(90), d.variants[0].sku]);
   assert.ok(!ok(call(V, 'product.list', { completeness: 'incomplete', status: 'all', pageSize: 200 })).rows.some((r) => r.id === d.id));
 });
+
+test('nama diketik huruf kecil semua → huruf awal kapital (satuan tetap kecil; kapital buatan user dipertahankan)', () => {
+  const d = save(T, { brandId: B.Wardah.id, categoryId: C.Toner.id, name: 'hydra rose toner', baseUnit: 'BOTOL', acknowledgeSimilar: true, variants: ['rose gold', 'pink'].map((w) => ({ attributes: [{ name: 'Warna', value: w }, { name: 'Volume', value: '100ml' }], barcode: { mode: 'none' } })) });
+  assert.equal(d.name, 'Hydra Rose Toner');
+  assert.deepEqual(d.variants.map((v) => v.skuName), ['Wardah Hydra Rose Toner Rose Gold 100 ml', 'Wardah Hydra Rose Toner Pink 100 ml']);
+  const e = save(T, { brandId: B.Wardah.id, categoryId: C.Toner.id, name: 'BB cream SPF 30', baseUnit: 'PCS', acknowledgeSimilar: true, variants: [{ barcode: { mode: 'none' } }] });
+  assert.equal(e.variants[0].skuName, 'Wardah BB cream SPF 30');
+});
