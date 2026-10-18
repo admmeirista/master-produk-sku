@@ -392,5 +392,9 @@ test('nama diketik huruf kecil semua → huruf awal kapital (satuan tetap kecil;
   assert.equal(d.name, 'Hydra Rose Toner');
   assert.deepEqual(d.variants.map((v) => v.skuName), ['Wardah Hydra Rose Toner Rose Gold 100 ml', 'Wardah Hydra Rose Toner Pink 100 ml']);
   const e = save(T, { brandId: B.Wardah.id, categoryId: C.Toner.id, name: 'BB cream SPF 30', baseUnit: 'PCS', acknowledgeSimilar: true, variants: [{ barcode: { mode: 'none' } }] });
-  assert.equal(e.variants[0].skuName, 'Wardah BB cream SPF 30');
+  assert.equal(e.variants[0].skuName, 'Wardah BB Cream SPF 30');
+  // per kata: sebagian sudah kapital, sisanya huruf kecil → tetap dirapikan; kata sambung tetap kecil
+  const f = save(T, { brandId: B.Wardah.id, categoryId: C.Toner.id, name: 'Prlembab wajaj dan leher', baseUnit: 'PCS', acknowledgeSimilar: true, variants: [{ barcode: { mode: 'none' } }] });
+  assert.equal(f.name, 'Prlembab Wajaj dan Leher');
+  assert.equal(G.ctx.properCase('eau de parfum 50 ml'), 'Eau de Parfum 50 ml');
 });

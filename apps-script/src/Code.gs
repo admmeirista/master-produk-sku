@@ -4,10 +4,14 @@
  * Hak akses (RBAC) dicek DI SERVER untuk setiap aksi; validasi data juga selalu di server.
  */
 
+/** Ikon aplikasi di-hosting di GitHub Pages (apps-script/pages). */
+const PAGES_BASE_ = 'https://admmeirista.github.io/master-produk-sku/';
+
 function doGet() {
   return HtmlService.createTemplateFromFile('Index')
     .evaluate()
     .setTitle(APP_NAME)
+    .setFaviconUrl(PAGES_BASE_ + 'favicon.png')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT);
 }

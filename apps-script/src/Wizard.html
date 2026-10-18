@@ -41,11 +41,11 @@ function computeEq(base, rows) {
 
 /* ---- Nama Produk SKU (sama dengan aturan server: Lib.gs buildSkuName) ---- */
 var UNIT_FMT = [[/^(ml|mls|mililiter|milliliter)$/i, 'ml'], [/^(l|lt|ltr|liter|litre)$/i, 'L'], [/^(g|gr|grs|grm|gram|grams)$/i, 'g'], [/^(kg|kgs|kilogram|kilograms)$/i, 'kg'], [/^(mg|miligram|milligram)$/i, 'mg'], [/^(oz)$/i, 'oz'], [/^(pcs|pc|pieces?)$/i, 'pcs']];
-/** Huruf awal kapital bila diketik huruf kecil semua (sama dengan Lib.gs properCase). */
+/** Huruf awal kapital untuk tiap kata yang diketik huruf kecil (sama dengan Lib.gs properCase). */
 function properCase(v) {
   var s = String(v === null || v === undefined ? '' : v).replace(/\s+/g, ' ').trim();
-  if (!s || /[A-Z]/.test(s)) return s;
-  return s.split(' ').map(function (t) { return /^(ml|g|gr|kg|mg|oz|pcs|x)$/.test(t) || /^\d/.test(t) ? t : t.replace(/(^|[-/(&+.])([a-z])/g, function (m, p, c) { return p + c.toUpperCase(); }); }).join(' ');
+  if (!s) return s;
+  return s.split(' ').map(function (t, i) { return /[A-Z]/.test(t) || /^(ml|g|gr|kg|mg|oz|pcs|x)$/.test(t) || /^\d/.test(t) || (i > 0 && /^(de|du|la|le|et|of|the|and|with|for|dan|di|ke|untuk|dengan)$/.test(t)) ? t : t.replace(/(^|[-/(&+.])([a-z])/g, function (m, p, c) { return p + c.toUpperCase(); }); }).join(' ');
 }
 function fmtAttr(v) {
   var s = properCase(v);
@@ -231,7 +231,7 @@ var Wiz = {
       (s.note ? '<div class="info-box" style="margin:-8px 0 14px">' + icon('copy') + '<span>' + esc(s.note) + '</span></div>' : '') +
       (Wiz.restored && !s.productId ? '<div class="info-box" style="margin:-8px 0 14px">' + icon('clock') + '<span>Melanjutkan isian terakhir' + (s.savedAt ? ' · ' + fmtDate(s.savedAt) : '') + '</span></div>' : '') +
       '<div class="stepper s3">' + steps.map(function (n, i) {
-        var k = i + 1; return '<button class="stp' + (s.step === k ? ' on' : s.step > k ? ' done' : '') + (bad[k] ? ' bad' : '') + '" data-step="' + k + '"><span class="n">' + (bad[k] ? '!' : s.step > k ? '✓' : k) + '</span><span><span class="k">' + (k === 3 ? 'Opsional' : 'Tahap ' + k) + '</span><span class="v" style="display:block">' + n + '</span></span></button>';
+        var k = i + 1; return '<button class="stp' + (s.step === k ? ' on' : s.step > k ? ' done' : '') + (bad[k] ? ' bad' : '') + '" data-step="' + k + '"><span class="n">' + (bad[k] ? '!' : s.step > k ? '✓' : k) + '</span><span><span class="k">' + (k === 3 ? 'Opsional' : 'Tahap ' + k) + '</span><span class="v">' + n + '</span><span class="vs">' + ['Produk', 'Varian', 'Kemasan'][i] + '</span></span></button>';
       }).join('') + '</div>' +
       '<div class="wz-grid"><div id="wz-body"></div><aside class="wz-side" id="wz-side"></aside></div>';
     $$('[data-step]', main).forEach(function (b) { b.onclick = function () { Wiz.goStep(Number(b.getAttribute('data-step'))); }; });
@@ -357,8 +357,8 @@ var Wiz = {
       (single ? '<div id="sg1"></div>'
         : '<div class="sect" style="margin-top:14px">Jenis variasi</div><div id="attrs"></div><button class="btn sm" id="aa" type="button">' + icon('plus') + 'Tambah jenis variasi</button>' +
           '<div class="combo-bar" id="cbar"></div><div class="sect">Daftar SKU produk</div><div id="vt"></div>') + Wiz.fe('variants') +
-      '<div class="wz-foot"><button class="btn" id="bk">' + icon('arrowLeft') + 'Sebelumnya</button>' + (newP ? '<button class="btn right" id="dr">Simpan Draft</button>' : '<span class="right"></span>') +
-      '<button class="btn" id="nx">Kemasan ' + icon('arrowRight') + '</button><button class="btn pri" id="sv2">' + icon('check') + (newP ? 'Simpan Produk' : 'Simpan Perubahan') + '</button></div></div>';
+      '<div class="wz-foot"><button class="btn bk" id="bk" title="Sebelumnya">' + icon('arrowLeft') + '<span class="lg">Sebelumnya</span></button>' + (newP ? '<button class="btn right" id="dr"><span class="lg">Simpan </span>Draft</button>' : '<span class="right"></span>') +
+      '<button class="btn" id="nx">Kemasan ' + icon('arrowRight') + '</button><button class="btn pri" id="sv2">' + icon('check') + 'Simpan<span class="lg">' + (newP ? ' Produk' : ' Perubahan') + '</span></button></div></div>';
     $$('[data-sg]', body).forEach(function (b) { b.onclick = function () { Wiz.setSingle(b.getAttribute('data-sg') === '1'); }; });
     if (single) Wiz.renderSingle();
     else {
@@ -379,7 +379,7 @@ var Wiz = {
     var sz = v.attributes[0] || { name: types.indexOf('Volume') >= 0 ? 'Volume' : types[0] || 'Ukuran', value: '' };
     box.innerHTML = '<div class="vcard2' + (Object.keys(s.errors).some(function (k) { return k.indexOf(p + '.') === 0 && Wiz.stepOf(k) === 2; }) ? ' bad' : '') + '">' +
       '<button type="button" class="ph-btn big" data-ph title="Foto produk">' + (v.imageUrl ? '<img src="' + esc(v.imageUrl) + '" alt="" referrerpolicy="no-referrer">' : icon('image') + '<small>Foto</small>') + '</button>' +
-      '<div class="grow"><div class="skuname big" data-nm>' + esc(Wiz.displayName(v) || '—') + '</div><div class="muted" style="font-size:12.5px;margin:2px 0 10px">Kode SKU Produk <span class="sku" data-csku="0">' + esc(Wiz.childSku(v)) + '</span> · <a class="link-btn" data-ov>' + (v.nameOverride ? 'Pakai nama otomatis' : 'Ubah nama') + '</a></div>' +
+      '<div class="grow"><div class="vhead"><div class="grow" style="min-width:0"><div class="skuname big" data-nm>' + esc(Wiz.displayName(v) || '—') + '</div><div class="vmeta"><span class="lg">Kode SKU Produk </span><span class="sku" data-csku="0">' + esc(Wiz.childSku(v)) + '</span> · <a class="link-btn" data-ov>' + (v.nameOverride ? 'Pakai nama otomatis' : 'Ubah nama') + '</a></div></div></div>' +
       '<div class="fgrid"><div class="fld"><label class="f">Ukuran / isi <span class="muted">(opsional)</span></label><div class="row" style="gap:6px;flex-wrap:nowrap"><select class="in" id="sz-t" style="width:120px">' + types.concat(types.indexOf(sz.name) < 0 ? [sz.name] : []).map(function (t) { return '<option' + (t === sz.name ? ' selected' : '') + '>' + esc(t) + '</option>'; }).join('') + '</select><input class="in grow" id="sz-v" maxlength="40" placeholder="mis. 100 ml" value="' + esc(sz.value) + '"></div>' + Wiz.fe(p + '.attributes') + '</div>' +
       '<div class="fld"><label class="f">Barcode</label>' + Wiz.bcInput(v, p + '.barcode', '0') + '<div data-vs="0" style="margin-top:6px"></div></div></div>' +
       Wiz.fe(p + '.nameOverride') + Wiz.fe(p + '.imageUrl') + '</div></div>';
@@ -555,10 +555,10 @@ var Wiz = {
       var p = 'variants.' + i, rowErr = Object.keys(s.errors).some(function (k) { return k.indexOf(p + '.') === 0 && Wiz.stepOf(k) === 2; });
       return '<div class="vcard2' + (rowErr ? ' bad' : '') + (v.status !== 'ACTIVE' && v.status !== 'DRAFT' ? ' off' : '') + '" data-v="' + i + '">' +
         '<button type="button" class="ph-btn" data-ph title="Foto produk">' + (v.imageUrl ? '<img src="' + esc(v.imageUrl) + '" alt="" referrerpolicy="no-referrer">' : icon('image')) + '</button>' +
-        '<div class="grow" style="min-width:0"><div class="row" style="gap:8px;align-items:baseline"><div class="skuname" data-nm>' + esc(Wiz.displayName(v) || '—') + '</div><span class="sku muted" data-csku="' + i + '">' + esc(Wiz.childSku(v)) + '</span>' + (v.saved ? icon('lock') : '') + '<a class="link-btn right" data-ov style="font-size:12px">' + (v.nameOverride ? 'Pakai nama otomatis' : 'Ubah nama') + '</a></div>' +
+        '<div class="grow" style="min-width:0"><div class="vhead"><div class="grow" style="min-width:0"><div class="skuname" data-nm>' + esc(Wiz.displayName(v) || '—') + '</div><div class="vmeta"><span class="sku" data-csku="' + i + '">' + esc(Wiz.childSku(v)) + '</span>' + (v.saved ? icon('lock') : '') + ' · <a class="link-btn" data-ov>' + (v.nameOverride ? 'Pakai nama otomatis' : 'Ubah nama') + '</a></div></div>' + (v.saved ? '' : '<button class="btn sm ghost vdel" data-del title="Hapus (tidak tersedia)" type="button">' + icon('trash') + '</button>') + '</div>' +
         '<div class="vgrid"><div class="vattrs">' + cols.map(function (c) { var a = v.attributes.find(function (x) { return x.name === c; }); return '<label><span>' + esc(c) + '</span><input class="in sm' + Wiz.errCls(p + '.attributes') + '" data-av="' + esc(c) + '" maxlength="40" value="' + esc(a ? a.value : '') + '"></label>'; }).join('') + '</div>' +
         '<div>' + Wiz.bcInput(v, p + '.barcode', String(i)) + '<div data-vs="' + i + '" style="margin-top:4px"></div></div>' +
-        '<div class="vact">' + (v.saved ? '<select class="in sm" data-st>' + [v.savedStatus || v.status].concat(((cfg().lifecycle || {})[v.savedStatus || v.status] || [])).map(function (o) { return '<option value="' + o + '"' + (o === v.status ? ' selected' : '') + '>' + esc(STATUS_TXT[o] || o) + '</option>'; }).join('') + '</select>' : '<button class="btn sm ghost" data-del title="Hapus (tidak tersedia)" type="button">' + icon('trash') + '</button>') + '</div></div>' +
+        (v.saved ? '<div class="vact"><select class="in sm" data-st>' + [v.savedStatus || v.status].concat(((cfg().lifecycle || {})[v.savedStatus || v.status] || [])).map(function (o) { return '<option value="' + o + '"' + (o === v.status ? ' selected' : '') + '>' + esc(STATUS_TXT[o] || o) + '</option>'; }).join('') + '</select></div>' : '') + '</div>' +
         Wiz.fe(p + '.attributes') + Wiz.fe(p + '.nameOverride') + Wiz.fe(p + '.imageUrl') + '</div></div>';
     }).join('');
     $$('[data-v]', box).forEach(function (card) {
@@ -616,7 +616,7 @@ var Wiz = {
     var s = Wiz.st, newP = !s.productId;
     body.innerHTML = '<div class="card"><div class="sec-h"><h3>Kemasan & Logistik</h3><span class="sub">Opsional — bisa dilengkapi nanti</span></div>' +
       '<div id="vc" style="margin-top:10px"></div>' +
-      '<div class="wz-foot"><button class="btn" id="bk">' + icon('arrowLeft') + 'Sebelumnya</button>' + (newP ? '<button class="btn right" id="dr">Simpan Draft</button>' : '<span class="right"></span>') + '<button class="btn pri" id="sv3">' + icon('check') + (newP ? 'Simpan Produk' : 'Simpan Perubahan') + '</button></div></div>';
+      '<div class="wz-foot"><button class="btn bk" id="bk" title="Sebelumnya">' + icon('arrowLeft') + '<span class="lg">Sebelumnya</span></button>' + (newP ? '<button class="btn right" id="dr"><span class="lg">Simpan </span>Draft</button>' : '<span class="right"></span>') + '<button class="btn pri" id="sv3">' + icon('check') + 'Simpan<span class="lg">' + (newP ? ' Produk' : ' Perubahan') + '</span></button></div></div>';
     Wiz.renderConvs();
     $('#bk', body).onclick = function () { Wiz.goStep(2); };
     $('#sv3', body).onclick = function () { Wiz.save($('#sv3', body)); };

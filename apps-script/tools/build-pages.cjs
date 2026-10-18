@@ -19,10 +19,20 @@ if (/<\?/.test(html)) throw new Error('Masih ada scriptlet Apps Script yang belu
 html = html.replace('<base target="_top" />', '');
 html = html.replace(
   '<meta charset="utf-8" />',
-  '<meta charset="utf-8" />\n    <meta name="viewport" content="width=device-width, initial-scale=1" />\n    <title>Master Produk &amp; SKU</title>\n' +
+  '<meta charset="utf-8" />\n    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />\n    <title>Meirista SKU Master</title>\n' +
+    '    <link rel="manifest" href="manifest.webmanifest" />\n' +
+    '    <link rel="icon" type="image/png" href="favicon.png" />\n' +
+    '    <link rel="apple-touch-icon" href="apple-touch-icon.png" />\n' +
+    '    <meta name="theme-color" content="#28302b" />\n' +
+    '    <meta name="mobile-web-app-capable" content="yes" />\n' +
+    '    <meta name="apple-mobile-web-app-capable" content="yes" />\n' +
+    '    <meta name="apple-mobile-web-app-title" content="SKU Master" />\n' +
     `    <script>window.RPM_API_URL = ${JSON.stringify(apiUrl)};</script>`,
 );
 fs.mkdirSync(out, { recursive: true });
+// ikon & manifest (pasang ke layar utama / PWA)
+const PAGES = path.join(__dirname, '../pages');
+fs.readdirSync(PAGES).forEach((f) => fs.copyFileSync(path.join(PAGES, f), path.join(out, f)));
 fs.writeFileSync(path.join(out, 'index.html'), html);
 fs.writeFileSync(path.join(out, '.nojekyll'), '');
 console.log('Halaman GitHub Pages dibuat di', out, '-> API:', apiUrl);

@@ -62,10 +62,10 @@ var ICONS = {
   sparkles: '<path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/>'
 };
 function icon(name, cls) { return '<svg class="ic ' + (cls || '') + '" viewBox="0 0 24 24" aria-hidden="true">' + (ICONS[name] || '') + '</svg>'; }
-var APP_NAME = 'Master Produk & SKU';
+var APP_NAME = 'Meirista SKU Master';
 var ASSET_BASE = 'https://admmeirista.github.io/fms-meirista/';
 function brandLogo() { return '<img class="brand-logo" src="' + ASSET_BASE + 'logo-full.webp" alt="Meirista Cosmetics" onerror="this.style.display=\'none\'">'; }
-function brand(cls) { return '<div class="brand ' + (cls || '') + '"><img class="mark" src="' + BRAND_MARK + '" alt=""><div class="bt"><div class="word">Meirista</div><div class="tag">Master Produk &amp; SKU</div></div></div>'; }
+function brand(cls) { return '<div class="brand ' + (cls || '') + '"><img class="mark" src="' + BRAND_MARK + '" alt=""><div class="bt"><div class="word">Meirista</div><div class="tag">SKU Master</div></div></div>'; }
 function initials(name) { return String(name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(function (w) { return w[0]; }).join('').toUpperCase(); }
 
 /* ───────── util ───────── */

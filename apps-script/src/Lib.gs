@@ -185,16 +185,19 @@ function formatAttrValue(v) {
 }
 
 /**
- * Huruf awal kapital untuk teks yang diketik huruf kecil semua: "pelembab wajah" → "Pelembab Wajah".
- * Teks yang sudah mengandung huruf kapital (mis. "BB Cream", "SPF") tidak diubah; satuan (ml, g, kg) tetap kecil.
+ * Huruf awal kapital untuk tiap kata yang diketik huruf kecil: "purbasari pelembab wajah" → "Purbasari Pelembab Wajah".
+ * Kata yang sudah mengandung huruf kapital (mis. "BB", "SPF") tidak diubah; satuan (ml, g, kg) & angka tetap.
  */
 const PROPER_KEEP_ = /^(ml|g|gr|kg|mg|oz|pcs|x)$/;
+const PROPER_SMALL_ = /^(de|du|la|le|et|of|the|and|with|for|dan|di|ke|untuk|dengan)$/;
 function properCase(text) {
   const s = cleanText(text);
-  if (!s || /[A-Z]/.test(s)) return s;
+  if (!s) return s;
+  // per kata: kata yang diketik huruf kecil semua → huruf awal kapital; kata yang sudah berhuruf besar (BB, SPF, iPhone) dibiarkan;
+  // kata sambung (de, dan, of, …) tetap kecil kecuali di awal
   return s
     .split(' ')
-    .map((t) => (PROPER_KEEP_.test(t) || /^d/.test(t) ? t : t.replace(/(^|[-/(&+.])([a-z])/g, (m, p, c) => p + c.toUpperCase())))
+    .map((t, i) => (/[A-Z]/.test(t) || PROPER_KEEP_.test(t) || /^\d/.test(t) || (i > 0 && PROPER_SMALL_.test(t)) ? t : t.replace(/(^|[-/(&+.])([a-z])/g, (m, p, c) => p + c.toUpperCase())))
     .join(' ');
 }
 

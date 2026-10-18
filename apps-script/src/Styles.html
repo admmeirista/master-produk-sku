@@ -536,5 +536,78 @@ tr.open .exp{transform:rotate(90deg)}
   #toasts{top:auto;bottom:calc(84px + env(safe-area-inset-bottom))}
   .lvt .dim3 .in.sm{width:56px}
 }
+/* ---- v6.2: kepala kartu SKU ringkas & tampilan HP lebih padat ---- */
+.stp .v{display:block}.stp .vs{display:none}
+.vhead{display:flex;align-items:flex-start;gap:8px;min-width:0}
+.vhead .skuname{overflow-wrap:anywhere}
+.vmeta{font-size:12.5px;color:var(--muted);margin-top:2px;display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+.vmeta svg{width:13px;height:13px}
+.vcard2 .vhead+.fgrid{margin-top:10px}
+.vdel{flex:0 0 auto;padding:0 8px}
+@media (max-width:760px){
+  /* atas: bilah gelap tipis, judul kecil, tanpa breadcrumb, tahap satu baris */
+  .mtop{padding:5px 10px;gap:6px}
+  .mtop .icon-btn{width:36px;height:36px}
+  .mtop .brand .mark{width:28px;height:28px}
+  .main{padding-top:10px}
+  .ph{margin-bottom:10px}.ph .crumbs{display:none}.ph h2{font-size:19px;line-height:1.2}
+  body[data-page=register] .ph .act:empty{display:none}
+  .stepper,.stepper.s3{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-bottom:12px}
+  .stp{padding:7px 8px;gap:7px;border-radius:12px;box-shadow:none}
+  .stp .n{width:24px;height:24px;border-radius:8px;font-size:12px}
+  .stp .k,.stp .v{display:none}
+  .stp .vs{display:block;font-weight:800;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  /* tombol bawah: satu baris, kembali = ikon saja, label pendek */
+  .wz-foot{flex-wrap:nowrap;gap:6px;padding:8px 10px calc(8px + env(safe-area-inset-bottom))}
+  .wz-foot .lg{display:none}
+  .wz-foot .btn{flex:1 1 0;min-width:0;padding:0 10px;white-space:nowrap}
+  .wz-foot .btn.bk{flex:0 0 44px;padding:0}
+  .wz-foot span.right{display:none}
+  .vmeta .lg{display:none}
+  /* kartu SKU: foto kecil + kepala satu baris, isian selebar kartu */
+  .vcard2{display:grid;grid-template-columns:48px minmax(0,1fr);gap:8px 10px;padding:12px;align-items:start}
+  .vcard2>.grow{display:contents}
+  .vcard2>.ph-btn,.vcard2>.ph-btn.big{width:48px;height:48px;flex-basis:48px;grid-column:1;grid-row:1}
+  .vcard2>.ph-btn.big small{display:none}
+  .vcard2 .vhead{grid-column:2;grid-row:1;align-self:center}
+  .vcard2>.grow>:not(.vhead){grid-column:1/-1}
+  .vcard2 .vhead+.fgrid{margin-top:0}
+  .vcard2 .vgrid{margin-top:0;gap:8px}
+  .vattrs label{min-width:0;flex:1 1 40%}
+  .vact{justify-content:stretch}.vact select{width:100%}
+  .skuname.big{font-size:15px}
+  .bc .seg{width:100%}.bc .seg button{flex:1}
+  .bc .in{min-width:0;flex:1 1 100%}
+  /* jenis variasi: pilihan jenis + hapus satu baris, pilihan nilai di bawahnya */
+  .attr-row{grid-template-columns:minmax(0,1fr) 44px;gap:8px}
+  .attr-row>:nth-child(1){grid-column:1;grid-row:1}
+  .attr-row>:nth-child(3){grid-column:2;grid-row:1;height:44px}
+  .attr-row>:nth-child(2){grid-column:1/-1;grid-row:2}
+  .combo-bar{padding:10px 12px;gap:8px}.combo-bar b{font-size:17px}
+  /* tingkat kemasan: tabel → kartu per tingkat (tanpa geser ke samping) */
+  .tbl-x:has(.lvt){overflow:visible;border:0}
+  .t.lvt,.t.lvt tbody{display:block;width:100%}
+  .t.lvt thead{display:none}
+  .t.lvt tr{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px 10px;padding:10px;border:1px solid var(--line);border-radius:12px;margin-bottom:8px;background:#fff}
+  .t.lvt tr.lv0{background:#fbfaf6}
+  .t.lvt td{display:block;padding:0;border:0;min-width:0}
+  .t.lvt td::before{display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:3px}
+  .t.lvt td:nth-child(1)::before{content:'Satuan'}
+  .t.lvt td:nth-child(2)::before{content:'Isi'}
+  .t.lvt td:nth-child(3)::before{content:'Setara'}
+  .t.lvt td:nth-child(4)::before{content:'Dimensi P × L × T (cm)'}
+  .t.lvt td:nth-child(5)::before{content:'Berat kotor'}
+  .t.lvt td:nth-child(1){grid-column:1;grid-row:1}
+  .t.lvt td:nth-child(2){grid-column:2;grid-row:1}
+  .t.lvt td:nth-child(3){grid-column:1;grid-row:2;align-self:center}
+  .t.lvt td:nth-child(6){grid-column:2;grid-row:2;justify-self:end;align-self:center}
+  .t.lvt td:nth-child(4),.t.lvt td:nth-child(5){grid-column:1/-1}
+  .t.lvt td:empty{display:none}
+  .t.lvt .dim3 .in.sm,.lvt .dim3 .in.sm{width:auto;flex:1;min-width:0}
+  .t.lvt select.in.sm{width:100%}
+  .t.lvt tr.lv-trade{grid-template-columns:1fr;margin-top:-6px}
+  .t.lvt tr.lv-trade td{grid-column:1;grid-row:auto}
+  .t.lvt tr.lv-trade td::before{content:none}
+}
 </style>
 

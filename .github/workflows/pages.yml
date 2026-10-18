@@ -8,7 +8,7 @@ name: GitHub Pages
 on:
   push:
     branches: [main]
-    paths: ['apps-script/src/**', 'apps-script/tools/build-pages.cjs', '.github/workflows/pages.yml']
+    paths: ['apps-script/src/**', 'apps-script/pages/**', 'apps-script/tools/build-pages.cjs', '.github/workflows/pages.yml']
   workflow_dispatch:
 
 permissions:
