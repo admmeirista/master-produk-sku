@@ -78,7 +78,7 @@ function page() {
     window.google = { script: { run: runner(null, null) } };
   })();</script>`;
   // HtmlService menambahkan meta viewport lewat addMetaTag (Code.gs) — tiru di pratinjau
-  html = html.replace('<meta charset="utf-8" />', '<meta charset="utf-8" />\n    <meta name="viewport" content="width=device-width, initial-scale=1" />');
+  html = html.replace('<meta charset="utf-8" />', '<meta charset="utf-8" />\n    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />');
   return html.replace('<body>', '<body>' + shim);
 }
 

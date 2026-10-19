@@ -249,7 +249,7 @@ table.t tr.off td{color:#9aa19c}
 /* wizard */
 .wz-grid{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:16px;align-items:start}
 .wz-side{position:sticky;top:18px;display:flex;flex-direction:column;gap:12px}
-.fgrid{display:grid;grid-template-columns:1fr 1fr;gap:4px 16px}
+.fgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:4px 16px}.fgrid>*,.fld{min-width:0}
 .fgrid .full{grid-column:1/-1}
 .fld label.f{margin-top:12px}
 .fld .row .in{flex:1}
@@ -608,6 +608,22 @@ tr.open .exp{transform:rotate(90deg)}
   .t.lvt tr.lv-trade{grid-template-columns:1fr;margin-top:-6px}
   .t.lvt tr.lv-trade td{grid-column:1;grid-row:auto}
   .t.lvt tr.lv-trade td::before{content:none}
+}
+/* ---- v6.9: bilah atas tetap, navigasi 5 menu, kamera di kolom cari, isian tidak keluar kartu ---- */
+html{touch-action:manipulation}
+.search.has-cam{position:relative}
+.search.has-cam .in{padding-right:46px}
+.search.has-cam .cam-btn{position:absolute;right:3px;top:50%;transform:translateY(-50%);width:36px;height:34px;border:0;background:transparent;box-shadow:none;color:var(--acc)}
+.vcard2 .row>.in,.vcard2 .row>select.in{min-width:0}
+@media (max-width:760px){
+  .fgrid,.choice{grid-template-columns:minmax(0,1fr)}
+  .mtop{position:fixed;left:0;right:0;top:0;z-index:40;padding-top:calc(5px + env(safe-area-inset-top))}
+  .adm{padding-top:calc(48px + env(safe-area-inset-top))}
+  .tabbar button{flex:1 1 0;min-width:0}
+  .tabbar button.fab{flex:1.1 1 0}
+  .search.has-cam .cam-btn{width:42px;height:40px}
+  .vcard2 .row>select.in{width:112px!important;flex:0 0 112px}
+  .vcard2 .row>.in.grow{flex:1 1 0}
 }
 /* ---- v6.8: scan barcode pakai kamera, tab Master Produk ---- */
 .cam-bg{position:fixed;inset:0;z-index:1200;background:rgba(18,22,20,.86);display:flex;align-items:center;justify-content:center;padding:16px}

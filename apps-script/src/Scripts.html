@@ -221,6 +221,9 @@ var CamScan = {
     });
   }
 };
+/* iPhone mengabaikan user-scalable=no untuk pinch — cegah zoom agar tampilan tidak bisa digeser ke samping */
+['gesturestart', 'gesturechange'].forEach(function (ev) { document.addEventListener(ev, function (e) { e.preventDefault(); }, { passive: false }); });
+document.addEventListener('touchmove', function (e) { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
 /** Tombol kamera kecil di sebelah isian barcode. */
 function camBtn(title) { return '<button type="button" class="btn cam-btn" data-cam title="' + esc(title || 'Scan pakai kamera') + '" aria-label="' + esc(title || 'Scan pakai kamera') + '">' + icon('camera') + '</button>'; }
 
@@ -586,7 +589,7 @@ var App = {
     if (!App.keysBound) {
       App.keysBound = true;
       // F2 = langsung ke Master Produk › Cari SKU / Scan (scanner USB cukup ditembakkan setelahnya)
-      document.addEventListener('keydown', function (e) { if (e.key === 'F2' && App.me) { e.preventDefault(); App.go('products', { tab: 'scan' }); } });
+      document.addEventListener('keydown', function (e) { if (e.key === 'F2' && App.me) { e.preventDefault(); App.go('products', { focus: true }); } });
     }
   },
   /** Pindah halaman. arg diteruskan ke halaman (mis. id produk). */
@@ -597,13 +600,13 @@ var App = {
     }
     App.leaveGuard = null;
     // Cari SKU / Scan sekarang tab di Master Produk (tautan lama tetap jalan)
-    if (page === 'scan') { arg = { tab: 'scan', code: arg && arg.code }; page = 'products'; }
+    if (page === 'scan') { arg = { search: (arg && arg.code) || '', focus: true }; page = 'products'; }
     if (!Pages[page]) page = 'dashboard';
     App.page = page; App.pageArg = arg;
     $$('.side a.nv').forEach(function (a) { a.classList.toggle('on', a.getAttribute('data-nav') === page || (page === 'product' && a.getAttribute('data-nav') === 'products')); });
     document.body.setAttribute('data-page', page);
     var tabOf = { product: 'products' }[page] || page;
-    $$('#tabbar [data-tab]').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-tab') === tabOf || (b.getAttribute('data-tab') === 'menu' && ['dashboard', 'scan', 'register', 'products'].indexOf(tabOf) < 0)); });
+    $$('#tabbar [data-tab]').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-tab') === tabOf || (b.getAttribute('data-tab') === 'menu' && ['dashboard', 'register', 'products', 'quality'].indexOf(tabOf) < 0)); });
     var side = $('#side'); if (side) { side.classList.remove('open'); $('#side-bg').classList.remove('open'); }
     var main = $('#main');
     main.innerHTML = loadingBox();
@@ -612,7 +615,7 @@ var App = {
   },
   /** Navigasi bawah untuk tampilan HP (≤ 760 px). */
   tabbar: function () {
-    var t = [['dashboard', 'grid', 'Beranda'], can('product.write') ? ['register', 'plus', 'Registrasi'] : null, ['products', 'package', 'Produk'], ['menu', 'menu', 'Menu']].filter(Boolean);
+    var t = [['dashboard', 'grid', 'Beranda'], ['products', 'package', 'Produk'], can('product.write') ? ['register', 'plus', 'Registrasi'] : null, ['quality', 'shield', 'Cek Data'], ['menu', 'menu', 'Menu']].filter(Boolean);
     return '<nav class="tabbar" id="tabbar">' + t.map(function (x) { return '<button type="button" data-tab="' + x[0] + '"' + (x[0] === 'register' ? ' class="fab"' : '') + '><span class="ti">' + icon(x[1]) + '</span><span class="tl">' + x[2] + '</span></button>'; }).join('') + '</nav>';
   },
   logout: function () {
