@@ -609,6 +609,39 @@ tr.open .exp{transform:rotate(90deg)}
   .t.lvt tr.lv-trade td{grid-column:1;grid-row:auto}
   .t.lvt tr.lv-trade td::before{content:none}
 }
+/* ---- v6.8: scan barcode pakai kamera, tab Master Produk ---- */
+.cam-bg{position:fixed;inset:0;z-index:1200;background:rgba(18,22,20,.86);display:flex;align-items:center;justify-content:center;padding:16px}
+.cam{width:min(520px,100%);background:#141816;border-radius:18px;overflow:hidden;color:#eef1ec;box-shadow:0 20px 60px rgba(0,0,0,.45)}
+.cam-h{display:flex;align-items:center;justify-content:space-between;padding:10px 12px 10px 16px}
+.cam-h .icon-btn{background:transparent;border:0;color:#eef1ec;width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.cam-v{position:relative;background:#000;aspect-ratio:4/3;overflow:hidden}
+.cam-v video{width:100%;height:100%;object-fit:cover;display:block}
+.cam-frame{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none}
+.cam-frame i{position:relative;width:78%;height:38%;border:3px solid rgba(255,255,255,.92);border-radius:14px;box-shadow:0 0 0 2000px rgba(0,0,0,.28)}
+.cam-frame i::after{content:'';position:absolute;left:10px;right:10px;top:50%;height:2px;background:var(--acc);box-shadow:0 0 10px var(--acc);animation:camline 1.6s ease-in-out infinite alternate}
+@keyframes camline{from{transform:translateY(-40px)}to{transform:translateY(40px)}}
+.cam-msg{position:absolute;left:0;right:0;bottom:0;padding:10px 14px;font-weight:700;font-size:13.5px;text-align:center;background:linear-gradient(transparent,rgba(0,0,0,.65))}
+.cam-msg.bad{color:#ffb4a0}
+.cam-f{display:flex;gap:8px;align-items:center;padding:12px;flex-wrap:wrap}
+.cam-f .btn.on{background:var(--acc);border-color:var(--acc);color:#fff}
+.cam-man{display:flex;gap:8px;flex:1;min-width:220px}.cam-man .in{flex:1;min-width:0}
+.cam-btn{flex:0 0 auto;width:40px;height:40px;padding:0;justify-content:center}
+.cam-btn svg{width:19px;height:19px}
+.scanbox form{align-items:center}
+.only-m{display:none!important}
+.cam-big{margin:4px 0 10px;height:46px}
+.ptabs{margin-top:4px}
+.dtabs a svg{width:15px;height:15px;vertical-align:-3px;margin-right:6px}
+.bc .in.code{min-width:0}
+@media (max-width:760px){
+  .only-m{display:inline-flex!important}
+  .cam-bg{padding:0;align-items:stretch}
+  .cam{border-radius:0;width:100%;display:flex;flex-direction:column}
+  .cam-v{flex:1;aspect-ratio:auto}
+  .cam-f{padding:12px 12px calc(12px + env(safe-area-inset-bottom))}
+  .bc .in.code{flex:1 1 0}
+  .bc .cam-btn{width:44px;height:44px}
+}
 /* ---- v6.7: Master Produk — foto, kolom rapi, laci Kode SKU Produk ---- */
 .pthumb{position:relative;display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:10px;background:#f6f3ec;border:1px solid var(--line-2);color:#bdb6a8;overflow:hidden;flex:0 0 auto;vertical-align:middle}
 .pthumb svg{width:18px;height:18px}

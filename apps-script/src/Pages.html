@@ -19,16 +19,19 @@ function cellStr(v) { return v === null || v === undefined ? '' : typeof v === '
 function scanBox(host, opts) {
   opts = opts || {};
   host.innerHTML = '<div class="scanbox"><div class="k">Cari SKU</div><div class="t">Scan GTIN / barcode internal, atau ketik SKU / nama produk</div>' +
-    '<form autocomplete="off"><input class="in" name="q" placeholder="' + (isPhone() ? 'Ketik / scan GTIN, SKU, nama' : 'Arahkan scanner ke sini, atau ketik lalu Enter') + '" inputmode="text" spellcheck="false"><button class="btn pri" type="submit">' + icon('search') + 'Cari</button></form>' +
+    '<button type="button" class="btn pri w100 only-m cam-big" data-camb>' + icon('camera') + 'Scan barcode pakai kamera</button>' +
+    '<form autocomplete="off"><input class="in" name="q" placeholder="' + (isPhone() ? 'Atau ketik GTIN, SKU, nama' : 'Arahkan scanner ke sini, atau ketik lalu Enter') + '" inputmode="text" spellcheck="false">' + camBtn('Scan pakai kamera HP') + '<button class="btn pri" type="submit">' + icon('search') + 'Cari</button></form>' +
     '<div class="hint">GTIN, barcode internal, Kode SKU Produk, Kode Produk Induk, atau nama produk<span class="hide-m"> · <span class="kbd">F2</span></span></div></div><div class="scan-res"></div>';
   var f = $('form', host), res = $('.scan-res', host);
+  var cam = function () { CamScan.open({ title: 'Cari SKU — scan barcode' }).then(function (code) { if (code) { f.q.value = code; f.onsubmit(new Event('submit')); } }); };
+  $$('[data-cam], [data-camb]', host).forEach(function (b) { b.onclick = cam; });
   f.onsubmit = function (e) {
     e.preventDefault();
     var q = f.q.value.trim(); if (!q) return f.q.focus();
     res.innerHTML = loadingBox('Mencari ' + q + '…');
     api('barcode.lookup', { code: q }, { silent: true }).then(function (r) { renderScan(res, r); f.q.select(); }).catch(function (e2) { res.innerHTML = errBox(e2.message); });
   };
-  if (opts.focus !== false) setTimeout(function () { f.q.focus(); }, 30);
+  if (opts.focus !== false && !isPhone()) setTimeout(function () { f.q.focus(); }, 30);
   if (opts.code) { f.q.value = opts.code; f.onsubmit(new Event('submit')); }
 }
 function renderScan(res, r) {
@@ -83,8 +86,7 @@ function pickProduct(title) {
 
 /* ───────── Dashboard ───────── */
 Pages.dashboard = function (main) {
-  main.innerHTML = pageHead('Ringkasan', 'Dashboard', can('product.write') ? '<button class="btn pri hide-m" data-go="register">' + icon('plus') + 'Registrasi Produk</button>' : '') + '<div id="db-scan" style="margin-bottom:16px"></div><div id="db-body">' + loadingBox() + '</div>';
-  scanBox($('#db-scan', main), { focus: false });
+  main.innerHTML = pageHead('Ringkasan', 'Dashboard', can('product.write') ? '<button class="btn pri hide-m" data-go="register">' + icon('plus') + 'Registrasi Produk</button>' : '') + '<div id="db-body">' + loadingBox() + '</div>';
   $$('[data-go]', main).forEach(function (b) { b.onclick = function () { App.go(b.getAttribute('data-go')); }; });
   api('dashboard.get', {}, { quiet: true }).then(function (d) {
     var c = d.counts;
@@ -118,17 +120,26 @@ Pages.dashboard = function (main) {
 
 /* ───────── Cari SKU / Scan ───────── */
 Pages.scan = function (main, arg) {
-  main.innerHTML = pageHead('Lookup', 'Cari SKU / Scan', '', '') + '<div id="sc" style="max-width:860px"></div>';
-  scanBox($('#sc', main), { code: arg && arg.code });
+  Pages.products(main, { tab: 'scan', code: arg && arg.code });
 };
 
 /* ───────── Master Produk (direktori) ───────── */
-Pages.products = function (main) {
+Pages.products = function (main, arg) {
+  var tabs = function (on) { return '<div class="dtabs ptabs"><a data-pt="list"' + (on === 'list' ? ' class="on"' : '') + '>' + icon('package') + 'Daftar Produk</a><a data-pt="scan"' + (on === 'scan' ? ' class="on"' : '') + '>' + icon('scan') + 'Cari SKU / Scan</a></div>'; };
+  var bindTabs = function () { $$('[data-pt]', main).forEach(function (a) { a.onclick = function () { App.go('products', a.getAttribute('data-pt') === 'scan' ? { tab: 'scan' } : null); }; }); };
+  if (arg && arg.tab === 'scan') {
+    main.innerHTML = pageHead('Master data', 'Master Produk', '') + tabs('scan') + '<div id="sc" style="max-width:860px"></div>';
+    bindTabs();
+    scanBox($('#sc', main), { code: arg.code });
+    return;
+  }
   var f = { search: '', brandId: '', categoryId: '', status: 'ACTIVE', completeness: '', page: 1, sort: 'updatedAt', dir: 'desc' };
   main.innerHTML = pageHead('Master data', 'Master Produk', (can('export.run') ? '<button class="btn" id="ex">' + icon('download') + 'Ekspor</button>' : '') + (can('product.write') ? '<button class="btn pri hide-m" id="np">' + icon('plus') + 'Registrasi Produk</button>' : '')) +
     '<div class="filters"><div class="search">' + icon('search') + '<input class="in" id="fq" placeholder="Cari Kode Produk Induk, Kode SKU Produk, GTIN, barcode internal, nama…"></div><div id="fb" style="width:190px"></div><div id="fc" style="width:190px"></div>' +
     '<select class="in" id="fs"><option value="ACTIVE">Aktif</option><option value="DRAFT">Draft</option><option value="INACTIVE">Nonaktif</option><option value="DISCONTINUED">Discontinued</option><option value="ARCHIVED">Diarsipkan</option><option value="all">Semua status</option></select>' +
     '<select class="in" id="fk"><option value="">Semua</option><option value="incomplete">GTIN belum didata</option><option value="complete">Barcode lengkap</option></select></div><div id="pl"></div>';
+  main.querySelector('.filters').insertAdjacentHTML('beforebegin', tabs('list'));
+  bindTabs();
   if ($('#np', main)) $('#np', main).onclick = function () { App.go('register'); };
   if ($('#ex', main)) $('#ex', main).onclick = function () {
     var b = $('#ex', main);
@@ -152,7 +163,7 @@ Pages.products = function (main) {
   };
   var render = function (d) {
     var box = $('#pl', main), w = can('product.write');
-    if (!d.rows.length) { box.innerHTML = '<div class="tablewrap">' + emptyBox('Tidak ada produk', f.search ? 'Coba kata kunci lain, atau scan barcodenya di menu Scan Barcode.' : 'Produk yang disimpan langsung muncul di sini.') + '</div>'; return; }
+    if (!d.rows.length) { box.innerHTML = '<div class="tablewrap">' + emptyBox('Tidak ada produk', f.search ? 'Coba kata kunci lain, atau scan barcodenya di tab Cari SKU / Scan.' : 'Produk yang disimpan langsung muncul di sini.') + '</div>'; return; }
     var nm = function (r) { return r.displayName || withBrand(r.brandName, r.name); };
     var bcBadge = function (r) { return r.complete ? badge('GTIN', 'Lengkap') : badge('NONE', (r.activeVariants - r.withBarcode) + ' GTIN belum didata'); };
     if (isPhone()) {

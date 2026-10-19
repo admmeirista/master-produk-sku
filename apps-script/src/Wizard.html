@@ -503,7 +503,7 @@ var Wiz = {
     var b = row.barcode, pack = kind === 'pack';
     var mode = b.mode === 'none' ? 'gtin' : b.mode;
     var seg = '<div class="seg">' + [['gtin', pack ? 'GTIN kemasan' : 'Ada GTIN'], ['internal', pack ? 'Nomor internal' : 'Tidak ada GTIN']].map(function (o) { return '<button type="button" data-bm="' + o[0] + '" class="' + (mode === o[0] ? 'on' : '') + '">' + o[1] + '</button>'; }).join('') + '</div>';
-    var field = mode === 'gtin' ? '<input class="in code' + (Wiz.bcState(row, target).cls === 'ERR' || Wiz.st.errors[path] ? ' err' : '') + '" data-bi inputmode="numeric" maxlength="14" placeholder="' + (pack ? 'GTIN kemasan' : 'Scan GTIN (boleh nanti)') + '" value="' + esc(b.code) + '">'
+    var field = mode === 'gtin' ? '<input class="in code' + (Wiz.bcState(row, target).cls === 'ERR' || Wiz.st.errors[path] ? ' err' : '') + '" data-bi inputmode="numeric" maxlength="14" placeholder="' + (pack ? 'GTIN kemasan' : 'Ketik / scan GTIN (boleh nanti)') + '" value="' + esc(b.code) + '">' + camBtn('Scan GTIN pakai kamera HP')
       : '<div class="in ro muted" style="font-size:13px">' + (row.orig && row.orig.mode === 'internal' ? '<span class="code" style="color:var(--fg)">' + esc(row.orig.code) + '</span>' : 'Nomor internal dibuat sistem saat disimpan') + '</div>';
     var reason = Wiz.bcChanged(row) ? '<input class="in sm" data-br placeholder="Alasan ganti barcode (wajib)" value="' + esc(row.reason) + '"><div class="hint" style="margin:0">Barcode lama <span class="code">' + esc(row.orig.code) + '</span> disimpan di histori; Kode SKU Produk tetap.</div>' : '';
     return '<div class="bc">' + seg + field + reason + Wiz.fe(path) + '</div>';
@@ -520,6 +520,14 @@ var Wiz = {
         if (all[i + 1]) { all[i + 1].focus(); all[i + 1].select(); } else bi.blur();
       };
       bi.onblur = function () { if (Wiz.bcChanged(row) && !$('[data-br]', el)) rerender(); };
+      var cam = $('[data-cam]', el);
+      if (cam) cam.onclick = function () {
+        CamScan.open({ title: 'Scan GTIN produk', validate: function (c) { var g = checkGtin(c); return g.ok ? '' : g.msg; } }).then(function (code) {
+          if (!code) return;
+          bi.value = code; bi.oninput(); bi.onblur();
+          toast('GTIN ' + code + ' terbaca', 'ok');
+        });
+      };
       if (row.barcode.code) Wiz.liveCheck(row, target, Wiz.updateStatus);
     }
     var br = $('[data-br]', el); if (br) br.oninput = function () { row.reason = br.value; Wiz.clearErr(path); Wiz.persist(); };

@@ -128,6 +128,102 @@ function labelTables(root) {
 })();
 
 /* ───────── HP: tarik ke bawah lalu lepas untuk memuat ulang halaman ───────── */
+/* ───────── Scan barcode pakai kamera HP ─────────
+ * Pembaca barcode bawaan browser (BarcodeDetector, Chrome Android) bila tersedia; selain itu pustaka ZXing dimuat saat
+ * pertama dipakai (mis. iPhone). Kode diterima setelah terbaca 2× berturut-turut sama (mengurangi salah baca).
+ * CamScan.open({ title, validate(code) → pesan error | '' }) → Promise<kode | null>. Selalu ada isian manual. */
+var CamScan = {
+  ZXING: 'https://unpkg.com/@zxing/library@0.20.0/umd/index.min.js',
+  FORMATS: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'itf', 'qr_code'],
+  available: function () { return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia); },
+  loadZxing: function () {
+    if (window.ZXing) return Promise.resolve();
+    if (CamScan._z) return CamScan._z;
+    CamScan._z = new Promise(function (ok, no) {
+      var s = document.createElement('script'); s.src = CamScan.ZXING; s.async = true;
+      s.onload = ok; s.onerror = function () { CamScan._z = null; no(new Error('Pustaka scanner gagal dimuat — periksa koneksi internet')); };
+      document.head.appendChild(s);
+    });
+    return CamScan._z;
+  },
+  open: function (opts) {
+    opts = opts || {};
+    return new Promise(function (resolve) {
+      var bg = document.createElement('div'); bg.className = 'cam-bg';
+      bg.innerHTML = '<div class="cam" role="dialog" aria-label="Scan barcode"><div class="cam-h"><b>' + esc(opts.title || 'Scan barcode') + '</b><button type="button" class="icon-btn" data-x aria-label="Tutup">' + icon('x') + '</button></div>' +
+        '<div class="cam-v"><video playsinline muted autoplay></video><div class="cam-frame"><i></i></div><div class="cam-msg">Menyalakan kamera…</div></div>' +
+        '<div class="cam-f"><button type="button" class="btn sm hidden" data-torch>' + icon('zap') + 'Senter</button><form class="cam-man" autocomplete="off"><input class="in" name="c" inputmode="numeric" placeholder="atau ketik kode barcode" spellcheck="false"><button class="btn pri" type="submit">OK</button></form></div></div>';
+      document.body.appendChild(bg);
+      var video = $('video', bg), msg = $('.cam-msg', bg), stream = null, reader = null, timer = null, done = false, last = '', count = 0, torchOn = false;
+      var say = function (t, bad) { msg.textContent = t; msg.classList.toggle('bad', !!bad); };
+      var finish = function (code) {
+        if (done) return; done = true;
+        clearTimeout(timer);
+        try { if (reader) reader.reset(); } catch (e) {}
+        if (stream) stream.getTracks().forEach(function (t) { t.stop(); });
+        document.removeEventListener('keydown', onKey);
+        bg.remove();
+        resolve(code || null);
+      };
+      var accept = function (raw) {
+        var code = String(raw || '').replace(/\s+/g, '').trim();
+        if (!code || done) return;
+        if (code === last) count++; else { last = code; count = 1; }
+        if (count < 2) return;
+        var err = opts.validate ? opts.validate(code) : '';
+        if (err) { say(code + ' — ' + err, true); count = 0; return; }
+        if (navigator.vibrate) navigator.vibrate(60);
+        finish(code);
+      };
+      var onKey = function (e) { if (e.key === 'Escape') finish(null); };
+      document.addEventListener('keydown', onKey);
+      $('[data-x]', bg).onclick = function () { finish(null); };
+      $('.cam-man', bg).onsubmit = function (e) {
+        e.preventDefault();
+        var code = this.c.value.replace(/\s+/g, '').trim(); if (!code) return;
+        var err = opts.validate ? opts.validate(code) : '';
+        if (err) return say(code + ' — ' + err, true);
+        finish(code);
+      };
+      if (!CamScan.available()) { say('Kamera tidak tersedia di browser ini — ketik kodenya di bawah.', true); return; }
+      navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } }).then(function (s) {
+        if (done) { s.getTracks().forEach(function (t) { t.stop(); }); return; }
+        stream = s; video.srcObject = s;
+        var track = s.getVideoTracks()[0], caps = track && track.getCapabilities ? track.getCapabilities() : {};
+        if (caps.torch) {
+          var tb = $('[data-torch]', bg); tb.classList.remove('hidden');
+          tb.onclick = function () { torchOn = !torchOn; track.applyConstraints({ advanced: [{ torch: torchOn }] }).catch(function () {}); tb.classList.toggle('on', torchOn); };
+        }
+        return video.play().catch(function () {}).then(function () {
+          say('Arahkan kamera ke barcode');
+          if ('BarcodeDetector' in window) {
+            return BarcodeDetector.getSupportedFormats().then(function (sup) {
+              var det = new BarcodeDetector({ formats: CamScan.FORMATS.filter(function (f) { return sup.indexOf(f) >= 0; }) });
+              var tick = function () {
+                if (done) return;
+                det.detect(video).then(function (r) { if (r && r[0]) accept(r[0].rawValue); }).catch(function () {}).then(function () { if (!done) timer = setTimeout(tick, 120); });
+              };
+              tick();
+            });
+          }
+          return CamScan.loadZxing().then(function () {
+            if (done) return;
+            var hints = new Map(), F = ZXing.BarcodeFormat;
+            hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E, F.CODE_128, F.CODE_39, F.ITF, F.QR_CODE]);
+            reader = new ZXing.BrowserMultiFormatReader(hints, 150);
+            reader.decodeFromStream(s, video, function (res) { if (res) accept(res.getText()); });
+          });
+        });
+      }).catch(function (e) {
+        var denied = e && (e.name === 'NotAllowedError' || e.name === 'SecurityError');
+        say(denied ? 'Izin kamera ditolak' + (window.top !== window ? ' di halaman ini. Buka aplikasi dari layar utama / link GitHub Pages agar kamera bisa dipakai.' : '. Izinkan kamera untuk situs ini di pengaturan browser.') : 'Kamera tidak bisa dibuka: ' + ((e && e.message) || e) + '. Ketik kodenya di bawah.', true);
+      });
+    });
+  }
+};
+/** Tombol kamera kecil di sebelah isian barcode. */
+function camBtn(title) { return '<button type="button" class="btn cam-btn" data-cam title="' + esc(title || 'Scan pakai kamera') + '" aria-label="' + esc(title || 'Scan pakai kamera') + '">' + icon('camera') + '</button>'; }
+
 var PullRefresh = {
   TH: 64,
   /** di bawah bilah atas HP */
@@ -139,7 +235,7 @@ var PullRefresh = {
     document.body.appendChild(ind);
     var y0 = null, d = 0;
     var blocked = function (t) {
-      return !isPhone() || !App.me || PullRefresh.busy || App.page === 'register' || document.querySelector('.modal') ||
+      return !isPhone() || !App.me || PullRefresh.busy || App.page === 'register' || document.querySelector('.modal, .cam-bg') ||
         ($('#side') && $('#side').classList.contains('open')) || (t && t.closest && t.closest('input,textarea,select,.cb-pop,.modal'));
     };
     document.addEventListener('touchstart', function (e) {
@@ -391,7 +487,7 @@ function downloadTable(d, format) {
 /* ═════════════ Aplikasi: login, kerangka sidebar, router ═════════════ */
 var NAV = [
   ['RINGKASAN', [['dashboard', 'Dashboard', 'grid'], ['quality', 'Data Quality', 'shield']]],
-  ['PRODUK', [['register', 'Registrasi Produk', 'plus', 'product.write'], ['products', 'Master Produk', 'package'], ['scan', 'Cari SKU / Scan', 'scan']]],
+  ['PRODUK', [['register', 'Registrasi Produk', 'plus', 'product.write'], ['products', 'Master Produk', 'package']]],
   ['MASTER DATA', [['brands', 'Master Brand', 'tag'], ['categories', 'Master Kategori', 'layers']]],
   ['OPERASIONAL', [['bundles', 'Paket & Kemasan', 'boxes'], ['mapping', 'Channel SKU Mapping', 'link'], ['barcodes', 'Registry Barcode', 'barcode']]],
   ['SISTEM', [['io', 'Import & Export', 'upload', 'export.run'], ['settings', 'Settings', 'sliders'], ['users', 'Pengguna', 'users', 'user.manage'], ['audit', 'Audit Log', 'activity', 'audit.read']]]
@@ -489,8 +585,8 @@ var App = {
     App.go(App.page || 'dashboard', App.pageArg);
     if (!App.keysBound) {
       App.keysBound = true;
-      // F2 = langsung ke Scan Barcode (scanner USB cukup ditembakkan setelahnya)
-      document.addEventListener('keydown', function (e) { if (e.key === 'F2' && App.me) { e.preventDefault(); App.go('scan'); } });
+      // F2 = langsung ke Master Produk › Cari SKU / Scan (scanner USB cukup ditembakkan setelahnya)
+      document.addEventListener('keydown', function (e) { if (e.key === 'F2' && App.me) { e.preventDefault(); App.go('products', { tab: 'scan' }); } });
     }
   },
   /** Pindah halaman. arg diteruskan ke halaman (mis. id produk). */
@@ -500,6 +596,8 @@ var App = {
       if (!g()) return ask('Isian registrasi belum disimpan. Tinggalkan halaman ini? (Isian tetap tersimpan sebagai draf di perangkat ini.)', 'Tinggalkan').then(function (y) { if (y) { App.leaveGuard = null; App.go(page, arg); } });
     }
     App.leaveGuard = null;
+    // Cari SKU / Scan sekarang tab di Master Produk (tautan lama tetap jalan)
+    if (page === 'scan') { arg = { tab: 'scan', code: arg && arg.code }; page = 'products'; }
     if (!Pages[page]) page = 'dashboard';
     App.page = page; App.pageArg = arg;
     $$('.side a.nv').forEach(function (a) { a.classList.toggle('on', a.getAttribute('data-nav') === page || (page === 'product' && a.getAttribute('data-nav') === 'products')); });
@@ -514,7 +612,7 @@ var App = {
   },
   /** Navigasi bawah untuk tampilan HP (≤ 760 px). */
   tabbar: function () {
-    var t = [['dashboard', 'grid', 'Beranda'], ['scan', 'scan', 'Cari SKU'], can('product.write') ? ['register', 'plus', 'Registrasi'] : null, ['products', 'package', 'Produk'], ['menu', 'menu', 'Menu']].filter(Boolean);
+    var t = [['dashboard', 'grid', 'Beranda'], can('product.write') ? ['register', 'plus', 'Registrasi'] : null, ['products', 'package', 'Produk'], ['menu', 'menu', 'Menu']].filter(Boolean);
     return '<nav class="tabbar" id="tabbar">' + t.map(function (x) { return '<button type="button" data-tab="' + x[0] + '"' + (x[0] === 'register' ? ' class="fab"' : '') + '><span class="ti">' + icon(x[1]) + '</span><span class="tl">' + x[2] + '</span></button>'; }).join('') + '</nav>';
   },
   logout: function () {
