@@ -496,7 +496,7 @@ test('jenis variasi: daftar bawaan lama diganti otomatis; daftar buatan user tid
   L.sheets.get('Settings').data.push(['attribute_types', JSON.stringify(['Warna', 'Shade', 'Aroma', 'Ukuran', 'Volume', 'Isi', 'Jenis', 'Tipe']), 'setup', '']);
   L.ctx.resetDbCache_();
   L.ctx.ensureData_(false);
-  assert.deepEqual(JSON.parse(JSON.stringify(L.ctx.getSettings_().attribute_types)), ['Warna', 'Aroma', 'Ukuran', 'Berat Isi', 'Volume']);
+  assert.deepEqual(JSON.parse(JSON.stringify(L.ctx.getSettings_().attribute_types)), ['Warna', 'Aroma', 'Variant', 'Ukuran', 'Berat Isi', 'Volume']);
   const L2 = createGas();
   L2.ctx.ensureSheets_();
   L2.sheets.get('Settings').data.push(['attribute_types', JSON.stringify(['Warna', 'Motif']), 'setup', '']);
@@ -529,4 +529,16 @@ test('import produk (format sistem): varian, brand baru, kategori baku, GTIN & b
   assert.equal(r.items[0].category, 'Kosmetik > Kosmetik Wajah > Foundation');
   const again = c('import.commit', { type: 'products', rows: rows.slice(0, 5), fileName: 't.xlsx' }).data;
   assert.deepEqual([again.created.products, again.skipped], [0, 3]);
+});
+
+test('login dengan username (bagian email sebelum @) & cari kode persis → hasil level SKU', () => {
+  assert.ok(ok(call(null, 'auth.login', { email: 'entry', password: 'Password#2026' })).token, 'username entry');
+  assert.ok(ok(call(null, 'auth.login', { email: 'entry@toko.local', password: 'Password#2026' })).token, 'email tetap bisa');
+  fail(call(null, 'auth.login', { email: 'entry', password: 'salah' }), 'BAD_CREDENTIALS');
+  fail(call(null, 'auth.login', { email: 'tidakada', password: 'Password#2026' }), 'BAD_CREDENTIALS');
+  const p = save(T, { brandId: B.Wardah.id, categoryId: C.Toner.id, name: 'Produk Scan SKU Uji', baseUnit: 'PCS', acknowledgeSimilar: true, variants: [{ attributes: [{ name: 'Volume', value: '50 ml' }], barcode: { mode: 'gtin', code: g(777) } }, { attributes: [{ name: 'Volume', value: '100 ml' }], barcode: { mode: 'none' } }] });
+  const byGtin = ok(call(V, 'product.list', { search: g(777), status: 'all' }));
+  assert.deepEqual(byGtin.skus.map((s) => [s.sku, s.productCode]), [[p.variants[0].sku, p.productCode]]);
+  assert.equal(ok(call(V, 'product.list', { search: p.variants[1].sku.toLowerCase(), status: 'all' })).skus[0].name, 'Wardah Produk Scan SKU Uji 100 ml');
+  assert.equal(ok(call(V, 'product.list', { search: 'scan sku', status: 'all' })).skus.length, 0, 'teks bebas → daftar produk induk');
 });

@@ -51,8 +51,11 @@ function publicUser_(u) {
 
 function login_(email, password) {
   return withLock_(() => {
-    const u = db_('Users').find((x) => x.email === String(email || '').trim().toLowerCase());
-    const fail = new AppError('Email atau password salah', [], 'BAD_CREDENTIALS');
+    const id = String(email || '').trim().toLowerCase();
+    // username = bagian email sebelum "@" (mis. adm.meirista); hanya dipakai bila unik
+    const byUser = id.indexOf('@') < 0 ? db_('Users').filter((x) => String(x.email).split('@')[0] === id) : [];
+    const u = id.indexOf('@') >= 0 ? db_('Users').find((x) => x.email === id) : byUser.length === 1 ? byUser[0] : null;
+    const fail = new AppError('Username atau password salah', [], 'BAD_CREDENTIALS');
     if (!u) {
       hashPassword_(String(password), 'timing'); // samakan waktu respons
       throw fail;

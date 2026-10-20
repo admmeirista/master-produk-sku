@@ -538,7 +538,7 @@ var App = {
   showLogin: function (msg) {
     App.page = null;
     App.authShell('<form id="lf" autocomplete="on"><div class="mobile-brand">' + brand('dark') + '</div><div class="eyebrow">Selamat datang</div><h2>Masuk ke akun Anda</h2><div class="sub">Gunakan email dan password yang diberikan administrator.</div>' +
-      '<label class="f">Email</label><input class="in" name="email" type="email" placeholder="nama@toko.com" autocomplete="username" autocapitalize="off" spellcheck="false" required>' +
+      '<label class="f">Username</label><input class="in" name="email" type="text" placeholder="mis. adm.meirista" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" required>' +
       '<label class="f">Password</label><div class="pw"><input class="in" type="password" name="password" placeholder="Masukkan password" autocomplete="current-password" required><button type="button" class="eye" tabindex="-1" aria-label="Tampilkan password">' + icon('eye') + '</button></div>' +
       '<div id="lerr">' + (msg ? errBox(msg) : '') + '</div>' +
       '<button class="cta" type="submit"><span>Masuk</span>' + icon('arrowRight') + '</button>' +

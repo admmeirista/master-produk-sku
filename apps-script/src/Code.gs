@@ -248,10 +248,11 @@ function autoSchema_() {
 }
 
 /** Naikkan bila ensureData_ membawa migrasi data baru (memicu pembaruan otomatis sekali). */
-const DATA_MIGRATION_VERSION_ = 2;
+const DATA_MIGRATION_VERSION_ = 3;
 const OLD_ATTRIBUTE_TYPES_ = [
   JSON.stringify(['Warna', 'Shade', 'Aroma', 'Ukuran', 'Volume', 'Isi', 'Jenis', 'Tipe']),
   JSON.stringify(['Warna', 'Shade', 'Aroma', 'Ukuran', 'Volume', 'Isi', 'Berat', 'Jenis Produk', 'Jenis', 'Tipe']),
+  JSON.stringify(['Warna', 'Aroma', 'Ukuran', 'Berat Isi', 'Volume']),
 ];
 const COUNTER_NAMES_ = ['parent_no', 'product_no', 'sku_no', 'internal_barcode', 'multipack_no', 'bundle_no', 'supplier_no'];
 

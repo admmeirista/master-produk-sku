@@ -609,6 +609,18 @@ tr.open .exp{transform:rotate(90deg)}
   .t.lvt tr.lv-trade td{grid-column:1;grid-row:auto}
   .t.lvt tr.lv-trade td::before{content:none}
 }
+/* ---- v6.10: hasil scan level SKU, saran berat, isi kemasan ---- */
+.skuhits{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:10px}
+.skuhit{display:flex;gap:12px;align-items:flex-start;background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px;box-shadow:var(--shadow)}
+.skuhit.off{opacity:.65}
+.pthumb.big{width:72px;height:72px;border-radius:12px}.pthumb.big svg{width:24px;height:24px}
+.sh-top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.sh-nm{font-weight:800;font-size:15px;margin-top:4px;line-height:1.3}
+.sh-bc{margin-top:6px}.sh-sub{font-size:12px;margin-top:4px}
+.t.lvt td.lv-eq{white-space:normal;font-size:12.5px;line-height:1.3}
+.lv-err{color:var(--err);font-size:11.5px;font-weight:700}
+.wt-sg{display:block;margin-top:4px;font-size:11.5px;line-height:1.25;font-weight:700;color:var(--acc);cursor:pointer;white-space:normal;overflow-wrap:anywhere}
+.wt-sg:hover{text-decoration:underline}
 /* ---- v6.9: bilah atas tetap, navigasi 5 menu, kamera di kolom cari, isian tidak keluar kartu ---- */
 html{touch-action:manipulation}
 .search.has-cam{position:relative}

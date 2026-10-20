@@ -183,6 +183,19 @@ function productList_(f) {
   const dir = f.dir === 'asc' ? 1 : -1;
   rows.sort((a, b) => (a[key] > b[key] ? 1 : a[key] < b[key] ? -1 : 0) * dir);
   const page = paginate_(rows, f.page, Math.min(Number(f.pageSize) || 25, 200));
+  // scan / ketik kode persis (GTIN, barcode internal, Kode SKU Produk) → langsung tampilkan SKU-nya, bukan produk induk
+  const qx = q.replace(/\s+/g, '').toUpperCase();
+  if (qx.length >= 4) {
+    const hits = [];
+    rows.forEach((r) =>
+      (r.v || []).forEach((v) => {
+        if (v.status === STATUS.DELETED) return;
+        if (v.gtin === qx || v.internal === qx || String(v.sku || '').toUpperCase() === qx)
+          hits.push(Object.assign({}, v, { productId: r.id, productCode: r.productCode, productName: r.displayName, categoryName: r.categoryName }));
+      }),
+    );
+    page.skus = hits.slice(0, 20);
+  }
   page.rows = page.rows.map((r) => {
     const o = Object.assign({}, r);
     delete o.q;
