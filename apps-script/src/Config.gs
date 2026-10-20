@@ -110,8 +110,9 @@ const DEFAULT_SETTINGS = {
   master_code_length: 3,
   fuzzy_threshold: 0.82,
   internal_barcode_prefix: '200',
-  base_units: ['PCS', 'BOTOL', 'TUBE', 'SACHET', 'JAR', 'PACK', 'POT', 'STICK'],
-  pack_units: ['BOX', 'KARTON', 'PACK', 'LUSIN', 'INNER', 'DUS', 'BAL', 'SET'],
+  // satuan terkecil & kemasan dibuat sederhana: PCS → BOX (satuan lain bisa ditambah di Pengaturan)
+  base_units: ['PCS'],
+  pack_units: ['BOX'],
   // urutan = urutan kata pada nama SKU otomatis (warna/aroma dulu, ukuran/isi di belakang); jenis lain lewat pilihan "Lainnya…"
   attribute_types: ['Warna', 'Aroma', 'Variant', 'Ukuran', 'Berat Isi', 'Volume'],
   channels: ['shopee', 'tiktok', 'tokopedia', 'beecloud', 'lainnya'],

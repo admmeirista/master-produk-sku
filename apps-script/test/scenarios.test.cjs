@@ -40,6 +40,7 @@ test('setup: tab v3, admin awal, login & otorisasi di server', () => {
   assert.ok(out.admin.password);
   for (const t of ['MASTER_BRANDS', 'MASTER_CATEGORIES', 'MASTER_PRODUCTS', 'PRODUCT_VARIANTS', 'VARIANT_BARCODES', 'VARIANT_ATTRIBUTES', 'UNIT_CONVERSIONS', 'EXTERNAL_SKU_MAPPINGS', 'AUDIT_LOGS', 'SYSTEM_COUNTERS', 'TX_JOURNAL', 'IMPORT_BATCHES']) assert.ok(sheets.get(t), t);
   admin = ok(call(null, 'auth.login', { email: out.admin.email, password: out.admin.password })).token;
+  ok(call(admin, 'settings.save', { base_units: ['PCS', 'BOTOL', 'TUBE', 'SACHET', 'JAR', 'PACK', 'POT', 'STICK'], pack_units: ['BOX', 'KARTON', 'PACK', 'LUSIN', 'INNER', 'DUS', 'BAL', 'SET'] })); // skenario lama memakai satuan BOTOL/KARTON/LUSIN
   fail(call(null, 'auth.login', { email: out.admin.email, password: 'salah-password' }), 'BAD_CREDENTIALS');
   for (const [email, role] of [['entry@toko.local', 'data_entry'], ['entry2@toko.local', 'data_entry'], ['viewer@toko.local', 'viewer']]) ok(call(admin, 'user.create', { email, fullName: email, role, password: 'Password#2026' }));
   const login = (e) => ok(call(null, 'auth.login', { email: e, password: 'Password#2026' })).token;

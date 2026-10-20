@@ -26,6 +26,7 @@ const DEV_USERS = [
 ];
 const owner = JSON.parse(JSON.stringify(ctx.setup())).admin;
 const ownerToken = call(null, 'auth.login', { email: owner.email, password: owner.password }).data.token;
+call(ownerToken, 'settings.save', { base_units: ['PCS', 'BOTOL', 'TUBE', 'SACHET', 'JAR', 'PACK', 'POT', 'STICK'], pack_units: ['BOX', 'KARTON', 'PACK', 'LUSIN', 'INNER', 'DUS', 'BAL', 'SET'] }); // data contoh memakai BOTOL/KARTON/LUSIN
 DEV_USERS.forEach(([email, fullName, role, password]) => call(ownerToken, 'user.create', { email, fullName, role, password }));
 const ref = JSON.parse(fs.readFileSync(path.join(__dirname, 'reference.json'), 'utf8'));
 const tok = (e, p) => call(null, 'auth.login', { email: e, password: p }).data.token;

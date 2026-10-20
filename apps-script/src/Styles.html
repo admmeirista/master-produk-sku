@@ -609,6 +609,39 @@ tr.open .exp{transform:rotate(90deg)}
   .t.lvt tr.lv-trade td{grid-column:1;grid-row:auto}
   .t.lvt tr.lv-trade td::before{content:none}
 }
+/* ---- v6.11: kartu SKU produk (satu baris rapi) & berat estimasi otomatis ---- */
+.vrow{display:grid;grid-template-columns:56px minmax(0,1fr) minmax(250px,330px) auto;gap:6px 16px;align-items:start;background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin-top:10px;transition:border-color .12s,box-shadow .12s}
+.vrow:hover{border-color:#ddd5c6;box-shadow:0 4px 14px rgba(40,48,43,.05)}
+.vrow.bad{border-color:var(--err);box-shadow:0 0 0 3px rgba(209,67,52,.08)}.vrow.off{opacity:.6}
+.vrow .vr-ph{width:56px;height:56px;flex:none;border-radius:12px;flex-direction:column;gap:2px;font-size:10px}
+.vrow .vr-ph small{font-size:10px;font-weight:700}
+.vr-main{min-width:0;padding-top:2px}
+.vr-main .skuname{font-size:14.5px;font-weight:800;line-height:1.35;overflow-wrap:anywhere}
+.vr-main .vmeta{margin-top:3px;font-size:12.5px;gap:6px}
+.vr-main .vmeta .dot{color:var(--line)}
+.vr-main .dv-at{margin-top:8px}
+.vr-main .vattrs{margin-top:8px}
+.vr-lbl{font-size:10.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:2px 0 6px}
+.vr-bc .bc{gap:6px}
+.vr-bc .bc .seg{width:100%}.vr-bc .bc .seg button{flex:1}
+.vr-bc .bc .in.ro{flex:1 1 100%;height:auto;min-height:38px;display:flex;align-items:center;padding:8px 12px;font-size:12.5px;background:#f8f6f1;border:1px dashed #d9d2c4;color:var(--muted)}
+.vr-vs:not(:empty){margin-top:6px}
+.vr-act{display:flex;justify-content:flex-end;padding-top:2px}
+.vr-act select{width:130px}
+.vr-act .vdel{width:36px;height:36px;padding:0;justify-content:center;color:var(--muted)}
+.vr-act .vdel:hover{color:var(--err);background:var(--err-soft)}
+.wt-cell.auto .in{background:#fff8ec;border-color:#f0d9a8}
+.wt-auto{display:flex;align-items:center;gap:4px;margin-top:4px;font-size:11px;font-weight:700;color:#9a6a12;line-height:1.2;cursor:help}
+.wt-auto svg{width:12px;height:12px;flex:none}
+@media (max-width:1100px){.vrow{grid-template-columns:52px minmax(0,1fr) auto}.vr-bc{grid-column:2/-1;grid-row:2}.vr-act{grid-column:3;grid-row:1}}
+@media (max-width:760px){
+  .vrow{grid-template-columns:48px minmax(0,1fr) auto;gap:8px 10px;padding:12px}
+  .vrow .vr-ph{width:48px;height:48px;grid-column:1;grid-row:1}
+  .vr-main{grid-column:2;grid-row:1}
+  .vr-act{grid-column:3;grid-row:1}
+  .vr-bc{grid-column:1/-1;grid-row:2;border-top:1px dashed var(--line);padding-top:8px}
+  .vr-act select{width:118px}
+}
 /* ---- v6.10: hasil scan level SKU, saran berat, isi kemasan ---- */
 .skuhits{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:10px}
 .skuhit{display:flex;gap:12px;align-items:flex-start;background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px;box-shadow:var(--shadow)}

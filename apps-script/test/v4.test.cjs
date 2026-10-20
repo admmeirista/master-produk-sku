@@ -30,6 +30,7 @@ test('persiapan: setup, user, brand & kategori', () => {
   const out = JSON.parse(JSON.stringify(G.ctx.setup()));
   for (const t of ['BUNDLE_MASTERS', 'BUNDLE_COMPONENTS', 'MASTER_SUPPLIERS', 'SUPPLIER_PRODUCT_MAPPING', 'PRODUCT_LIFECYCLE_HISTORY', 'PACKAGING_HISTORY', 'GTIN_LOOKUP_CACHE', 'IMPORT_ERRORS', 'ATTRIBUTE_VALUES']) assert.ok(G.sheets.get(t), t);
   const admin = ok(call(null, 'auth.login', { email: out.admin.email, password: out.admin.password })).token;
+  ok(call(admin, 'settings.save', { base_units: ['PCS', 'BOTOL', 'TUBE', 'SACHET', 'JAR', 'PACK', 'POT', 'STICK'], pack_units: ['BOX', 'KARTON', 'PACK', 'LUSIN', 'INNER', 'DUS', 'BAL', 'SET'] })); // skenario lama memakai satuan BOTOL/KARTON/LUSIN
   ok(call(admin, 'user.create', { email: 'entry@toko.local', fullName: 'Rina', role: 'data_entry', password: 'Password#2026' }));
   ok(call(admin, 'user.create', { email: 'viewer@toko.local', fullName: 'Budi', role: 'viewer', password: 'Password#2026' }));
   T = ok(call(null, 'auth.login', { email: 'entry@toko.local', password: 'Password#2026' })).token;

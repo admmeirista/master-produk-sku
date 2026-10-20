@@ -502,7 +502,7 @@ var Wiz = {
     var mode = b.mode === 'none' ? 'gtin' : b.mode;
     var seg = '<div class="seg">' + [['gtin', pack ? 'GTIN kemasan' : 'Ada GTIN'], ['internal', pack ? 'Nomor internal' : 'Tidak ada GTIN']].map(function (o) { return '<button type="button" data-bm="' + o[0] + '" class="' + (mode === o[0] ? 'on' : '') + '">' + o[1] + '</button>'; }).join('') + '</div>';
     var field = mode === 'gtin' ? '<input class="in code' + (Wiz.bcState(row, target).cls === 'ERR' || Wiz.st.errors[path] ? ' err' : '') + '" data-bi inputmode="numeric" maxlength="14" placeholder="' + (pack ? 'GTIN kemasan' : 'Ketik / scan GTIN (boleh nanti)') + '" value="' + esc(b.code) + '">' + camBtn('Scan GTIN pakai kamera HP')
-      : '<div class="in ro muted" style="font-size:13px">' + (row.orig && row.orig.mode === 'internal' ? '<span class="code" style="color:var(--fg)">' + esc(row.orig.code) + '</span>' : 'Nomor internal dibuat sistem saat disimpan') + '</div>';
+      : '<div class="in ro muted" style="font-size:13px">' + (row.orig && row.orig.mode === 'internal' ? '<span class="code" style="color:var(--fg)">' + esc(row.orig.code) + '</span>' : 'Dibuat otomatis saat disimpan') + '</div>';
     var reason = Wiz.bcChanged(row) ? '<input class="in sm" data-br placeholder="Alasan ganti barcode (wajib)" value="' + esc(row.reason) + '"><div class="hint" style="margin:0">Barcode lama <span class="code">' + esc(row.orig.code) + '</span> disimpan di histori; Kode SKU Produk tetap.</div>' : '';
     return '<div class="bc">' + seg + field + reason + Wiz.fe(path) + '</div>';
   },
@@ -565,13 +565,17 @@ var Wiz = {
     var cols = Wiz.attrCols();
     box.innerHTML = s.variants.map(function (v, i) {
       var p = 'variants.' + i, rowErr = Object.keys(s.errors).some(function (k) { return k.indexOf(p + '.') === 0 && Wiz.stepOf(k) === 2; });
-      return '<div class="vcard2' + (rowErr ? ' bad' : '') + (v.status !== 'ACTIVE' && v.status !== 'DRAFT' ? ' off' : '') + '" data-v="' + i + '">' +
-        '<button type="button" class="ph-btn" data-ph title="Foto produk">' + (v.imageUrl ? '<img src="' + esc(v.imageUrl) + '" alt="" referrerpolicy="no-referrer">' : icon('image')) + '</button>' +
-        '<div class="grow" style="min-width:0"><div class="vhead"><div class="grow" style="min-width:0"><div class="skuname" data-nm>' + esc(Wiz.displayName(v) || '—') + '</div><div class="vmeta"><span class="sku" data-csku="' + i + '">' + esc(Wiz.childSku(v)) + '</span>' + (v.saved ? icon('lock') : '') + ' · <a class="link-btn" data-ov>' + (v.nameOverride ? 'Pakai nama otomatis' : 'Ubah nama') + '</a></div></div>' + (v.saved ? '' : '<button class="btn sm ghost vdel" data-del title="Hapus (tidak tersedia)" type="button">' + icon('trash') + '</button>') + '</div>' +
-        '<div class="vgrid"><div class="vattrs">' + (v.saved || v.manual ? cols : []).map(function (c) { var a = v.attributes.find(function (x) { return x.name === c; }); return '<label><span>' + esc(c) + '</span><input class="in sm' + Wiz.errCls(p + '.attributes') + '" data-av="' + esc(c) + '" maxlength="40" value="' + esc(a ? a.value : '') + '"></label>'; }).join('') + '</div>' +
-        '<div>' + Wiz.bcInput(v, p + '.barcode', String(i)) + '<div data-vs="' + i + '" style="margin-top:4px"></div></div>' +
-        (v.saved ? '<div class="vact"><select class="in sm" data-st>' + [v.savedStatus || v.status].concat(((cfg().lifecycle || {})[v.savedStatus || v.status] || [])).map(function (o) { return '<option value="' + o + '"' + (o === v.status ? ' selected' : '') + '>' + esc(STATUS_TXT[o] || o) + '</option>'; }).join('') + '</select></div>' : '') + '</div>' +
-        Wiz.fe(p + '.attributes') + Wiz.fe(p + '.nameOverride') + Wiz.fe(p + '.imageUrl') + '</div></div>';
+      var att = v.attributes.filter(function (a) { return String(a.value).trim(); }), editable = v.saved || v.manual;
+      return '<div class="vrow' + (rowErr ? ' bad' : '') + (v.status !== 'ACTIVE' && v.status !== 'DRAFT' ? ' off' : '') + '" data-v="' + i + '">' +
+        '<button type="button" class="ph-btn vr-ph" data-ph title="Foto SKU produk">' + (v.imageUrl ? '<img src="' + esc(v.imageUrl) + '" alt="" referrerpolicy="no-referrer">' : icon('image') + '<small>Foto</small>') + '</button>' +
+        '<div class="vr-main"><div class="skuname" data-nm>' + esc(Wiz.displayName(v) || '—') + '</div>' +
+          '<div class="vmeta"><span class="sku" data-csku="' + i + '">' + esc(Wiz.childSku(v)) + '</span>' + (v.saved ? icon('lock') : '') + '<span class="dot">·</span><a class="link-btn" data-ov>' + (v.nameOverride ? 'Pakai nama otomatis' : 'Ubah nama') + '</a></div>' +
+          (editable ? '<div class="vattrs">' + cols.map(function (c) { var a = v.attributes.find(function (x) { return x.name === c; }); return '<label><span>' + esc(c) + '</span><input class="in sm' + Wiz.errCls(p + '.attributes') + '" data-av="' + esc(c) + '" maxlength="40" value="' + esc(a ? a.value : '') + '"></label>'; }).join('') + '</div>'
+            : att.length ? '<div class="dv-at">' + att.map(function (a) { return '<span class="achip">' + esc(a.name) + ' <b>' + esc(a.value) + '</b></span>'; }).join('') + '</div>' : '') +
+          Wiz.fe(p + '.attributes') + Wiz.fe(p + '.nameOverride') + Wiz.fe(p + '.imageUrl') + '</div>' +
+        '<div class="vr-bc"><div class="vr-lbl">Barcode</div>' + Wiz.bcInput(v, p + '.barcode', String(i)) + '<div data-vs="' + i + '" class="vr-vs"></div></div>' +
+        '<div class="vr-act">' + (v.saved ? '<select class="in sm" data-st title="Status SKU">' + [v.savedStatus || v.status].concat(((cfg().lifecycle || {})[v.savedStatus || v.status] || [])).map(function (o) { return '<option value="' + o + '"' + (o === v.status ? ' selected' : '') + '>' + esc(STATUS_TXT[o] || o) + '</option>'; }).join('') + '</select>'
+          : '<button class="btn sm ghost vdel" data-del title="Hapus SKU ini (tidak tersedia)" aria-label="Hapus SKU" type="button">' + icon('trash') + '</button>') + '</div></div>';
     }).join('');
     $$('[data-v]', box).forEach(function (card) {
       var i = Number(card.getAttribute('data-v')), v = s.variants[i], p = 'variants.' + i;
@@ -654,6 +658,15 @@ var Wiz = {
     v.attributes.some(function (a) { hit = parse(a.value); return !!hit; });
     return hit || parse(Wiz.displayName(v));
   },
+/** Isi otomatis berat kotor yang masih kosong / masih estimasi (ditandai), dihitung ulang setiap kali data berubah. */
+  autoWeights: function (v) {
+    Object.keys(v.dims).forEach(function (u) { var d = v.dims[u]; if (d && d.wtAuto) { d.wt = ''; d.wtAuto = false; } });
+    var sug = Wiz.weightSuggest(v);
+    Object.keys(sug).forEach(function (u) {
+      var d = v.dims[u] = v.dims[u] || { l: '', w: '', h: '', wt: '', wu: 'g' };
+      if (d.wt === '' || d.wt === undefined || d.wt === null) { d.wt = sug[u].g; d.wtAuto = true; d.wtWhy = sug[u].why; }
+    });
+  },
   /** Saran berat kotor per satuan: isi × berat satuan di dalamnya + perkiraan berat kemasan (karton/box). */
   weightSuggest: function (v) {
     var out = {}, base = Wiz.vBase(v), net = Wiz.netGrams(v);
@@ -680,13 +693,12 @@ var Wiz = {
   renderConvs: function () {
     var s = Wiz.st, box = $('#vc', Wiz.main); if (!box) return;
     var packUnits = cfg().packUnits || [], baseUnits = cfg().baseUnits || [];
-    var sug = {};
+    s.variants.forEach(Wiz.autoWeights);
     var dimCells = function (v, i, u) {
       var d = v.dims[u] || { l: '', w: '', h: '', wt: '', wu: 'g' }, di = Wiz.dimUnits(v).indexOf(u), p = 'variants.' + i + '.dimensions.' + di;
-      var sg = (sug[v.key] || (sug[v.key] = Wiz.weightSuggest(v)))[u];
       var num = function (k, ph) { return '<input class="in sm' + (di >= 0 && Wiz.st.errors[p + '.' + ({ l: 'lengthCm', w: 'widthCm', h: 'heightCm', wt: 'weight' })[k]] ? ' err' : '') + '" data-dm="' + esc(u) + '" data-k="' + k + '" type="number" min="0" step="0.1" inputmode="decimal" placeholder="' + ph + '" value="' + esc(d[k]) + '">'; };
-      return '<td><div class="dim3">' + num('l', 'P') + '<span>×</span>' + num('w', 'L') + '<span>×</span>' + num('h', 'T') + '</div></td><td><div class="row" style="gap:4px;flex-wrap:nowrap">' + num('wt', sg ? '≈ ' + fmtNum(sg.g) : 'gram') + '</div>' +
-        (sg && d.wt === '' ? '<a class="wt-sg" data-wsg="' + esc(u) + '" data-g="' + sg.g + '" title="' + esc(sg.why) + '">Pakai ≈' + fmtNum(sg.g) + ' g</a>' : '') + '</td>';
+      return '<td><div class="dim3">' + num('l', 'P') + '<span>×</span>' + num('w', 'L') + '<span>×</span>' + num('h', 'T') + '</div></td><td><div class="row wt-cell' + (d.wtAuto ? ' auto' : '') + '" style="gap:4px;flex-wrap:nowrap">' + num('wt', 'gram') + '</div>' +
+        (d.wtAuto ? '<div class="wt-auto" title="' + esc(d.wtWhy || '') + '">' + icon('sparkles') + 'Estimasi — cek</div>' : '') + '</td>';
     };
     box.innerHTML = s.variants.map(function (v, i) {
       if (v.status !== 'ACTIVE' && v.status !== 'DRAFT' && !v.conversions.length) return '';
@@ -705,14 +717,14 @@ var Wiz = {
           var prev = [base].concat(v.conversions.slice(0, j).filter(function (x) { return x.status === 'ACTIVE' && x.unitName; }).map(function (x) { return x.unitName; }));
           var opts = packUnits.concat(c.unitName && packUnits.indexOf(c.unitName) < 0 ? [c.unitName] : []);
           var dis = locked || !active ? ' disabled' : '';
-          return '<tr data-c="' + j + '"' + (active ? '' : ' class="off"') + '><td><select class="in sm' + Wiz.errCls(p + '.unitName') + '" data-u' + dis + '><option value="">Satuan…</option>' + opts.map(function (u) { return '<option' + (u === c.unitName ? ' selected' : '') + '>' + esc(u) + '</option>'; }).join('') + '<option value="__custom">Lainnya…</option></select>' + Wiz.fe(p + '.unitName') + '</td>' +
+          return '<tr data-c="' + j + '"' + (active ? '' : ' class="off"') + '><td><select class="in sm' + Wiz.errCls(p + '.unitName') + '" data-u' + dis + '><option value="">Satuan…</option>' + opts.map(function (u) { return '<option' + (u === c.unitName ? ' selected' : '') + '>' + esc(u) + '</option>'; }).join('') + '</select>' + Wiz.fe(p + '.unitName') + '</td>' +
             '<td><div class="row" style="gap:4px;flex-wrap:nowrap"><input class="in sm' + Wiz.errCls(p + '.factor') + '" data-f type="number" min="1" step="1" placeholder="Isi" value="' + esc(c.factor) + '" style="width:70px"' + dis + '><select class="in sm' + Wiz.errCls(p + '.containsUnit') + '" data-cu' + dis + '>' + prev.map(function (u) { return '<option' + (u === (c.containsUnit || base) ? ' selected' : '') + '>' + esc(u) + '</option>'; }).join('') + '</select></div>' + Wiz.fe(p + '.factor') + Wiz.fe(p + '.containsUnit') + '</td>' +
             '<td class="lv-eq">' + (!active ? 'nonaktif' : r && r.eq ? fmtNum(r.eq) + ' ' + esc(base) : '<span class="lv-err">' + esc(r ? r.err : '') + '</span>') + '</td>' +
             (c.unitName ? dimCells(v, i, c.unitName) : '<td></td><td></td>') +
             '<td class="nowrap"><button class="btn sm ghost" type="button" data-trb title="Barcode kemasan (GTIN / internal)">' + icon('barcode') + '</button><button class="btn sm ghost" type="button" data-rm title="' + (locked ? (active ? 'Nonaktifkan' : 'Aktifkan lagi') : 'Hapus') + '">' + icon(locked ? 'power' : 'trash') + '</button></td></tr>' +
             (c.isTradeItem && active ? '<tr class="lv-trade" data-c="' + j + '"><td colspan="6"><div class="cv-trade"><span class="muted" style="font-weight:700">Barcode ' + esc(c.unitName) + '</span><span class="sku">' + esc(c.sku || 'kode dibuat saat disimpan') + '</span><div style="flex:1;min-width:230px">' + Wiz.bcInput(c, p + '.barcode', i + ':' + j, 'pack') + '</div><span data-vs="' + i + ':' + j + '"></span>' + (locked ? '' : '<a class="link-btn" data-trx>Hapus barcode kemasan</a>') + '</div>' + (locked ? '<div class="hint">' + icon('lock') + ' Isi terkunci karena kemasan sudah punya kode sendiri. Nonaktifkan lalu buat tingkat baru bila isinya berubah.</div>' : '') + Wiz.fe(p + '.status') + Wiz.fe(p + '.isTradeItem') + '</td></tr>' : '');
         }).join('') + '</tbody></table></div>' +
-        '<div class="row" style="margin-top:10px"><button class="btn sm" type="button" data-add>' + icon('plus') + 'Tambah tingkat kemasan</button>' + (s.variants.length > 1 ? '<button class="btn sm ghost" type="button" data-copy>' + icon('copy') + 'Terapkan ke semua varian</button>' : '') + '</div>' +
+        '<div class="row" style="margin-top:10px">' + ((cfg().packUnits || []).some(function (u) { return !actives.some(function (c) { return c.unitName === u; }); }) ? '<button class="btn sm" type="button" data-add>' + icon('plus') + 'Tambah kemasan ' + esc((cfg().packUnits || []).filter(function (u) { return !actives.some(function (c) { return c.unitName === u; }); })[0]) + '</button>' : '') + (s.variants.length > 1 ? '<button class="btn sm ghost" type="button" data-copy>' + icon('copy') + 'Terapkan ke semua varian</button>' : '') + '</div>' +
         '</div></div>';
     }).join('');
     $$('.vcard', box).forEach(function (card) {
@@ -733,7 +745,7 @@ var Wiz = {
           v.dims[u] = v.dims[u] || { l: '', w: '', h: '', wt: '', wu: 'g' };
           v.dims[u][k] = el.value === '' ? '' : k === 'wu' ? el.value : Number(el.value);
           s.errors = {}; Wiz.persist();
-          if (k === 'wt') return redraw(); // saran berat tingkat di atasnya ikut diperbarui
+          if (k === 'wt') { v.dims[u].wtAuto = false; v.dims[u].wtWhy = ''; return redraw(); } // berat diisi sendiri → estimasi tingkat di atasnya ikut menyesuaikan
           $('[data-pk]', card).innerHTML = Wiz.pkBadge(v);
           Wiz.renderSide();
         };
@@ -768,8 +780,7 @@ var Wiz = {
       $('[data-add]', card).onclick = function () {
         var used = v.conversions.filter(function (c) { return c.status === 'ACTIVE'; }).map(function (c) { return c.unitName; });
         var last = used[used.length - 1];
-        var order = ['INNER', 'BOX', 'KARTON'].concat(cfg().packUnits || []);
-        var next = order.find(function (u) { return used.indexOf(u) < 0 && (cfg().packUnits || []).indexOf(u) >= 0; }) || '';
+        var next = (cfg().packUnits || []).find(function (u) { return used.indexOf(u) < 0; }) || '';
         v.conversions.push(Wiz.newConv(next, '', Wiz.vBase(v))); redraw();
       };
       var cp = $('[data-copy]', card);

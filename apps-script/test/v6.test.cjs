@@ -74,6 +74,7 @@ test('persiapan: setup, pengguna', () => {
   assert.ok(G.sheets.get('PRODUCT_DIMENSIONS'));
   assert.deepEqual(G.sheets.get('SYSTEM_COUNTERS').data[0], ['CounterName', 'Value', 'UpdatedAt', 'ScopeID']);
   const admin = ok(call(null, 'auth.login', { email: out.admin.email, password: out.admin.password })).token;
+  ok(call(admin, 'settings.save', { base_units: ['PCS', 'BOTOL', 'TUBE'], pack_units: ['BOX', 'KARTON', 'INNER', 'LUSIN'] })); // skenario memakai BOTOL/KARTON
   for (const [e, role] of [['entry@toko.local', 'data_entry'], ['entry2@toko.local', 'data_entry'], ['viewer@toko.local', 'viewer']]) ok(call(admin, 'user.create', { email: e, fullName: e, role, password: 'Password#2026' }));
   const login = (e) => ok(call(null, 'auth.login', { email: e, password: 'Password#2026' })).token;
   T = login('entry@toko.local');

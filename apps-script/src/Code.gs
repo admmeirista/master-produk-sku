@@ -248,7 +248,7 @@ function autoSchema_() {
 }
 
 /** Naikkan bila ensureData_ membawa migrasi data baru (memicu pembaruan otomatis sekali). */
-const DATA_MIGRATION_VERSION_ = 3;
+const DATA_MIGRATION_VERSION_ = 4;
 const OLD_ATTRIBUTE_TYPES_ = [
   JSON.stringify(['Warna', 'Shade', 'Aroma', 'Ukuran', 'Volume', 'Isi', 'Jenis', 'Tipe']),
   JSON.stringify(['Warna', 'Shade', 'Aroma', 'Ukuran', 'Volume', 'Isi', 'Berat', 'Jenis Produk', 'Jenis', 'Tipe']),
@@ -310,6 +310,19 @@ function ensureData_(createAdmin) {
     // jenis variasi: ganti daftar bawaan lama dengan daftar baru (daftar yang sudah diubah user tidak disentuh)
     const at = st.find((r) => r.key === 'attribute_types');
     if (at && OLD_ATTRIBUTE_TYPES_.indexOf(at.value) >= 0) st.update(at, { value: JSON.stringify(DEFAULT_SETTINGS.attribute_types), updated_by: 'setup', updated_at: now_() });
+    // satuan: daftar bawaan lama → PCS & BOX; satuan terkecil yang dipakai produk selalu ada di daftar
+    const bu = st.find((r) => r.key === 'base_units');
+    if (bu) {
+      let cur = [];
+      try { cur = JSON.parse(bu.value); } catch (e) { cur = []; }
+      const oldDefault = bu.value === JSON.stringify(['PCS', 'BOTOL', 'TUBE', 'SACHET', 'JAR', 'PACK', 'POT', 'STICK']);
+      const units = oldDefault ? ['PCS'] : cur.slice();
+      db_('MASTER_PRODUCTS').rows().forEach((p) => p.BaseUnit && units.indexOf(p.BaseUnit) < 0 && units.push(p.BaseUnit));
+      db_('PRODUCT_VARIANTS').rows().forEach((v) => v.BaseUnit && units.indexOf(v.BaseUnit) < 0 && units.push(v.BaseUnit));
+      if (JSON.stringify(units) !== JSON.stringify(cur)) st.update(bu, { value: JSON.stringify(units), updated_by: 'setup', updated_at: now_() });
+    }
+    const pu = st.find((r) => r.key === 'pack_units');
+    if (pu && pu.value === JSON.stringify(['BOX', 'KARTON', 'PACK', 'LUSIN', 'INNER', 'DUS', 'BAL', 'SET'])) st.update(pu, { value: JSON.stringify(['BOX']), updated_by: 'setup', updated_at: now_() });
     // migrasi dulu (menyalin penghitung lama), baru penghitung yang belum ada dibuat
     const migration = migrateLegacy_('setup');
     // kategori standar Shopee (Perawatan & Kecantikan) disalin/diperbarui setelah migrasi — tidak menghapus kategori apa pun
