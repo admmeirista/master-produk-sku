@@ -562,6 +562,23 @@ test('import produk: GTIN terdaftar dilengkapi (BOX + berat), SKU baru masuk pro
   assert.deepEqual([again.created.variants, again.created.completed, again.skipped], [0, 0, 3]);
 });
 
+test('import katalog Mandom 2026 sekali jalan: instalasi baru dilewati; database lama diimport satu kali', () => {
+  const L = createGas();
+  L.ctx.setup();
+  const props = L.ctx.PropertiesService.getScriptProperties();
+  assert.equal(props.getProperty('job_mandom_2026'), '1', 'setup baru menandai selesai');
+  L.ctx.runDataJobs_();
+  assert.equal(L.ctx.db_('MASTER_PRODUCTS').rows().length, 0, 'tidak ada import di instalasi baru');
+  props.deleteProperty('job_mandom_2026');
+  L.ctx.runDataJobs_();
+  const n = L.ctx.db_('PRODUCT_VARIANTS').rows().length;
+  assert.equal(n, 575);
+  assert.equal(L.ctx.db_('IMPORT_BATCHES').rows().length, 1);
+  assert.equal(props.getProperty('job_mandom_2026'), '1');
+  L.ctx.runDataJobs_();
+  assert.equal(L.ctx.db_('PRODUCT_VARIANTS').rows().length, n, 'tidak jalan dua kali');
+});
+
 test('login dengan username (bagian email sebelum @) & cari kode persis → hasil level SKU', () => {
   assert.ok(ok(call(null, 'auth.login', { email: 'entry', password: 'Password#2026' })).token, 'username entry');
   assert.ok(ok(call(null, 'auth.login', { email: 'entry@toko.local', password: 'Password#2026' })).token, 'email tetap bisa');

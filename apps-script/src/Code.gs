@@ -199,6 +199,8 @@ function meInfo_(user) {
 function setup() {
   ensureSheets_();
   const out = ensureData_(true);
+  // instalasi baru / setup ulang: import data sekali jalan tidak dijalankan otomatis
+  DATA_JOBS_.forEach((job) => PropertiesService.getScriptProperties().setProperty(job.id, '1'));
   setSchemaVersion_();
   const m = out.migration;
   console.log(`Migrasi data lama: ${m.brands} brand, ${m.categories} kategori, ${m.products} produk, ${m.variants} varian, ${m.packs} kemasan, ${m.attributes} atribut, ${m.barcodes} barcode, ${m.legacySkus} SKU lama, ${m.mappings} mapping, ${m.audit} log audit, ${m.counters} penghitung.`);
@@ -242,13 +244,40 @@ function autoSchema_() {
     lock.releaseLock();
   }
   ensureData_(false);
+  runDataJobs_();
   setSchemaVersion_();
   console.log('Struktur database diperbarui otomatis (' + fp + ')');
   return true;
 }
 
-/** Naikkan bila ensureData_ membawa migrasi data baru (memicu pembaruan otomatis sekali). */
-const DATA_MIGRATION_VERSION_ = 5;
+/** Naikkan bila ensureData_ / DATA_JOBS_ membawa migrasi data baru (memicu pembaruan otomatis sekali). */
+const DATA_MIGRATION_VERSION_ = 6;
+
+/**
+ * Import data sekali jalan (mis. katalog pemasok) lewat jalur import produk biasa: tercatat di Riwayat import & audit
+ * atas nama admin. Penanda Script Property dicek di dalam kunci → tidak pernah jalan dua kali; import ulang pun aman.
+ */
+const DATA_JOBS_ = [{ id: 'job_mandom_2026', fileName: 'Import_Produk_Mandom_2026.xlsx', rows: () => MANDOM_2026_ROWS_ }];
+function runDataJobs_() {
+  const props = PropertiesService.getScriptProperties();
+  DATA_JOBS_.forEach((job) => {
+    if (props.getProperty(job.id) === '1') return;
+    withLock_(
+      () => {
+        if (props.getProperty(job.id) === '1') return null;
+        const admin = db_('Users').rows().find((u) => u.role === 'admin' && u.is_active);
+        if (!admin) return null;
+        return importRun_({ id: admin.id, email: admin.email, fullName: admin.full_name, role: admin.role }, { type: 'products', rows: job.rows(), fileName: job.fileName });
+      },
+      (rep) => {
+        if (!rep) return;
+        props.setProperty(job.id, '1'); // hanya setelah data tersimpan
+        bumpDataVersion_();
+        console.log(job.id + ': ' + JSON.stringify({ created: rep.created, skipped: rep.skipped, errors: rep.errorCount }));
+      }
+    );
+  });
+}
 const OLD_ATTRIBUTE_TYPES_ = [
   JSON.stringify(['Warna', 'Shade', 'Aroma', 'Ukuran', 'Volume', 'Isi', 'Jenis', 'Tipe']),
   JSON.stringify(['Warna', 'Shade', 'Aroma', 'Ukuran', 'Volume', 'Isi', 'Berat', 'Jenis Produk', 'Jenis', 'Tipe']),
