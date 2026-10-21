@@ -248,7 +248,7 @@ function autoSchema_() {
 }
 
 /** Naikkan bila ensureData_ membawa migrasi data baru (memicu pembaruan otomatis sekali). */
-const DATA_MIGRATION_VERSION_ = 4;
+const DATA_MIGRATION_VERSION_ = 5;
 const OLD_ATTRIBUTE_TYPES_ = [
   JSON.stringify(['Warna', 'Shade', 'Aroma', 'Ukuran', 'Volume', 'Isi', 'Jenis', 'Tipe']),
   JSON.stringify(['Warna', 'Shade', 'Aroma', 'Ukuran', 'Volume', 'Isi', 'Berat', 'Jenis Produk', 'Jenis', 'Tipe']),
@@ -338,10 +338,39 @@ function ensureData_(createAdmin) {
       createUser_({ email, fullName: 'Administrator', role: 'admin', password }, null);
       admin = { email, password };
     }
+    migrateGramUnit_();
     // data bisa berubah di luar alur biasa → cache direktori dimulai ulang
     bumpDataVersion_();
     return { admin, migration };
   });
+}
+
+/**
+ * Satuan berat ditulis "gr": nilai variasi "10 g" → "10 gr" (PRODUCT_VARIANTS & VARIANT_ATTRIBUTES), lalu nama SKU
+ * produk otomatis disusun ulang. Kode SKU, GTIN & nama yang diubah manual tidak tersentuh. Sekali jalan.
+ */
+function migrateGramUnit_() {
+  const props = PropertiesService.getScriptProperties();
+  if (props.getProperty('mig_gram_gr') === '1') return 0;
+  const fix = (val) => String(val || '').replace(/(\d)\s*(g|gram|grams)$/i, '$1 gr');
+  let n = 0;
+  db_('PRODUCT_VARIANTS').rows().forEach((v) => {
+    const attrs = Array.isArray(v.VariantAttributes) ? v.VariantAttributes : [];
+    const next = attrs.map((a) => Object.assign({}, a, { value: fix(a.value) }));
+    if (JSON.stringify(next) !== JSON.stringify(attrs)) {
+      db_('PRODUCT_VARIANTS').update(v, { VariantAttributes: next });
+      n++;
+    }
+  });
+  db_('VARIANT_ATTRIBUTES').rows().forEach((a) => {
+    const f = fix(a.AttributeValue);
+    if (f !== a.AttributeValue) db_('VARIANT_ATTRIBUTES').update(a, { AttributeValue: f });
+  });
+  let names = 0;
+  db_('MASTER_BRANDS').rows().forEach((b) => (names += refreshSkuNames_(b.BrandID)));
+  props.setProperty('mig_gram_gr', '1');
+  if (n || names) audit_('setup', 'migration.gramUnit', 'system', '', null, { variants: n, skuNames: names });
+  return n;
 }
 
 /** Backup: salin seluruh spreadsheet ke Drive (berisi semua tab/tabel). */

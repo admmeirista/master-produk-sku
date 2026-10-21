@@ -165,7 +165,7 @@ function variantCombinations(attrs) {
 const ATTR_UNIT_FORMAT_ = [
   [/^(ml|mls|mililiter|milliliter)$/i, 'ml'],
   [/^(l|lt|ltr|liter|litre)$/i, 'L'],
-  [/^(g|gr|grs|grm|gram|grams)$/i, 'g'],
+  [/^(g|gr|grs|grm|gram|grams)$/i, 'gr'],
   [/^(kg|kgs|kilogram|kilograms)$/i, 'kg'],
   [/^(mg|miligram|milligram)$/i, 'mg'],
   [/^(oz)$/i, 'oz'],
@@ -180,7 +180,7 @@ function formatAttrValue(v) {
     return hit ? d + ' ' + hit[1] : m;
   });
   // satuan berulang: "50 ml ml" → "50 ml"
-  s = s.replace(/\b(ml|L|g|kg|mg|oz|pcs)(\s+\1\b)+/gi, '$1');
+  s = s.replace(/\b(ml|L|gr|kg|mg|oz|pcs)(\s+\1\b)+/gi, '$1');
   return s.replace(/\s+/g, ' ').trim();
 }
 

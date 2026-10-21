@@ -525,7 +525,7 @@ test('import produk (format sistem): varian, brand baru, kategori baku, GTIN & b
   assert.deepEqual([pv.created.products, pv.created.variants, pv.created.brands, pv.errorCount], [2, 3, 1, 2]);
   assert.match(pv.errors.map((e) => e.message).join(' | '), /kelompok.*\|.*GTIN 8992796011509 tidak valid/);
   const r = c('import.commit', { type: 'products', rows, fileName: 't.xlsx' }).data;
-  assert.deepEqual(r.items.map((i) => i.skus.map((k) => k.name)), [['Viva Liquid Foundation Natural 30 ml', 'Viva Liquid Foundation Kuning Langsat 30 ml'], ['Gatsby Water Gloss Hyper Solid 30 g']]);
+  assert.deepEqual(r.items.map((i) => i.skus.map((k) => k.name)), [['Viva Liquid Foundation Natural 30 ml', 'Viva Liquid Foundation Kuning Langsat 30 ml'], ['Gatsby Water Gloss Hyper Solid 30 gr']]);
   assert.deepEqual(r.items[1].skus.map((k) => k.barcode), ['2000000000015'], 'barcode internal lama dipakai apa adanya');
   assert.equal(r.items[0].category, 'Kosmetik > Kosmetik Wajah > Foundation');
   const again = c('import.commit', { type: 'products', rows: rows.slice(0, 5), fileName: 't.xlsx' }).data;
@@ -542,4 +542,27 @@ test('login dengan username (bagian email sebelum @) & cari kode persis → hasi
   assert.deepEqual(byGtin.skus.map((s) => [s.sku, s.productCode]), [[p.variants[0].sku, p.productCode]]);
   assert.equal(ok(call(V, 'product.list', { search: p.variants[1].sku.toLowerCase(), status: 'all' })).skus[0].name, 'Wardah Produk Scan SKU Uji 100 ml');
   assert.equal(ok(call(V, 'product.list', { search: 'scan sku', status: 'all' })).skus.length, 0, 'teks bebas → daftar produk induk');
+});
+
+test('satuan berat "gr": nama SKU baru & migrasi produk lama ("10 g" → "10 gr"), kode SKU tetap', () => {
+  assert.equal(G.ctx.formatAttrValue('10g'), '10 gr');
+  assert.equal(G.ctx.formatAttrValue('25 gram'), '25 gr');
+  const L = createGas();
+  const o = JSON.parse(JSON.stringify(L.ctx.setup()));
+  const tk = JSON.parse(JSON.stringify(L.ctx.api(null, 'auth.login', { email: o.admin.email, password: o.admin.password }))).data.token;
+  const c = (a, p) => JSON.parse(JSON.stringify(L.ctx.api(tk, a, p))).data;
+  c('brand.createMany', { names: ['Kelly'] });
+  const kb = c('brand.list', {})[0];
+  const cat = c('category.list', {}).find((x) => x.name === 'Pelembab Wajah');
+  const p = c('product.save', { input: { brandId: kb.id, categoryId: cat.id, name: 'Pearl Cream', baseUnit: 'PCS', variants: [{ attributes: [{ name: 'Berat Isi', value: '5 gr' }], barcode: { mode: 'none' } }] } });
+  assert.equal(p.variants[0].skuName, 'Kelly Pearl Cream 5 gr');
+  // data lama tersimpan dengan "g"
+  const v = L.ctx.db_('PRODUCT_VARIANTS').rows()[0];
+  L.sheets.get('PRODUCT_VARIANTS').data.forEach((r, i) => { if (i && r[0] === v.VariantID) { r[4] = JSON.stringify([{ name: 'Berat Isi', value: '5 g' }]); r[23] = 'Kelly Pearl Cream 5 g'; } });
+  L.ctx.resetDbCache_();
+  L.ctx.PropertiesService.getScriptProperties().deleteProperty('mig_gram_gr');
+  L.ctx.ensureData_(false);
+  L.ctx.resetDbCache_();
+  const after = L.ctx.db_('PRODUCT_VARIANTS').byId(v.VariantID);
+  assert.deepEqual([after.VariantAttributes[0].value, after.ProductSKUName, after.SKU], ['5 gr', 'Kelly Pearl Cream 5 gr', v.SKU]);
 });

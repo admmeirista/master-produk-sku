@@ -264,7 +264,7 @@ function variantTable(p, compact) {
 function dimText(d) {
   if (!d) return '<span class="muted">—</span>';
   var n = function (x) { return x === null || x === undefined || x === '' ? '–' : fmtNum(x); };
-  return n(d.lengthCm) + ' × ' + n(d.widthCm) + ' × ' + n(d.heightCm) + ' cm · ' + (d.grossWeightGrams ? (d.grossWeightGrams >= 1000 ? fmtNum(d.grossWeightGrams / 1000) + ' kg' : fmtNum(d.grossWeightGrams) + ' g') : '– g');
+  return n(d.lengthCm) + ' × ' + n(d.widthCm) + ' × ' + n(d.heightCm) + ' cm · ' + (d.grossWeightGrams ? (d.grossWeightGrams >= 1000 ? fmtNum(d.grossWeightGrams / 1000) + ' kg' : fmtNum(d.grossWeightGrams) + ' gr') : '– g');
 }
 
 /** Searchable dropdown brand/kategori. includeInactive untuk filter. */

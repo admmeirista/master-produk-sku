@@ -41,7 +41,7 @@ function computeEq(base, rows) {
 }
 
 /* ---- Nama Produk SKU (sama dengan aturan server: Lib.gs buildSkuName) ---- */
-var UNIT_FMT = [[/^(ml|mls|mililiter|milliliter)$/i, 'ml'], [/^(l|lt|ltr|liter|litre)$/i, 'L'], [/^(g|gr|grs|grm|gram|grams)$/i, 'g'], [/^(kg|kgs|kilogram|kilograms)$/i, 'kg'], [/^(mg|miligram|milligram)$/i, 'mg'], [/^(oz)$/i, 'oz'], [/^(pcs|pc|pieces?)$/i, 'pcs']];
+var UNIT_FMT = [[/^(ml|mls|mililiter|milliliter)$/i, 'ml'], [/^(l|lt|ltr|liter|litre)$/i, 'L'], [/^(g|gr|grs|grm|gram|grams)$/i, 'gr'], [/^(kg|kgs|kilogram|kilograms)$/i, 'kg'], [/^(mg|miligram|milligram)$/i, 'mg'], [/^(oz)$/i, 'oz'], [/^(pcs|pc|pieces?)$/i, 'pcs']];
 /** Huruf awal kapital untuk tiap kata yang diketik huruf kecil (sama dengan Lib.gs properCase). */
 function properCase(v) {
   var s = String(v === null || v === undefined ? '' : v).replace(/\s+/g, ' ').trim();
@@ -51,7 +51,7 @@ function properCase(v) {
 function fmtAttr(v) {
   var s = properCase(v);
   s = s.replace(/(\d)\s*([a-zA-Z]+)\b/g, function (m, d, u) { for (var i = 0; i < UNIT_FMT.length; i++) if (UNIT_FMT[i][0].test(u)) return d + ' ' + UNIT_FMT[i][1]; return m; });
-  return s.replace(/\b(ml|L|g|kg|mg|oz|pcs)(\s+\1\b)+/gi, '$1').replace(/\s+/g, ' ').trim();
+  return s.replace(/\b(ml|L|gr|kg|mg|oz|pcs)(\s+\1\b)+/gi, '$1').replace(/\s+/g, ' ').trim();
 }
 function nameKey(name) {
   var s = String(name || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '');
@@ -396,7 +396,7 @@ var Wiz = {
     Wiz.comboBar();
   },
   /** Satuan otomatis: Berat Isi → gram, Volume → ml. */
-  unitOf: function (name) { var k = nameKey(name); return k === 'berat isi' || k === 'berat' ? 'g' : k === 'volume' ? 'ml' : ''; },
+  unitOf: function (name) { var k = nameKey(name); return k === 'berat isi' || k === 'berat' ? 'gr' : k === 'volume' ? 'ml' : ''; },
   withUnit: function (name, val) { var u = Wiz.unitOf(name), t = String(val || '').trim(); return u && /^\d+([.,]\d+)?$/.test(t) ? t.replace(',', '.') + ' ' + u : t; },
   attrHint: function (name) {
     var k = nameKey(name);
@@ -672,13 +672,13 @@ var Wiz = {
     var out = {}, base = Wiz.vBase(v), net = Wiz.netGrams(v);
     if (!net) return out;
     var wOf = function (u) { var d = v.dims[u]; return d && d.wt !== '' && d.wt !== undefined && Number(d.wt) > 0 ? Number(d.wt) : out[u] ? out[u].g : null; };
-    out[base] = { g: Math.max(1, Math.round(net.g)), why: 'Isi bersih ' + fmtNum(Math.round(net.g)) + ' g' + (net.vol ? ' (1 ml ≈ 1 g untuk cairan/lotion)' : '') };
+    out[base] = { g: Math.max(1, Math.round(net.g)), why: 'Isi bersih ' + fmtNum(Math.round(net.g)) + ' gr' + (net.vol ? ' (1 ml ≈ 1 gr untuk cairan/lotion)' : '') };
     var big = /^(BOX|DUS|KARTON|BAL|KRAT)$/;
     v.conversions.filter(function (c) { return c.status === 'ACTIVE' && c.unitName && Number(c.factor) > 0; }).forEach(function (c) {
       var inner = wOf(c.containsUnit || base); if (!inner) return;
       var isi = Number(c.factor) * inner;
       var pack = big.test(c.unitName) ? Math.max(c.unitName === 'KARTON' || c.unitName === 'BAL' ? 300 : 80, Math.round(isi * 0.06)) : Math.max(20, Math.round(isi * 0.03));
-      out[c.unitName] = { g: Math.round(isi + pack), why: c.factor + ' × ' + fmtNum(inner) + ' g = ' + fmtNum(Math.round(isi)) + ' g + perkiraan kemasan ' + c.unitName + ' ' + fmtNum(pack) + ' g' };
+      out[c.unitName] = { g: Math.round(isi + pack), why: c.factor + ' × ' + fmtNum(inner) + ' gr = ' + fmtNum(Math.round(isi)) + ' gr + perkiraan kemasan ' + c.unitName + ' ' + fmtNum(pack) + ' g' };
     });
     return out;
   },
@@ -697,8 +697,8 @@ var Wiz = {
     var dimCells = function (v, i, u) {
       var d = v.dims[u] || { l: '', w: '', h: '', wt: '', wu: 'g' }, di = Wiz.dimUnits(v).indexOf(u), p = 'variants.' + i + '.dimensions.' + di;
       var num = function (k, ph) { return '<input class="in sm' + (di >= 0 && Wiz.st.errors[p + '.' + ({ l: 'lengthCm', w: 'widthCm', h: 'heightCm', wt: 'weight' })[k]] ? ' err' : '') + '" data-dm="' + esc(u) + '" data-k="' + k + '" type="number" min="0" step="0.1" inputmode="decimal" placeholder="' + ph + '" value="' + esc(d[k]) + '">'; };
-      return '<td><div class="dim3">' + num('l', 'P') + '<span>×</span>' + num('w', 'L') + '<span>×</span>' + num('h', 'T') + '</div></td><td><div class="row wt-cell' + (d.wtAuto ? ' auto' : '') + '" style="gap:4px;flex-wrap:nowrap">' + num('wt', 'gram') + '</div>' +
-        (d.wtAuto ? '<div class="wt-auto" title="' + esc(d.wtWhy || '') + '">' + icon('sparkles') + 'Estimasi — cek</div>' : '') + '</td>';
+      return '<td><div class="fgrp dimgrp">' + num('l', 'P') + '<span class="x">×</span>' + num('w', 'L') + '<span class="x">×</span>' + num('h', 'T') + '<span class="u">cm</span></div></td>' +
+        '<td><div class="fgrp wtgrp' + (d.wtAuto ? ' auto' : '') + '"' + (d.wtAuto ? ' title="Estimasi otomatis — cek: ' + esc(d.wtWhy || '') + '"' : '') + '>' + num('wt', '0') + (d.wtAuto ? '<span class="est">' + icon('sparkles') + '</span>' : '') + '<span class="u">gr</span></div></td>';
     };
     box.innerHTML = s.variants.map(function (v, i) {
       if (v.status !== 'ACTIVE' && v.status !== 'DRAFT' && !v.conversions.length) return '';
@@ -708,7 +708,7 @@ var Wiz = {
       var lockBase = v.saved && v.conversions.some(function (c) { return c.saved && c.status !== 'DELETED'; });
       return '<div class="vcard' + (isOpen ? ' open' : '') + '" data-v="' + i + '"><div class="vcard-h">' + icon('chevron', 'chev') + '<span class="nm">' + esc(Wiz.displayName(v) || 'Varian ' + (i + 1)) + '</span>' +
         (hasErr ? '<span class="badge b-ERR">Perlu dicek</span>' : '') + '<span data-pk>' + Wiz.pkBadge(v) + '</span><span class="muted right">' + esc(base) + (actives.length ? ' · ' + actives.map(function (c, j) { var r = calc[j]; return esc(c.unitName) + (r && r.eq ? ' (' + r.eq + ')' : ''); }).join(' · ') : '') + '</span></div>' +
-        '<div class="vcard-b"><div class="tbl-x"><table class="t lvt"><thead><tr><th>Satuan</th><th>Isi</th><th>Setara</th><th>Dimensi (cm) P × L × T</th><th>Berat kotor (gram)</th><th></th></tr></thead><tbody>' +
+        '<div class="vcard-b"><div class="tbl-x"><table class="t lvt"><thead><tr><th>Satuan</th><th>Isi</th><th>Setara</th><th>Dimensi P × L × T</th><th>Berat kotor</th><th></th></tr></thead><tbody>' +
         '<tr class="lv0"><td><select class="in sm" data-bu' + (lockBase ? ' disabled title="Hapus kemasan dulu untuk mengganti satuan terkecil"' : '') + '>' +
         baseUnits.concat(base && baseUnits.indexOf(base) < 0 ? [base] : []).map(function (u) { return '<option' + (u === base ? ' selected' : '') + '>' + esc(u) + '</option>'; }).join('') + '</select>' + Wiz.fe('variants.' + i + '.baseUnit') + '</td><td class="muted lv-note">satuan terkecil</td><td>1 ' + esc(base) + '</td>' + dimCells(v, i, base) + '<td></td></tr>' +
         v.conversions.map(function (c, j) {
@@ -893,6 +893,7 @@ var Wiz = {
       '<div>Foto</div><div>' + act.filter(function (v) { return v.imageUrl; }).length + '/' + act.length + '</div>' +
       '<div>Kemasan</div><div>' + (packs ? packs + ' satuan' : '<span class="muted">tidak ada (opsional)</span>') + '</div>' +
       '<div>Data logistik</div><div>' + dimOk + '/' + act.length + ' lengkap' + (dimOk < act.length ? ' <span class="muted">(opsional)</span>' : '') + '</div></div>' +
+      Wiz.completeness(act) +
       (s.similar.length ? '<div class="warn-box">' + icon('alert') + '<span>' + s.similar.length + ' Produk induk mirip.' + (s.ack ? ' <b>Dikonfirmasi berbeda.</b>' : ' Konfirmasi di tahap 1.') + '</span></div>' : '') +
       (errs.length ? '<div class="sect" style="margin:14px 0 4px;color:var(--err)">' + errs.length + ' masalah perlu diperbaiki</div><ul class="err-list">' + errs.slice(0, 30).map(function (p) { return '<li data-ep="' + esc(p) + '">' + icon('alertCircle') + '<div><small>' + esc(Wiz.pathLabel(p)) + '</small>' + esc(s.errors[p]) + '</div></li>'; }).join('') + '</ul>' : '') +
       (s.step > 1 ? '<button class="btn pri w100" id="sv" style="margin-top:14px;height:44px">' + icon('check') + (newP ? 'Simpan Produk' : 'Simpan Perubahan') + '</button>' + (newP ? '<button class="btn w100" id="svd" style="margin-top:8px">Simpan Draft</button>' : '') : '') + '</div>' +
@@ -900,6 +901,24 @@ var Wiz = {
     $$('[data-ep]', side).forEach(function (li) { li.onclick = function () { var p = li.getAttribute('data-ep'), k = Wiz.stepOf(p); if (k !== s.step) { s.step = k; Wiz.render(); } var el = $('[data-fe="' + p + '"]', Wiz.main); if (el && el.scrollIntoView) el.scrollIntoView({ block: 'center', behavior: 'smooth' }); }; });
     if ($('#sv', side)) $('#sv', side).onclick = function () { Wiz.save($('#sv', side)); };
     if ($('#svd', side)) $('#svd', side).onclick = function () { Wiz.save($('#svd', side), false, true); };
+  },
+
+  /** Kelengkapan data per SKU produk: barcode, GTIN, foto, kemasan BOX, berat, dimensi. */
+  completeness: function (act) {
+    if (!act.length) return '';
+    var n = act.length, cnt = function (fn) { return act.filter(fn).length; };
+    var hasGtin = function (v) { return v.barcode.mode === 'gtin' && checkGtin(v.barcode.code).ok; };
+    var items = [
+      ['Barcode (GTIN / internal)', cnt(function (v) { return hasGtin(v) || v.barcode.mode === 'internal'; })],
+      ['GTIN produsen', cnt(hasGtin)],
+      ['Foto', cnt(function (v) { return !!v.imageUrl; })],
+      ['Kemasan BOX', cnt(function (v) { return v.conversions.some(function (c) { return c.status === 'ACTIVE' && c.unitName && Number(c.factor) > 0; }); })],
+      ['Berat kotor', cnt(function (v) { var d = v.dims[Wiz.vBase(v)]; return !!(d && Number(d.wt) > 0); })],
+      ['Dimensi P × L × T', cnt(function (v) { var d = v.dims[Wiz.vBase(v)]; return !!(d && Number(d.l) > 0 && Number(d.w) > 0 && Number(d.h) > 0); })],
+    ];
+    var pct = Math.round(items.reduce(function (t, x) { return t + x[1]; }, 0) / (items.length * n) * 100);
+    return '<div class="cmp"><div class="cmp-h"><b>Kelengkapan data</b><span class="cmp-p' + (pct === 100 ? ' ok' : '') + '">' + pct + '%</span></div><div class="cmp-bar"><i style="width:' + pct + '%"></i></div><ul>' +
+      items.map(function (x) { var ok = x[1] === n; return '<li class="' + (ok ? 'ok' : x[1] ? 'part' : 'no') + '">' + icon(ok ? 'check' : 'alert') + '<span>' + esc(x[0]) + '</span><b>' + x[1] + '/' + n + '</b></li>'; }).join('') + '</ul></div>';
   },
 
   /* ---------- simpan ---------- */
