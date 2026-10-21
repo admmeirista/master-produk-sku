@@ -580,6 +580,21 @@ test('import katalog Mandom 2026 sekali jalan: instalasi baru dilewati; database
   assert.equal(L.ctx.db_('PRODUCT_VARIANTS').rows().length, n, 'tidak jalan dua kali');
 });
 
+test('import katalog Cussons Juni 2026 sekali jalan: kategori tambahan dibuat, 188 SKU, tidak dobel', () => {
+  const L = createGas();
+  L.ctx.setup();
+  const props = L.ctx.PropertiesService.getScriptProperties();
+  props.deleteProperty('job_cussons_juni26');
+  L.ctx.runDataJobs_();
+  assert.equal(L.ctx.db_('PRODUCT_VARIANTS').rows().length, 188);
+  const names = L.ctx.db_('MASTER_CATEGORIES').rows().map((c) => c.CategoryName);
+  ['Tisu Basah', 'Perawatan Mulut', 'Perlengkapan Makan Bayi', 'Deterjen & Pelembut Pakaian'].forEach((n) => assert.ok(names.indexOf(n) >= 0, n));
+  assert.ok(L.ctx.db_('PRODUCT_VARIANTS').rows().some((v) => v.ProductSKUName === 'Cussons Baby Hair Lotion Candle Nut XF 100 ml'));
+  props.deleteProperty('job_cussons_juni26');
+  L.ctx.runDataJobs_();
+  assert.equal(L.ctx.db_('PRODUCT_VARIANTS').rows().length, 188);
+});
+
 test('login dengan username (bagian email sebelum @) & cari kode persis → hasil level SKU', () => {
   assert.ok(ok(call(null, 'auth.login', { email: 'entry', password: 'Password#2026' })).token, 'username entry');
   assert.ok(ok(call(null, 'auth.login', { email: 'entry@toko.local', password: 'Password#2026' })).token, 'email tetap bisa');

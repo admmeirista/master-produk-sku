@@ -251,7 +251,7 @@ function autoSchema_() {
 }
 
 /** Naikkan bila ensureData_ / DATA_JOBS_ membawa migrasi data baru (memicu pembaruan otomatis sekali). */
-const DATA_MIGRATION_VERSION_ = 7;
+const DATA_MIGRATION_VERSION_ = 8;
 
 /**
  * Import data sekali jalan (mis. katalog pemasok) lewat jalur import produk biasa: tercatat di Riwayat import & audit
@@ -261,6 +261,8 @@ const DATA_JOBS_ = [
   { id: 'job_mandom_2026', fileName: 'Import_Produk_Mandom_2026.xlsx', rows: () => MANDOM_2026_ROWS_ },
   // ulang (aman): melengkapi SKU yang barcode internalnya diganti GTIN pabrik — sisanya dilewati
   { id: 'job_mandom_2026b', fileName: 'Import_Produk_Mandom_2026.xlsx (ulang)', rows: () => MANDOM_2026_ROWS_ },
+  // kategori yang belum ada di daftar baku dibuat dulu (tampil di kelompok Lainnya)
+  { id: 'job_cussons_juni26', fileName: 'Import_Produk_Cussons_Juni26.xlsx', rows: () => CUSSONS_JUNI26_ROWS_, categories: ['Tisu Basah', 'Perawatan Mulut', 'Perlengkapan Makan Bayi', 'Deterjen & Pelembut Pakaian'] },
 ];
 function runDataJobs_() {
   const props = PropertiesService.getScriptProperties();
@@ -271,7 +273,11 @@ function runDataJobs_() {
         if (props.getProperty(job.id) === '1') return null;
         const admin = db_('Users').rows().find((u) => u.role === 'admin' && u.is_active);
         if (!admin) return null;
-        return importRun_({ id: admin.id, email: admin.email, fullName: admin.full_name, role: admin.role }, { type: 'products', rows: job.rows(), fileName: job.fileName });
+        const user = { id: admin.id, email: admin.email, fullName: admin.full_name, role: admin.role };
+        (job.categories || []).forEach((name) => {
+          if (!db_('MASTER_CATEGORIES').find((c) => c.Status !== STATUS.DELETED && c.NameKey === masterNameKey(name))) masterCreate_(user, 'category', { name, acknowledgeSimilar: true });
+        });
+        return importRun_(user, { type: 'products', rows: job.rows(), fileName: job.fileName });
       },
       (rep) => {
         if (!rep) return;
