@@ -532,6 +532,36 @@ test('import produk (format sistem): varian, brand baru, kategori baku, GTIN & b
   assert.deepEqual([again.created.products, again.skipped], [0, 3]);
 });
 
+test('import produk: GTIN terdaftar dilengkapi (BOX + berat), SKU baru masuk produk induk lama, GTIN kosong diisi', () => {
+  const L = createGas();
+  const o = JSON.parse(JSON.stringify(L.ctx.setup()));
+  const tk = JSON.parse(JSON.stringify(L.ctx.api(null, 'auth.login', { email: o.admin.email, password: o.admin.password }))).data.token;
+  const c = (a, p) => JSON.parse(JSON.stringify(L.ctx.api(tk, a, p)));
+  c('brand.createMany', { names: ['Gatsby'] });
+  const H = ['No', 'Brand', 'Nama Produk Induk', 'Kategori', 'Jenis Variasi 1', 'Pilihan Variasi 1', 'Jenis Variasi 2', 'Pilihan Variasi 2', 'GTIN / Barcode', 'Satuan Terkecil', 'Isi per BOX (pcs)', 'Berat BOX (gr)', 'Berat PCS (gr)'];
+  const cat = 'Perawatan Rambut > Hair Styling';
+  const first = [H, ['1', 'Gatsby', 'Water Gloss', cat, 'Tipe', 'Hard', 'Berat Isi', '30 g', gtin('899222205297'), 'PCS'], ['2', 'Gatsby', 'Water Gloss', cat, 'Tipe', 'Soft', 'Berat Isi', '30 g', '', 'PCS']];
+  assert.equal(c('import.commit', { type: 'products', rows: first, fileName: 'a.xlsx' }).data.created.variants, 2);
+  const rows = [H,
+    ['1', 'Gatsby', 'Water Gloss', cat, 'Tipe', 'Hard', 'Berat Isi', '30 g', gtin('899222205297'), 'PCS', '144', '6.100', '42,4'],
+    ['2', 'Gatsby', 'Water Gloss', cat, 'Tipe', 'Soft', 'Berat Isi', '30 g', gtin('899222205300'), 'PCS', '144', '6000', ''],
+    ['3', 'Gatsby', 'Water Gloss', cat, 'Tipe', 'Hard', 'Berat Isi', '75 g', gtin('899222205301'), 'PCS', '96', '9600', '100'],
+  ];
+  const r = c('import.commit', { type: 'products', rows, fileName: 'b.xlsx' }).data;
+  assert.deepEqual([r.created.products, r.created.variants, r.created.completed, r.errorCount], [0, 1, 2, 0]);
+  const notes = r.items[0].skus.map((k) => k.note);
+  assert.match(notes[0], /^dilengkapi: BOX isi 144, berat PCS 42.4 gr, berat BOX 6100 gr/);
+  assert.match(notes[1], /^dilengkapi: GTIN \d{13}, BOX isi 144, berat BOX 6000 gr/);
+  assert.equal(notes[2], 'SKU baru');
+  const d = c('product.get', { id: L.ctx.db_('MASTER_PRODUCTS').rows()[0].ProductID }).data;
+  assert.equal(d.variants.length, 3);
+  const box = d.variants[0].conversions.find((x) => x.unitName === 'BOX');
+  assert.equal(Number(box.baseUnitEquivalent), 144);
+  assert.equal(d.variants[1].gtin, gtin('899222205300'));
+  const again = c('import.commit', { type: 'products', rows, fileName: 'b.xlsx' }).data;
+  assert.deepEqual([again.created.variants, again.created.completed, again.skipped], [0, 0, 3]);
+});
+
 test('login dengan username (bagian email sebelum @) & cari kode persis → hasil level SKU', () => {
   assert.ok(ok(call(null, 'auth.login', { email: 'entry', password: 'Password#2026' })).token, 'username entry');
   assert.ok(ok(call(null, 'auth.login', { email: 'entry@toko.local', password: 'Password#2026' })).token, 'email tetap bisa');
