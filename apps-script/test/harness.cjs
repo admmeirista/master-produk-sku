@@ -75,6 +75,10 @@ class Sheet {
     return (this.data[0] || []).length;
   }
   setFrozenRows() {}
+  getFrozenRows() {
+    return 1;
+  }
+  insertRowsAfter() {}
   clear() {
     this.data = [];
   }

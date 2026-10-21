@@ -188,6 +188,12 @@ function journalMark_(ref, status) {
   sh.getRange(ref.start, 3, ref.count, 1).setValues(Array.from({ length: ref.count }, () => [status]));
 }
 
+/** Sheets menolak menghapus SEMUA baris di bawah header beku → sisakan satu baris kosong dulu. */
+function safeDeleteRows_(sh, start, count) {
+  if (sh.getMaxRows() - count <= Math.max(1, sh.getFrozenRows())) sh.insertRowsAfter(sh.getMaxRows(), 1);
+  sh.deleteRows(start, count);
+}
+
 /** Kembalikan perubahan sesuai rencana (urutan terbalik). Aman diulang. */
 function rollbackPlan_(plan) {
   const ss = ss_();
@@ -199,7 +205,7 @@ function rollbackPlan_(plan) {
       if (!sh) return;
       if (t.appendCount) {
         const last = sh.getLastRow();
-        if (last >= t.appendStart) sh.deleteRows(t.appendStart, Math.min(t.appendCount, last - t.appendStart + 1));
+        if (last >= t.appendStart) safeDeleteRows_(sh, t.appendStart, Math.min(t.appendCount, last - t.appendStart + 1));
       }
       t.updates.forEach((u) => sh.getRange(u.row, 1, 1, u.before.length).setValues([u.before]));
     });
@@ -261,7 +267,7 @@ function commitAll_() {
   journalMark_(ref, 'COMMITTED');
   if (tables.some((t) => DATA_TABLES_[t.name])) bumpDataVersion_();
   try {
-    journalSheet_().deleteRows(ref.start, ref.count); // jurnal yang sudah selesai tidak perlu disimpan
+    safeDeleteRows_(journalSheet_(), ref.start, ref.count); // jurnal yang sudah selesai tidak perlu disimpan
   } catch (e) {
     console.error('Gagal membersihkan jurnal: ' + e);
   }
