@@ -251,13 +251,17 @@ function autoSchema_() {
 }
 
 /** Naikkan bila ensureData_ / DATA_JOBS_ membawa migrasi data baru (memicu pembaruan otomatis sekali). */
-const DATA_MIGRATION_VERSION_ = 6;
+const DATA_MIGRATION_VERSION_ = 7;
 
 /**
  * Import data sekali jalan (mis. katalog pemasok) lewat jalur import produk biasa: tercatat di Riwayat import & audit
  * atas nama admin. Penanda Script Property dicek di dalam kunci → tidak pernah jalan dua kali; import ulang pun aman.
  */
-const DATA_JOBS_ = [{ id: 'job_mandom_2026', fileName: 'Import_Produk_Mandom_2026.xlsx', rows: () => MANDOM_2026_ROWS_ }];
+const DATA_JOBS_ = [
+  { id: 'job_mandom_2026', fileName: 'Import_Produk_Mandom_2026.xlsx', rows: () => MANDOM_2026_ROWS_ },
+  // ulang (aman): melengkapi SKU yang barcode internalnya diganti GTIN pabrik — sisanya dilewati
+  { id: 'job_mandom_2026b', fileName: 'Import_Produk_Mandom_2026.xlsx (ulang)', rows: () => MANDOM_2026_ROWS_ },
+];
 function runDataJobs_() {
   const props = PropertiesService.getScriptProperties();
   DATA_JOBS_.forEach((job) => {

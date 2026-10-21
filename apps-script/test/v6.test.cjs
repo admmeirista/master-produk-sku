@@ -540,7 +540,7 @@ test('import produk: GTIN terdaftar dilengkapi (BOX + berat), SKU baru masuk pro
   c('brand.createMany', { names: ['Gatsby'] });
   const H = ['No', 'Brand', 'Nama Produk Induk', 'Kategori', 'Jenis Variasi 1', 'Pilihan Variasi 1', 'Jenis Variasi 2', 'Pilihan Variasi 2', 'GTIN / Barcode', 'Satuan Terkecil', 'Isi per BOX (pcs)', 'Berat BOX (gr)', 'Berat PCS (gr)'];
   const cat = 'Perawatan Rambut > Hair Styling';
-  const first = [H, ['1', 'Gatsby', 'Water Gloss', cat, 'Tipe', 'Hard', 'Berat Isi', '30 g', gtin('899222205297'), 'PCS'], ['2', 'Gatsby', 'Water Gloss', cat, 'Tipe', 'Soft', 'Berat Isi', '30 g', '', 'PCS']];
+  const first = [H, ['1', 'Gatsby', 'Water Gloss', cat, 'Tipe', 'Hard', 'Berat Isi', '30 g', gtin('899222205297'), 'PCS'], ['2', 'Gatsby', 'Water Gloss', cat, 'Tipe', 'Soft', 'Berat Isi', '30 g', '2000000000015', 'PCS']];
   assert.equal(c('import.commit', { type: 'products', rows: first, fileName: 'a.xlsx' }).data.created.variants, 2);
   const rows = [H,
     ['1', 'Gatsby', 'Water Gloss', cat, 'Tipe', 'Hard', 'Berat Isi', '30 g', gtin('899222205297'), 'PCS', '144', '6.100', '42,4'],

@@ -424,6 +424,7 @@ function importProducts_(user, work, rep) {
         status: v.status,
         baseUnit: v.baseUnit,
         barcode,
+        barcodeChangeReason: c.gtin && !v.gtin ? 'GTIN pabrik dari file import ' + (rep.fileName || '') : '',
         conversions,
         dimensions: dims,
       });
