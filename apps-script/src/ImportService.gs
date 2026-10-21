@@ -164,12 +164,24 @@ function importRun_(user, p, opts) {
     const createdRows = Object.keys(rep.created).reduce((s, k) => s + rep.created[k], 0);
     const batchId = uuid_();
     rep.batchId = batchId;
-    db_('IMPORT_BATCHES').insert({ BatchID: batchId, ImportType: p.type, FileName: rep.fileName, ContentHash: hash, Status: 'COMMITTED', TotalRows: rep.totalRows, CreatedRows: createdRows, SkippedRows: rep.skipped, ErrorRows: rep.errorCount, ReportJson: rep, CreatedBy: user.email, CreatedAt: now_() });
+    db_('IMPORT_BATCHES').insert({ BatchID: batchId, ImportType: p.type, FileName: rep.fileName, ContentHash: hash, Status: 'COMMITTED', TotalRows: rep.totalRows, CreatedRows: createdRows, SkippedRows: rep.skipped, ErrorRows: rep.errorCount, ReportJson: storedReport_(rep), CreatedBy: user.email, CreatedAt: now_() });
     // seluruh baris bermasalah (tanpa batas 300) untuk dicek manual / diunduh
     allIssues.slice(0, 5000).forEach((e) => db_('IMPORT_ERRORS').insert({ ErrorID: uuid_(), BatchID: batchId, RowNumber: e.row, Severity: e.severity, Message: e.message, CreatedAt: now_() }));
     audit_(user.email, 'import.' + p.type, 'import', '', null, { file: rep.fileName, created: rep.created, skipped: rep.skipped, errors: rep.errorCount });
   }
   return rep;
+}
+
+/** Laporan yang disimpan di satu sel (batas Sheets 50.000 karakter): daftar item/catatan dipangkas bila perlu. */
+function storedReport_(rep) {
+  const out = Object.assign({}, rep);
+  const fits = () => JSON.stringify(out).length <= 45000;
+  ['items', 'warnings', 'errors'].forEach((k) => {
+    while (!fits() && out[k] && out[k].length) out[k] = out[k].slice(0, Math.floor(out[k].length / 2));
+  });
+  if (!fits()) ['items', 'warnings', 'errors'].forEach((k) => (out[k] = []));
+  out.trimmed = JSON.stringify(rep).length > JSON.stringify(out).length;
+  return out;
 }
 
 function importHistory_() {

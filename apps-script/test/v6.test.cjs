@@ -574,6 +574,7 @@ test('import katalog Mandom 2026 sekali jalan: instalasi baru dilewati; database
   const n = L.ctx.db_('PRODUCT_VARIANTS').rows().length;
   assert.equal(n, 575);
   assert.equal(L.ctx.db_('IMPORT_BATCHES').rows().length, 1);
+  L.sheets.forEach((sh, name) => sh.data.forEach((r) => r.forEach((c) => assert.ok(String(c).length <= 50000, 'sel > 50.000 karakter di ' + name))));
   assert.equal(props.getProperty('job_mandom_2026'), '1');
   L.ctx.runDataJobs_();
   assert.equal(L.ctx.db_('PRODUCT_VARIANTS').rows().length, n, 'tidak jalan dua kali');
