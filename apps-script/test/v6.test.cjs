@@ -595,6 +595,22 @@ test('import katalog Cussons Juni 2026 sekali jalan: kategori tambahan dibuat, 1
   assert.equal(L.ctx.db_('PRODUCT_VARIANTS').rows().length, 188);
 });
 
+test('import Viva 2026 sekali jalan: 545 SKU, kemasan BOX dengan dimensi & berat karton', () => {
+  const L = createGas();
+  L.ctx.setup();
+  const props = L.ctx.PropertiesService.getScriptProperties();
+  props.deleteProperty('job_viva_2026');
+  L.ctx.runDataJobs_();
+  assert.equal(L.ctx.db_('PRODUCT_VARIANTS').rows().length, 545);
+  assert.ok(L.ctx.db_('MASTER_CATEGORIES').rows().some((c) => c.CategoryName === 'Tata Rias Artistik'));
+  const v = L.ctx.db_('PRODUCT_VARIANTS').rows().find((x) => x.GTIN === '8992796011105');
+  const box = L.ctx.db_('PRODUCT_DIMENSIONS').rows().find((d) => d.VariantID === v.VariantID && d.PackagingUnit === 'BOX');
+  assert.deepEqual([box.LengthCm, box.WidthCm, box.HeightCm, box.GrossWeightGrams].map(Number), [32, 17, 14.5, 4300]);
+  props.deleteProperty('job_viva_2026');
+  L.ctx.runDataJobs_();
+  assert.equal(L.ctx.db_('PRODUCT_VARIANTS').rows().length, 545);
+});
+
 test('login dengan username (bagian email sebelum @) & cari kode persis → hasil level SKU', () => {
   assert.ok(ok(call(null, 'auth.login', { email: 'entry', password: 'Password#2026' })).token, 'username entry');
   assert.ok(ok(call(null, 'auth.login', { email: 'entry@toko.local', password: 'Password#2026' })).token, 'email tetap bisa');

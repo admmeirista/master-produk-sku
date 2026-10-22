@@ -31,6 +31,9 @@ const IMPORT_TYPES = {
       boxQty: ['isi per box (pcs)', 'isi per box', 'isi karton (pcs)', 'total pcs per karton'],
       boxWeight: ['berat box (gr)', 'berat karton (gr)', 'berat box'],
       pcsWeight: ['berat pcs (gr)', 'berat satuan (gr)'],
+      boxLength: ['panjang box (cm)', 'panjang karton (cm)'],
+      boxWidth: ['lebar box (cm)', 'lebar karton (cm)'],
+      boxHeight: ['tinggi box (cm)', 'tinggi karton (cm)'],
     },
     required: ['brand', 'name', 'category'],
   },
@@ -233,7 +236,10 @@ function importProducts_(user, work, rep) {
     const n = Number(t.replace(',', '.'));
     return isFinite(n) && n > 0 ? n : null;
   };
-  const pack = (v) => ({ qty: num(v.boxQty), boxW: num(v.boxWeight), pcsW: num(v.pcsWeight) });
+  const pack = (v) => {
+    const L = num(v.boxLength), W = num(v.boxWidth), H = num(v.boxHeight);
+    return { qty: num(v.boxQty), boxW: num(v.boxWeight), pcsW: num(v.pcsWeight), boxDim: L && W && H ? [L, W, H] : null };
+  };
   rep.created.completed = rep.created.completed || 0;
   rep.items = [];
   const seenCode = {};
@@ -299,7 +305,7 @@ function importProducts_(user, work, rep) {
     const conversions = pk.qty ? [{ unitName: 'BOX', factor: Math.round(pk.qty), containsUnit: base }] : [];
     const dimensions = [];
     if (pk.pcsW) dimensions.push({ unit: base, weight: pk.pcsW, weightUnit: 'g' });
-    if (pk.qty && pk.boxW) dimensions.push({ unit: 'BOX', weight: pk.boxW, weightUnit: 'g' });
+    if (pk.qty && (pk.boxW || pk.boxDim)) dimensions.push({ unit: 'BOX', lengthCm: pk.boxDim ? pk.boxDim[0] : '', widthCm: pk.boxDim ? pk.boxDim[1] : '', heightCm: pk.boxDim ? pk.boxDim[2] : '', weight: pk.boxW || '', weightUnit: 'g' });
     return { attributes, barcode, conversions, dimensions, row: w.row };
   };
   const reserve = (variants) =>
@@ -398,15 +404,20 @@ function importProducts_(user, work, rep) {
       const boxEq = packs.find((x) => x.unitName === 'BOX' && Number(x.baseUnitEquivalent) === Math.round(c.pk.qty || 0));
       const dimOf = (u) => v.dimensions.find((x) => x.unit === u);
       const dims = [];
-      const setW = (u, w, label) => {
-        if (!w) return;
+      // hanya isian yang masih kosong yang diisi (berat / dimensi P×L×T); yang sudah terisi tidak diubah
+      const setW = (u, w, dim, label) => {
         const old = dimOf(u);
-        if (old && Number(old.grossWeightGrams) > 0) return;
-        dims.push({ unit: u, lengthCm: old ? old.lengthCm : '', widthCm: old ? old.widthCm : '', heightCm: old ? old.heightCm : '', weight: w, weightUnit: 'g' });
-        why.push(label + ' ' + w + ' gr');
+        const hasW = old && Number(old.grossWeightGrams) > 0;
+        const hasD = old && Number(old.lengthCm) > 0 && Number(old.widthCm) > 0 && Number(old.heightCm) > 0;
+        const addW = w && !hasW;
+        const addD = dim && !hasD;
+        if (!addW && !addD) return;
+        dims.push({ unit: u, lengthCm: addD ? dim[0] : old ? old.lengthCm : '', widthCm: addD ? dim[1] : old ? old.widthCm : '', heightCm: addD ? dim[2] : old ? old.heightCm : '', weight: addW ? w : old ? old.grossWeightGrams : '', weightUnit: 'g' });
+        if (addW) why.push(label + ' ' + w + ' gr');
+        if (addD) why.push('dimensi ' + u + ' ' + dim.join(' × ') + ' cm');
       };
-      setW(base, c.pk.pcsW, 'berat ' + base);
-      if (conversions.length || boxEq) setW('BOX', c.pk.boxW, 'berat BOX');
+      setW(base, c.pk.pcsW, null, 'berat ' + base);
+      if (conversions.length || boxEq) setW('BOX', c.pk.boxW, c.pk.boxDim, 'berat BOX');
       let barcode = v.gtin ? { mode: 'gtin', code: v.gtin } : v.internalBarcode ? { mode: 'internal', code: v.internalBarcode } : { mode: 'none' };
       if (c.gtin && !v.gtin) {
         barcode = { mode: 'gtin', code: c.gtin };
