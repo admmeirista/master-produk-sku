@@ -747,6 +747,7 @@ body.staff .tabbar button.on{color:var(--acc)}
   .mtabs .mt-tools{margin:8px 0 0;width:100%;padding-bottom:4px}
   .mtabs .mt-tools button{flex:1;justify-content:center}
 }
+.badge.b-enrich{background:#fdf3dc;color:#8a5a00}
 /* dropdown: tambah data baru */
 .cb-opt.cb-add{color:var(--acc);border-top:1px dashed var(--line);border-radius:0 0 9px 9px;margin-top:2px}
 .cb-opt.cb-add .ic{width:16px;height:16px;flex:none}
@@ -765,6 +766,8 @@ body.staff .tabbar button.on{color:var(--acc)}
 #db-body .tx-err{color:var(--err)}
 #db-body .dcol{display:flex;flex-direction:column;gap:16px;min-width:0}
 #db-body .dmeters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 22px}
+#db-body .dmeter{display:block;width:100%;text-align:left;background:none;border:1px solid transparent;border-radius:12px;padding:8px 10px;margin:-8px -10px;font:inherit;color:inherit}
+#db-body .dmeter[data-cm]{cursor:pointer}#db-body .dmeter[data-cm]:hover{border-color:var(--line);background:#fffdfb}
 #db-body .dmeter .dm-h{display:flex;align-items:baseline;gap:8px;font-size:13px}
 #db-body .dmeter .dm-p{margin-left:auto;font-weight:900;font-size:18px;letter-spacing:-.02em}
 #db-body .dmeter .dm-t{height:8px;background:var(--line-2);border-radius:8px;overflow:hidden;margin:7px 0 6px}

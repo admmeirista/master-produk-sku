@@ -52,6 +52,7 @@ class Table_ {
     this.sheet = ss_().getSheetByName(name);
     if (!this.sheet) throw new AppError('Tab "' + name + '" belum ada. Jalankan fungsi setup() dari editor Apps Script.');
     this._all = null;
+    this._byId = null; // peta ID → baris (dibangun saat byId pertama kali dipakai)
     this._last = null;
     this._origLast = null;
     this._dirty = new Set();
@@ -79,7 +80,11 @@ class Table_ {
   }
   byId(id) {
     if (!id) return null;
-    return this.find((r) => r[this.idCol] === id);
+    if (!this._byId) {
+      this._byId = new Map();
+      this.rows().forEach((r) => this._byId.has(r[this.idCol]) || this._byId.set(r[this.idCol], r));
+    }
+    return this._byId.get(id) || null;
   }
   toObj_(v, rowNum) {
     const o = {};
@@ -94,6 +99,7 @@ class Table_ {
     this.rows();
     const rec = this.toObj_(this.toRow_(obj), ++this._last);
     this._all.push(rec);
+    if (this._byId && !this._byId.has(rec[this.idCol])) this._byId.set(rec[this.idCol], rec);
     this._dirty.add(rec);
     return rec;
   }

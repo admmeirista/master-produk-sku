@@ -76,9 +76,9 @@ Pages.dashboard = function (main) {
     var barcodePct = pc(c.withGtin + c.withInternal);
     var avg = c.products ? (n / c.products).toFixed(1).replace('.', ',') : '0';
     // kelengkapan data SKU Produk
-    var meter = function (label, hint, have) {
+    var meter = function (label, hint, have, go) {
       var p = pc(have), tone = p >= 90 ? 'ok' : p >= 50 ? 'mid' : 'low';
-      return '<div class="dmeter ' + tone + '"><div class="dm-h"><b>' + label + '</b><span class="dm-p">' + p + '%</span></div><div class="dm-t"><i style="width:' + p + '%"></i></div><div class="dm-s">' + fmtNum(have || 0) + ' dari ' + fmtNum(n) + ' SKU Produk · ' + hint + '</div></div>';
+      return '<button type="button" class="dmeter ' + tone + '"' + (go ? ' data-cm="' + go + '"' : '') + '><div class="dm-h"><b>' + label + '</b><span class="dm-p">' + p + '%</span></div><div class="dm-t"><i style="width:' + p + '%"></i></div><div class="dm-s">' + fmtNum(have || 0) + ' dari ' + fmtNum(n) + ' SKU Produk · ' + hint + '</div></button>';
     };
     var brandRows = d.byBrand.length ? (function () {
       var max = Math.max.apply(null, d.byBrand.map(function (b) { return b.n; }).concat([1]));
@@ -98,10 +98,10 @@ Pages.dashboard = function (main) {
         '<div class="dcol">' +
           '<div class="panel"><div class="panel-h"><h3>Kelengkapan data SKU Produk</h3><button class="btn sm ghost right" data-go2="quality">Detail ' + icon('arrowRight') + '</button></div>' +
             '<div class="dmeters">' +
-              meter('GTIN / barcode', 'wajib untuk scan & marketplace', c.withGtin + c.withInternal) +
-              meter('Kemasan BOX (isi per box)', 'untuk pembelian & gudang', L.box) +
-              meter('Berat satuan', 'untuk ongkos kirim', L.weight) +
-              meter('Dimensi satuan (P × L × T)', 'opsional, untuk logistik', L.size) +
+              meter('GTIN / barcode', 'disarankan · scan & marketplace', c.withGtin + c.withInternal, 'incomplete') +
+              meter('Foto produk', 'disarankan · katalog & marketplace', L.photo, 'photos') +
+              meter('Berat satuan', 'disarankan · ongkos kirim', L.weight, 'noweight') +
+              meter('Kemasan BOX (isi per box)', 'opsional · pembelian & gudang', L.box) +
             '</div></div>' +
           '<div class="panel"><div class="panel-h"><h3>Perlu ditindaklanjuti</h3><button class="btn sm ghost right" data-go2="quality">Periksa semua ' + icon('arrowRight') + '</button></div><div id="dq">' + loadingBox() + '</div></div>' +
           '<div class="panel"><div class="panel-h"><h3>SKU Parent terbaru</h3><button class="btn sm ghost right" data-go2="products">Lihat semua ' + icon('arrowRight') + '</button></div>' +
@@ -122,6 +122,7 @@ Pages.dashboard = function (main) {
       b.onkeydown = function (e) { if (e.key === 'Enter') go(); };
     });
     $$('tr[data-id]', main).forEach(function (r) { r.onclick = function () { App.go('product', r.getAttribute('data-id')); }; });
+    $$('[data-cm]', main).forEach(function (b) { b.onclick = function () { var k = b.getAttribute('data-cm'); if (k === 'photos') App.go(can('photo.manage') ? 'photos' : 'products', { filter: 'none' }); else App.go('products', { completeness: k }); }; });
     api('quality.get', {}, { quiet: true, silent: true }).then(function (q) {
       var el = $('#dq', main); if (!el) return;
       var term = function (s) { return String(s).replace(/Kandidat Parent/g, 'Kandidat SKU Parent').replace(/SKU produk/g, 'SKU Produk'); };
@@ -145,11 +146,12 @@ Pages.products = function (main, arg) {
   main.innerHTML = pageHead('Master data', 'Master Produk', (can('export.run') ? '<button class="btn" id="ex">' + icon('download') + 'Ekspor</button>' : '') + (can('product.write') ? '<button class="btn pri hide-m" id="np">' + icon('plus') + 'Registrasi Produk</button>' : '')) +
     '<div class="filters"><div class="search has-cam">' + icon('search') + '<input class="in" id="fq" placeholder="Cari / scan GTIN, Kode SKU, Kode Produk, nama…" spellcheck="false">' + camBtn('Scan barcode pakai kamera HP') + '</div><div id="fb" style="width:190px"></div><div id="fc" style="width:190px"></div>' +
     '<select class="in" id="fs"><option value="ACTIVE">Aktif</option><option value="DRAFT">Draft</option><option value="INACTIVE">Nonaktif</option><option value="DISCONTINUED">Discontinued</option><option value="ARCHIVED">Diarsipkan</option><option value="all">Semua status</option></select>' +
-    '<select class="in" id="fk"><option value="">Semua</option><option value="incomplete">GTIN belum didata</option><option value="complete">Barcode lengkap</option></select></div><div id="pl"></div>';
+    '<select class="in" id="fk" title="Kelengkapan data"><option value="">Semua kelengkapan</option><option value="enrich">Perlu dilengkapi</option><option value="incomplete">Tanpa GTIN / barcode</option><option value="nophoto">Tanpa foto</option><option value="noweight">Tanpa berat</option><option value="complete">Data lengkap</option></select></div><div id="pl"></div>';
   masterTabs(main, 'products');
   // Cari SKU: ketik / scanner USB / kamera HP → pencarian (GTIN, barcode internal, Kode SKU, Kode Produk, nama)
   var fq = $('#fq', main);
   if (arg.search) { fq.value = arg.search; f.search = arg.search; f.status = 'all'; $('#fs', main).value = 'all'; autoOpen = true; }
+  if (arg.completeness) { f.completeness = arg.completeness; $('#fk', main).value = arg.completeness; }
   if (arg.focus && !isPhone()) setTimeout(function () { fq.focus(); }, 30);
   $('.filters [data-cam]', main).onclick = function () {
     CamScan.open({ title: 'Cari SKU — scan barcode' }).then(function (code) {
@@ -184,12 +186,12 @@ Pages.products = function (main, arg) {
     if (!d.rows.length) { box.innerHTML = '<div class="tablewrap">' + emptyBox('Tidak ada produk', f.search ? 'Coba kata kunci lain, atau scan barcodenya dengan ikon kamera di kolom cari.' : 'Produk yang disimpan langsung muncul di sini.') + '</div>'; return; }
     var nm = function (r) { return r.displayName || withBrand(r.brandName, r.name); };
     if (d.skus && d.skus.length) return renderSkuHits(box, d.skus);
-    var bcBadge = function (r) { return r.complete ? badge('GTIN', 'Lengkap') : badge('NONE', (r.activeVariants - r.withBarcode) + ' GTIN belum didata'); };
+    var bcBadge = function (r) { var n = r.needs || []; return !n.length ? badge('GTIN', 'Data lengkap') : '<span class="badge b-enrich" title="Disarankan dilengkapi — tidak menghalangi penjualan">Perlu: ' + esc(n.join(', ')) + '</span>'; };
     if (isPhone()) {
       box.innerHTML = '<div class="pcards">' + d.rows.map(function (r) {
         return '<div class="pcard' + (r.status !== 'ACTIVE' ? ' off' : '') + '" data-id="' + esc(r.id) + '"><div class="pc-head"><div class="grow" style="min-width:0"><div class="pc-top"><span class="sku">' + esc(r.productCode) + '</span>' + badge(r.status) + '</div>' +
           '<div class="pc-nm">' + esc(nm(r)) + '</div><div class="muted pc-sub">' + esc(r.categoryName || '') + ' · ' + r.variantCount + ' SKU</div></div></div>' +
-          (r.complete ? '' : '<div style="margin-top:6px">' + bcBadge(r) + '</div>') +
+          ((r.needs || []).length ? '<div style="margin-top:6px">' + bcBadge(r) + '</div>' : '') +
           '<div class="pc-act"><button class="btn sm" data-exp>' + icon('chevron') + 'Lihat SKU</button>' + (w ? '<button class="btn sm ghost" data-edit>' + icon('edit') + 'Edit</button><button class="btn sm ghost danger pc-del" data-delp title="Hapus produk">' + icon('trash') + '</button>' : '') + '</div><div class="pc-sk"></div></div>';
       }).join('') + '</div>' + pager(d, function (p2) { f.page = p2; load(); });
       bind(box, d);
@@ -198,7 +200,7 @@ Pages.products = function (main, arg) {
       return;
     }
     var th = function (k, t, cls) { return '<th class="' + (cls || '') + '" data-sort="' + k + '" style="cursor:pointer">' + t + (f.sort === k ? (f.dir === 'asc' ? ' ↑' : ' ↓') : '') + '</th>'; };
-    box.innerHTML = '<div class="tablewrap" style="max-height:none"><table class="t prod-t"><thead><tr><th class="c-exp"></th>' + th('productNo', 'Kode Produk Induk', 'c-code') + th('name', 'Nama Produk Induk') + th('skus', 'Varian', 'num c-num') + '<th class="c-bc">Barcode</th><th class="c-st">Status</th><th class="c-act"></th></tr></thead><tbody>' +
+    box.innerHTML = '<div class="tablewrap" style="max-height:none"><table class="t prod-t"><thead><tr><th class="c-exp"></th>' + th('productNo', 'SKU Parent', 'c-code') + th('name', 'Nama SKU Parent') + th('skus', 'SKU Produk', 'num c-num') + '<th class="c-bc">Kelengkapan</th><th class="c-st">Status</th><th class="c-act"></th></tr></thead><tbody>' +
       d.rows.map(function (r) {
         return '<tr data-id="' + esc(r.id) + '"' + (r.status !== 'ACTIVE' ? ' class="off"' : '') + '><td class="c-exp"><button class="exp" data-exp title="Lihat Kode SKU Produk">' + icon('chevron') + '</button></td>' +
           '<td class="sku nowrap c-code">' + esc(r.productCode) + '</td>' +

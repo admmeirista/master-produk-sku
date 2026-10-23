@@ -13,6 +13,19 @@ function productRefs_(p) {
   return { brand: { id: b.BrandID, name: b.BrandName, status: b.Status }, category: { id: c.CategoryID, name: c.CategoryName, path: catIsShopee_(c) ? catShortPath_(c) : '', shopeeId: catIsShopee_(c) ? c.ExternalID : '', status: c.Status } };
 }
 
+/**
+ * Detail produk untuk tampilan (baca saja), di-cache per versi data: versi naik otomatis setiap ada perubahan pada
+ * tab data produk, jadi cache tidak pernah menampilkan data lama. Penyimpanan selalu memakai productDetail_ langsung.
+ */
+function productDetailCached_(id) {
+  const key = 'pd1:' + dataVersion_() + ':' + id;
+  const hit = cacheGetBig_(key);
+  if (hit) return hit;
+  const d = productDetail_(id);
+  cachePutBig_(key, d);
+  return d;
+}
+
 function productDetail_(id) {
   const p = db_('MASTER_PRODUCTS').byId(id);
   if (!p || p.Status === STATUS.DELETED) throw new AppError('Produk tidak ditemukan atau sudah dihapus', [], 'NOT_FOUND');
@@ -94,13 +107,20 @@ function productAuditSummary_(d) {
  * server tambahan.
  */
 function productIndex_() {
-  const key = 'dir3:' + dataVersion_();
+  const key = 'dir4:' + dataVersion_();
   const cached = cacheGetBig_(key);
   if (cached) return cached;
   const brands = indexBy_(db_('MASTER_BRANDS').rows(), 'BrandID');
   const cats = indexBy_(db_('MASTER_CATEGORIES').rows(), 'CategoryID');
   const stats = {};
-  const st = (pid) => (stats[pid] = stats[pid] || { variants: 0, active: 0, withBarcode: 0, skus: 0, packs: 0, text: '', v: [], img: '' });
+  const st = (pid) => (stats[pid] = stats[pid] || { variants: 0, active: 0, withBarcode: 0, withPhoto: 0, withWeight: 0, skus: 0, packs: 0, text: '', v: [], img: '' });
+  // berat satuan dasar per varian (kelengkapan "disarankan")
+  const weighed = {};
+  const baseOf = {};
+  db_('MASTER_PRODUCTS').rows().forEach((p) => (baseOf[p.ProductID] = p.BaseUnit));
+  db_('PRODUCT_DIMENSIONS')
+    .rows()
+    .forEach((d) => Number(d.GrossWeightGrams) > 0 && (weighed[d.VariantID + '|' + d.PackagingUnit] = 1));
   db_('PRODUCT_VARIANTS')
     .rows()
     .slice()
@@ -115,6 +135,8 @@ function productIndex_() {
       const live = v.Status === STATUS.ACTIVE || v.Status === STATUS.DRAFT;
       if (live) s.active++;
       if (live && (v.GTIN || v.InternalBarcode)) s.withBarcode++; // sisanya = "GTIN belum didata"
+      if (live && v.ImageUrl) s.withPhoto++;
+      if (live && weighed[v.VariantID + '|' + (v.BaseUnit || baseOf[v.ProductID] || 'PCS')]) s.withWeight++;
       if (v.SKU) s.skus++;
       s.text += ' ' + [v.SKU, v.GTIN, v.InternalBarcode, v.VariantName, normalizeName(v.ProductSKUName), normalizeName(v.NameOverride)].join(' ');
     });
@@ -136,7 +158,12 @@ function productIndex_() {
   const rows = db_('MASTER_PRODUCTS')
     .filter((p) => p.Status !== STATUS.DELETED)
     .map((p) => {
-      const s = stats[p.ProductID] || { variants: 0, active: 0, withBarcode: 0, skus: 0, packs: 0, text: '', v: [], img: '' };
+      const s = stats[p.ProductID] || { variants: 0, active: 0, withBarcode: 0, withPhoto: 0, withWeight: 0, skus: 0, packs: 0, text: '', v: [], img: '' };
+      // Wajib (brand, kategori, nama, SKU) selalu terpenuhi untuk produk terdaftar. Disarankan: barcode, foto, berat.
+      const needs = [];
+      if (s.active && s.withBarcode < s.active) needs.push('GTIN');
+      if (s.active && s.withPhoto < s.active) needs.push('Foto');
+      if (s.active && s.withWeight < s.active) needs.push('Berat');
       const b = brands[p.BrandID] || {};
       const c = cats[p.CategoryID] || {};
       return {
@@ -162,6 +189,9 @@ function productIndex_() {
         skuCount: s.skus,
         packCount: s.packs,
         complete: s.active > 0 && s.withBarcode === s.active,
+        withPhoto: s.withPhoto,
+        withWeight: s.withWeight,
+        needs,
         q: ((p.NameKey || '') + ' ' + normalizeName(b.BrandName) + ' ' + (p.ProductCode || '') + ' ' + (p.LegacyCode || '') + ' ' + s.text).toUpperCase(),
       };
     });
@@ -177,7 +207,18 @@ function productList_(f) {
   let rows = productIndex_()
     .filter((r) => (f.status === 'all' || !f.status ? true : r.status === f.status))
     .filter((r) => (!f.brandId || r.brandId === f.brandId) && (!f.categoryId || r.categoryId === f.categoryId))
-    .filter((r) => (f.completeness === 'incomplete' ? !r.complete : f.completeness === 'complete' ? r.complete : true))
+    .filter((r) => {
+      const n = r.needs || [];
+      switch (f.completeness) {
+        case 'incomplete': return !r.complete; // tanpa GTIN / barcode
+        case 'nophoto': return n.indexOf('Foto') >= 0;
+        case 'noweight': return n.indexOf('Berat') >= 0;
+        case 'enrich': return n.length > 0;
+        case 'complete': return n.length === 0;
+        case 'barcode': return r.complete;
+        default: return true;
+      }
+    })
     .filter((r) => !q || r.q.indexOf(qn) >= 0 || r.q.indexOf(qu) >= 0);
   const key = { name: 'displayName', brand: 'brandName', category: 'categoryName', productNo: 'productNoNum', skus: 'skuCount' }[f.sort] || 'updatedAt';
   const dir = f.dir === 'asc' ? 1 : -1;

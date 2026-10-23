@@ -107,3 +107,14 @@ test('Admin: minta foto ulang (alasan terlihat staf), penugasan, review opsional
   assert.equal(ok(call(A, 'photo.get', { variantId: VIDS[2] })).state, 'DONE');
   assert.ok(ok(call(A, 'photo.staff', {})).length >= 2);
 });
+
+test('kelengkapan data: "Perlu dilengkapi" = barcode/foto/berat (disarankan), bukan error; filter Master Produk', () => {
+  const list = (c) => ok(call(A, 'product.list', { completeness: c, status: 'all', pageSize: 50 })).rows.map((r) => r.id);
+  const row = ok(call(A, 'product.list', { status: 'all', pageSize: 50 })).rows.find((r) => r.id === P.id);
+  assert.deepEqual(row.needs, ['Foto', 'Berat'], 'GTIN ada; 1 dari 3 SKU belum berfoto; berat belum diisi');
+  assert.ok(list('nophoto').includes(P.id));
+  assert.ok(list('noweight').includes(P.id));
+  assert.ok(list('enrich').includes(P.id));
+  assert.ok(!list('incomplete').includes(P.id), 'semua SKU sudah ber-GTIN');
+  assert.ok(!list('complete').includes(P.id));
+});

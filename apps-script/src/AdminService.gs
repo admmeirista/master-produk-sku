@@ -123,6 +123,7 @@ function dashboard_() {
   const dimOf = (v, u) => (dims[v.VariantID] || []).find((d) => d.unit === u);
   const logistics = {
     box: liveV.filter((v) => packOf[v.VariantID]).length,
+    photo: liveV.filter((v) => v.ImageUrl).length,
     weight: liveV.filter((v) => { const d = dimOf(v, baseOf(v)); return d && Number(d.grossWeightGrams) > 0; }).length,
     size: liveV.filter((v) => { const d = dimOf(v, baseOf(v)); return d && d.lengthCm && d.widthCm && d.heightCm; }).length,
     boxSize: liveV.filter((v) => { const d = packOf[v.VariantID] && dimOf(v, packOf[v.VariantID]); return d && d.lengthCm && d.widthCm && d.heightCm && Number(d.grossWeightGrams) > 0; }).length,

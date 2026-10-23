@@ -150,7 +150,7 @@ function createGas({ ownerEmail = 'owner@toko.local' } = {}) {
     ContentService: { MimeType: { JSON: 'application/json' }, createTextOutput: (s) => ({ content: s, setMimeType() { return this; }, getContent() { return this.content; } }) },
   };
   vm.createContext(ctx);
-  const dir = path.join(__dirname, '../src');
+  const dir = process.env.GAS_SRC || path.join(__dirname, '../src'); // GAS_SRC: jalankan versi lain (benchmark sebelum/sesudah)
   const first = ['Config.gs', 'Lib.gs'];
   const files = first.concat(fs.readdirSync(dir).filter((f) => f.endsWith('.gs') && first.indexOf(f) < 0).sort());
   const src = files.map((f) => fs.readFileSync(path.join(dir, f), 'utf8')).join('\n;\n');

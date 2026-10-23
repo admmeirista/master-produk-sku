@@ -63,7 +63,7 @@ const ROUTES = {
 
   'product.list': { perm: 'product.read', fn: (u, p) => productList_(p) },
   'product.search': { perm: 'product.read', fn: (u, p) => productSearch_(p.q) },
-  'product.get': { perm: 'product.read', fn: (u, p) => productDetail_(p.id) },
+  'product.get': { perm: 'product.read', fn: (u, p) => productDetailCached_(p.id) },
   'product.check': { perm: 'product.read', fn: (u, p) => productCheck_(p) },
   'product.parentPreview': { perm: 'product.read', fn: (u, p) => parentPreview_(p) },
   'photo.upload': { perm: 'product.write', write: true, fn: (u, p) => photoUpload_(u, p) },
