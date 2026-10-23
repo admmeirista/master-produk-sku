@@ -45,7 +45,8 @@ const SCHEMA = {
   MASTER_BRANDS: ['BrandID', 'BrandCode', 'BrandName', 'NameKey', 'Status', 'CreatedBy', 'CreatedAt', 'UpdatedBy', 'UpdatedAt'],
   MASTER_CATEGORIES: ['CategoryID', 'CategoryCode', 'CategoryName', 'NameKey', 'Status', 'CreatedBy', 'CreatedAt', 'UpdatedBy', 'UpdatedAt', 'ParentID', 'Level', 'FullPath', 'ExternalSource', 'ExternalID', 'IsLeaf'],
   MASTER_PRODUCTS: ['ProductID', 'ProductNo', 'BrandID', 'CategoryID', 'ProductName', 'NameKey', 'ProductCode', 'BaseUnit', 'HasVariants', 'Status', 'CreatedBy', 'CreatedAt', 'UpdatedBy', 'UpdatedAt', 'Version', 'LegacyCode', 'Description', 'ImageUrl', 'DataSource', 'ParentCode'],
-  PRODUCT_VARIANTS: ['VariantID', 'ProductID', 'VariantCode', 'VariantName', 'VariantAttributes', 'AttributeKey', 'SKU', 'GTIN', 'InternalBarcode', 'IsDefault', 'Status', 'SortOrder', 'CreatedBy', 'CreatedAt', 'UpdatedAt', 'Stockable', 'BatchTracking', 'ExpiryTracking', 'ShelfLifeMonths', 'PurchaseUnit', 'SalesUnit', 'ReplacedByVariantID', 'BaseUnit', 'ProductSKUName', 'NameOverride', 'NameOverrideReason', 'ImageUrl', 'ImageFileId'],
+  PRODUCT_VARIANTS: ['VariantID', 'ProductID', 'VariantCode', 'VariantName', 'VariantAttributes', 'AttributeKey', 'SKU', 'GTIN', 'InternalBarcode', 'IsDefault', 'Status', 'SortOrder', 'CreatedBy', 'CreatedAt', 'UpdatedAt', 'Stockable', 'BatchTracking', 'ExpiryTracking', 'ShelfLifeMonths', 'PurchaseUnit', 'SalesUnit', 'ReplacedByVariantID', 'BaseUnit', 'ProductSKUName', 'NameOverride', 'NameOverrideReason', 'ImageUrl', 'ImageFileId', 'PhotoStatus', 'PhotoNote', 'PhotoBy', 'PhotoAt', 'PhotoAssignee'],
+  PRODUCT_PHOTOS: ['PhotoID', 'VariantID', 'ProductID', 'Kind', 'FileId', 'Url', 'Status', 'Note', 'UploadedBy', 'UploadedAt', 'ReviewedBy', 'ReviewedAt', 'ReplacedAt'],
   VARIANT_ATTRIBUTES: ['VariantAttributeID', 'VariantID', 'ProductID', 'AttributeName', 'AttributeValue', 'SortOrder'],
   ATTRIBUTE_VALUES: ['AttributeValueID', 'AttributeName', 'Value', 'ValueKey', 'Status', 'CreatedBy', 'CreatedAt'],
   VARIANT_BARCODES: ['BarcodeID', 'Code', 'BarcodeType', 'Symbology', 'Status', 'ProductID', 'VariantID', 'ConversionID', 'VerifiedOfficial', 'RequestKey', 'Notes', 'CreatedBy', 'CreatedAt', 'RetiredBy', 'RetiredAt', 'Reason', 'BundleID'],
@@ -64,6 +65,7 @@ const SCHEMA = {
 const TAB_DESCRIPTION = {
   Settings: 'Pengaturan aplikasi (daftar satuan, jenis atribut, ambang kemiripan nama)',
   Users: 'Akun pengguna aplikasi & role (password tersimpan sebagai hash)',
+  PRODUCT_PHOTOS: 'Riwayat foto per SKU Produk (VariantID): file Drive, jenis (utama/tambahan), status review, pengunggah & waktu, kapan diganti',
   SYSTEM_COUNTERS: 'Penghitung kode otomatis: Parent SKU (product_no → PRD000001), Child SKU per parent (child_no + ScopeID = ProductID), multipack (MP), bundle (BD), barcode internal',
   AUDIT_LOGS: 'Audit trail perubahan data penting (nilai sebelum & sesudah)',
   TX_JOURNAL: 'Jurnal transaksi penyimpanan (rollback otomatis bila penyimpanan multi-sheet terputus)',
@@ -95,12 +97,14 @@ const NUMBER_COLS = { LengthCm: 1, WidthCm: 1, HeightCm: 1, GrossWeightGrams: 1,
 const BOOL_COLS = { HasVariants: 1, IsDefault: 1, IsBaseUnit: 1, IsTradeItem: 1, VerifiedOfficial: 1, IsActive: 1, is_active: 1, BatchTracking: 1, ExpiryTracking: 1, Selectable: 1, SpecMismatch: 1 };
 const JSON_COLS = { VariantAttributes: 1, BeforeJson: 1, AfterJson: 1, MetaJson: 1, ReportJson: 1, ResultJson: 1 };
 
-const ROLES = ['admin', 'data_entry', 'viewer'];
-const ROLE_LABEL = { admin: 'Admin', data_entry: 'Admin Data', viewer: 'Viewer' };
-const ALL_PERMS = ['product.read', 'product.write', 'master.write', 'barcode.allocate', 'mapping.write', 'export.run', 'audit.read', 'import.run', 'user.manage', 'settings.manage'];
+const ROLES = ['admin', 'data_entry', 'photo_staff', 'viewer'];
+const ROLE_LABEL = { admin: 'Admin', data_entry: 'Admin Data', photo_staff: 'Staf Foto', viewer: 'Viewer' };
+const ALL_PERMS = ['product.read', 'product.write', 'master.write', 'barcode.allocate', 'mapping.write', 'export.run', 'audit.read', 'import.run', 'user.manage', 'settings.manage', 'photo.work', 'photo.manage'];
 const ROLE_PERMISSIONS = {
   admin: ALL_PERMS,
-  data_entry: ['product.read', 'product.write', 'master.write', 'barcode.allocate', 'mapping.write', 'export.run', 'audit.read'],
+  data_entry: ['product.read', 'product.write', 'master.write', 'barcode.allocate', 'mapping.write', 'export.run', 'audit.read', 'photo.work', 'photo.manage'],
+  // Staf Foto: hanya melihat & memotret SKU Produk — tidak bisa mengubah SKU, GTIN, nama, brand, kategori
+  photo_staff: ['photo.work'],
   viewer: ['product.read', 'export.run'],
 };
 // role versi lama (workflow approval sudah dihapus) diperlakukan sebagai Admin Data
@@ -117,6 +121,8 @@ const DEFAULT_SETTINGS = {
   attribute_types: ['Warna', 'Aroma', 'Variant', 'Ukuran', 'Berat Isi', 'Volume'],
   channels: ['shopee', 'tiktok', 'tokopedia', 'beecloud', 'lainnya'],
   gtin_lookup_enabled: true,
+  // foto dari Staf Foto perlu disetujui Admin dulu (false = langsung dianggap selesai)
+  photo_review_required: false,
 };
 
 /** Penyedia pencarian GTIN eksternal (urutan dicoba). Lihat GtinLookupService.gs. */

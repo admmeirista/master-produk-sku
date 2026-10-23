@@ -1,0 +1,284 @@
+<script>
+/* ═════════════ Foto Produk: mode Staf Foto (HP) & pemantauan Admin ═════════════
+ * Staf Foto (izin photo.work saja) langsung masuk ke halaman kerja foto: Beranda · Foto Produk · Profil.
+ * Alur: pilih / scan produk → Ambil Foto → pratinjau → Simpan & Lanjut → produk berikutnya otomatis.
+ * Foto ditautkan ke ID SKU Produk (VariantID) oleh server — staf tidak pernah mengetik SKU.
+ */
+function isPhotoStaff() { return can('photo.work') && !can('product.read'); }
+var PHOTO_FILTERS = [['todo', 'Belum Difoto'], ['retake', 'Perlu Diperbaiki'], ['done', 'Selesai']];
+var PHOTO_BADGE = { NONE: ['NONE', 'Belum difoto'], RETAKE: ['INACTIVE', 'Perlu foto ulang'], REVIEW: ['DRAFT', 'Menunggu review'], DONE: ['ACTIVE', 'Selesai'] };
+function photoBadge(st) { var b = PHOTO_BADGE[st] || PHOTO_BADGE.NONE; return '<span class="badge b-' + b[0] + '">' + b[1] + '</span>'; }
+function photoThumbHtml(c, cls) { return c.thumb ? '<img class="' + (cls || 'ph-th') + '" src="' + esc(c.thumb) + '" alt="" loading="lazy" decoding="async">' : '<span class="' + (cls || 'ph-th') + ' ph-none">' + icon('camera') + '</span>'; }
+
+/** Kerangka aplikasi untuk Staf Foto: tanpa sidebar admin, navigasi bawah 3 menu. */
+App.enterStaff = function (me) {
+  var u = me.user;
+  document.body.classList.add('staff');
+  PullRefresh.init();
+  var tabs = [['photoHome', 'grid', 'Beranda'], ['photoList', 'camera', 'Foto Produk'], ['photoProfile', 'user', 'Profil']];
+  $app().innerHTML = '<div class="staff-app"><header class="st-top">' + brand('sm') + '<span class="st-who">' + esc(String(u.fullName || '').split(' ')[0]) + '</span></header><main class="main st-main" id="main"></main>' +
+    '<nav class="tabbar st-tabs" id="tabbar">' + tabs.map(function (t) { return '<button type="button" data-tab="' + t[0] + '"><span class="ti">' + icon(t[1]) + '</span><span class="tl">' + t[2] + '</span></button>'; }).join('') + '</nav></div>';
+  $$('#tabbar [data-tab]').forEach(function (b) { b.onclick = function () { App.go(b.getAttribute('data-tab')); }; });
+  var start = App.page && /^photo/.test(App.page) ? App.page : 'photoHome';
+  App.go(start, App.page === start ? App.pageArg : undefined);
+};
+var STAFF_TAB = { photoShoot: 'photoList' };
+
+/* ───────── Beranda staf ───────── */
+Pages.photoHome = function (main) {
+  var u = App.me.user;
+  main.innerHTML = '<div class="st-hello"><div class="muted">Halo,</div><h2>' + esc(u.fullName) + '</h2></div><div id="ps">' + photoSkeleton(1) + '</div>' +
+    '<button class="st-search" id="go-q" type="button">' + icon('search') + '<span>Cari nama produk atau scan barcode</span><span class="st-scan" id="go-scan">' + icon('camera') + '</span></button>' +
+    '<div class="st-guide"><b>Panduan foto singkat</b><div class="g3"><div>' + icon('package') + '<span>Seluruh kemasan masuk frame</span></div><div>' + icon('zap') + '<span>Terang & tidak blur</span></div><div>' + icon('eye') + '<span>Brand & nama terbaca</span></div></div></div>';
+  $('#go-q', main).onclick = function (e) { if (e.target.closest('#go-scan')) return; App.go('photoList', { focus: true }); };
+  $('#go-scan', main).onclick = function (e) { e.stopPropagation(); photoScan(); };
+  api('photo.summary', {}, { quiet: true }).then(function (s) {
+    var left = s.todo + s.retake, pct = s.total ? Math.round((s.done + s.review) / s.total * 100) : 0;
+    $('#ps', main).innerHTML = '<div class="st-card"><div class="st-prog-h"><span>' + (s.assigned ? 'Tugas foto Anda' : 'Produk yang perlu difoto') + '</span><b>' + pct + '%</b></div><div class="st-prog"><i style="width:' + pct + '%"></i></div>' +
+      '<div class="st-stats"><div><b>' + fmtNum(s.todo) + '</b><span>Belum difoto</span></div><div class="' + (s.retake ? 'warn' : '') + '"><b>' + fmtNum(s.retake) + '</b><span>Perlu foto ulang</span></div><div class="ok"><b>' + fmtNum(s.done + s.review) + '</b><span>Selesai</span></div></div>' +
+      '<div class="muted st-today">' + (s.doneToday ? 'Hari ini Anda sudah memotret <b>' + fmtNum(s.doneToday) + '</b> produk.' : 'Total ' + fmtNum(s.total) + ' produk' + (s.review ? ' · ' + fmtNum(s.review) + ' menunggu review' : '') + '.') + '</div>' +
+      (left ? '<button class="st-cta" id="go-start" type="button">' + icon('camera') + 'Mulai Lengkapi Foto <small>' + fmtNum(left) + ' tersisa</small></button>' : '<div class="st-done">' + icon('check') + '<b>Semua produk sudah difoto</b><span>Terima kasih! Cek lagi nanti bila ada produk baru.</span></div>') + '</div>';
+    var b = $('#go-start', main);
+    if (b) b.onclick = function () { busy(b, api('photo.next', {}, { silent: true })).then(function (c) { if (c) App.go('photoShoot', { card: c, skip: [] }); else toast('Tidak ada produk yang perlu difoto', 'ok'); }).catch(function (e) { toast(e.message, 'err'); }); };
+  }).catch(function (e) { $('#ps', main).innerHTML = errBox(e.message); });
+};
+
+function photoSkeleton(n) { var h = ''; for (var i = 0; i < n; i++) h += '<div class="sk-card"><span class="sk sk-th"></span><span class="sk-l"><i class="sk"></i><i class="sk"></i></span></div>'; return h; }
+
+/** Scan barcode → langsung ke layar foto SKU-nya. Tidak ditemukan → cari manual / laporkan. */
+function photoScan() {
+  CamScan.open({ title: 'Scan barcode produk' }).then(function (code) {
+    if (!code) return;
+    api('photo.find', { code: code }).then(function (c) {
+      if (c) return App.go('photoShoot', { card: c, skip: [] });
+      var m = modal('<h3>Produk tidak ditemukan</h3><div class="muted">Barcode <b class="code">' + esc(code) + '</b> belum terdaftar atau produknya tidak aktif. Produk baru tidak dibuat otomatis.</div>' +
+        '<div class="st-col"><button class="btn big" id="nf-q">' + icon('search') + 'Cari manual</button><button class="btn big" id="nf-r">' + icon('flag') + 'Laporkan ke Admin</button><button class="btn ghost" data-close>Tutup</button></div>');
+      $('#nf-q', m).onclick = function () { m.close(); App.go('photoList', { q: '', focus: true }); };
+      $('#nf-r', m).onclick = function () { m.close(); photoReport({ code: code }); };
+    }).catch(function () {});
+  });
+}
+
+/** Lapor masalah (barang tidak ada, nama/varian salah, barcode beda) → Audit Log untuk Admin. */
+function photoReport(ctx) {
+  var reasons = ['Barang tidak ada di rak / gudang', 'Nama atau varian di sistem salah', 'Barcode di kemasan berbeda', 'Produk tidak ditemukan di aplikasi', 'Lainnya'];
+  var m = modal('<h3>Laporkan ke Admin</h3>' + (ctx.name ? '<div class="muted">' + esc(ctx.name) + '</div>' : ctx.code ? '<div class="muted">Barcode ' + esc(ctx.code) + '</div>' : '') +
+    '<div class="st-col" id="rr">' + reasons.map(function (r, i) { return '<label class="st-radio"><input type="radio" name="rr" value="' + esc(r) + '"' + (i === (ctx.code ? 3 : 0) ? ' checked' : '') + '><span>' + esc(r) + '</span></label>'; }).join('') + '</div>' +
+    '<label class="f">Keterangan (opsional)</label><textarea class="in w100" rows="2" id="rn" placeholder="mis. kemasan baru, warna beda"></textarea>' +
+    '<div class="row" style="margin-top:14px"><button class="btn pri big" id="rs">Kirim laporan</button><button class="btn" data-close>Batal</button></div>');
+  $('#rs', m).onclick = function () {
+    var r = ($('input[name=rr]:checked', m) || {}).value || '';
+    busy($('#rs', m), api('photo.report', { variantId: ctx.variantId || '', code: ctx.code || '', note: r + ($('#rn', m).value.trim() ? ' — ' + $('#rn', m).value.trim() : ''), requestKey: uid() })).then(function () { m.close(); toast('Laporan terkirim ke Admin', 'ok'); }).catch(function () {});
+  };
+}
+
+/* ───────── Daftar Foto Produk (staf; juga dipakai Admin) ───────── */
+Pages.photoList = function (main, arg) {
+  arg = arg || {};
+  var f = { filter: arg.filter || 'todo', q: arg.q || '', page: 1 }, seq = 0, rows = [];
+  main.innerHTML = '<div class="st-head"><h2>Foto Produk</h2></div>' +
+    '<div class="st-qbar"><div class="search">' + icon('search') + '<input class="in" id="pq" type="search" inputmode="search" placeholder="Cari nama produk atau scan barcode" autocomplete="off" spellcheck="false" value="' + esc(f.q) + '"></div><button class="btn st-scanbtn" id="psc" type="button" aria-label="Scan barcode">' + icon('camera') + '</button></div>' +
+    '<div class="st-chips" id="pc">' + PHOTO_FILTERS.map(function (x) { return '<button type="button" data-f="' + x[0] + '"' + (x[0] === f.filter ? ' class="on"' : '') + '>' + x[1] + '</button>'; }).join('') + '</div>' +
+    '<div id="pl">' + photoSkeleton(5) + '</div>';
+  var load = function (more) {
+    var my = ++seq;
+    if (!more) { f.page = 1; rows = []; $('#pl', main).innerHTML = photoSkeleton(5); }
+    api('photo.list', { filter: f.filter, q: f.q, page: f.page, pageSize: 20 }, { quiet: true }).then(function (d) {
+      if (my !== seq) return; // hasil lama (ketikan sebelumnya) diabaikan
+      rows = rows.concat(d.rows);
+      $('#pl', main).innerHTML = rows.length ? '<div class="st-list">' + rows.map(function (c, i) {
+        return '<button type="button" class="st-item" data-i="' + i + '">' + photoThumbHtml(c) + '<span class="st-it"><b>' + esc(c.name) + '</b><span class="muted">' + esc(c.sku) + (c.attrs ? ' · ' + esc(c.attrs) : '') + '</span>' +
+          (c.note && c.state === 'RETAKE' ? '<span class="st-note">' + icon('alert') + esc(c.note) + '</span>' : '') + '<span>' + photoBadge(c.state) + '</span></span>' + icon('arrowRight') + '</button>';
+      }).join('') + '</div>' + (d.page < d.pages ? '<button class="btn big w100" id="more" type="button">Muat lebih banyak (' + fmtNum(d.total - rows.length) + ' lagi)</button>' : '<div class="muted st-end">' + fmtNum(d.total) + ' produk</div>')
+        : emptyBox(f.q ? 'Tidak ditemukan' : f.filter === 'done' ? 'Belum ada foto selesai' : 'Tidak ada pekerjaan di sini', f.q ? 'Coba kata lain atau scan barcodenya.' : '', f.q ? 'search' : 'check');
+      $$('.st-item', main).forEach(function (b) { b.onclick = function () { App.go('photoShoot', { card: rows[Number(b.getAttribute('data-i'))], skip: [], back: { filter: f.filter, q: f.q } }); }; });
+      var mb = $('#more', main); if (mb) mb.onclick = function () { f.page++; mb.disabled = true; mb.textContent = 'Memuat…'; load(true); };
+    }).catch(function (e) { if (my === seq) $('#pl', main).innerHTML = errBox(e.message); });
+  };
+  var q = $('#pq', main);
+  q.oninput = debounce(function () { f.q = q.value.trim(); load(); }, 300);
+  // scanner USB/Bluetooth: kode diketik cepat + Enter → langsung buka SKU-nya
+  q.onkeydown = function (e) {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    var code = q.value.replace(/\s+/g, '');
+    if (/^\d{8,14}$|^PRD\d+/i.test(code)) api('photo.find', { code: code }, { silent: true }).then(function (c) { if (c) App.go('photoShoot', { card: c, skip: [] }); else { f.q = q.value.trim(); load(); } }).catch(function () {});
+    else { f.q = q.value.trim(); load(); }
+  };
+  $('#psc', main).onclick = photoScan;
+  $$('#pc [data-f]', main).forEach(function (b) { b.onclick = function () { $$('#pc [data-f]', main).forEach(function (x) { x.classList.toggle('on', x === b); }); f.filter = b.getAttribute('data-f'); load(); }; });
+  if (arg.focus) setTimeout(function () { q.focus(); }, 50);
+  load();
+};
+
+/* ───────── Ambil foto: kamera → pratinjau → Simpan & Lanjut ───────── */
+Pages.photoShoot = function (main, arg) {
+  arg = arg || {};
+  var card = arg.card, skip = arg.skip || [], staff = isPhotoStaff();
+  var st = { data: null, key: null, saving: false, detail: null };
+  var back = function () { if (staff) App.go('photoList', arg.back || {}); else App.go('photos', arg.back || {}); };
+  var render = function () {
+    var d = st.detail || card;
+    main.innerHTML = '<div class="sh-top"><button type="button" class="icon-btn" id="bk" aria-label="Kembali">' + icon('arrowLeft') + '</button><span class="muted">' + (skip.length ? 'Dilewati: ' + skip.length : 'Foto produk') + '</span><button type="button" class="link-btn" id="skp">Lewati ' + icon('arrowRight') + '</button></div>' +
+      '<div class="sh-info"><div class="sh-brand">' + esc(d.brand || '') + '</div><h2>' + esc(d.name) + '</h2><div class="sh-meta"><span class="sku">' + esc(d.sku) + '</span>' + (d.attrs ? '<span>' + esc(d.attrs) + '</span>' : '') + photoBadge(d.state) + '</div>' +
+      (d.state === 'RETAKE' && d.note ? '<div class="st-note big">' + icon('alert') + '<span><b>Perlu foto ulang:</b> ' + esc(d.note) + '</span></div>' : '') + '</div>' +
+      '<div class="sh-stage" id="stage">' + (st.data ? '<img src="' + st.data + '" alt="Pratinjau foto">' : d.thumb ? '<img src="' + esc(st.detail && st.detail.large ? st.detail.large : d.thumb) + '" alt="Foto saat ini"><span class="sh-cap">Foto saat ini</span>' : '<div class="sh-empty">' + icon('camera') + '<span>Belum ada foto</span></div>') + '</div>' +
+      '<input type="file" id="cam" accept="image/*" capture="environment" class="hidden"><input type="file" id="gal" accept="image/*" class="hidden">' +
+      '<div class="sh-actions" id="acts"></div>' +
+      '<button type="button" class="link-btn sh-rep" id="rep">' + icon('flag') + 'Laporkan masalah produk ini</button>';
+    var acts = $('#acts', main);
+    if (!st.data) acts.innerHTML = '<button class="st-cta" id="shoot" type="button">' + icon('camera') + (d.thumb ? 'Ambil Foto Baru' : 'Ambil Foto') + '</button><button class="btn big w100" id="pick" type="button">' + icon('image') + 'Pilih dari Galeri</button>';
+    else acts.innerHTML = '<div id="up"></div><button class="st-cta" id="save" type="button">' + icon('check') + 'Simpan & Lanjut</button><button class="btn big w100" id="redo" type="button">' + icon('camera') + 'Foto Ulang</button>';
+    $('#bk', main).onclick = back;
+    $('#skp', main).onclick = function () { next(true); };
+    $('#rep', main).onclick = function () { photoReport({ variantId: d.variantId, name: d.name }); };
+    var cam = $('#cam', main), gal = $('#gal', main);
+    cam.onchange = gal.onchange = function (e) { var file = e.target.files && e.target.files[0]; e.target.value = ''; if (file) take(file); };
+    if ($('#shoot', main)) $('#shoot', main).onclick = function () { cam.click(); };
+    if ($('#pick', main)) $('#pick', main).onclick = function () { gal.click(); };
+    if ($('#redo', main)) $('#redo', main).onclick = function () { cam.click(); };
+    if ($('#save', main)) $('#save', main).onclick = function () { save(false); };
+  };
+  var take = function (file) {
+    $('#stage', main).innerHTML = loadingBox('Menyiapkan foto…');
+    // diperkecil di HP (sisi terpanjang 1600 px, JPEG) — cukup tajam untuk tulisan kemasan, unggah lebih cepat
+    shrinkImage(file, 1600).then(function (dataUrl) { st.data = dataUrl; st.key = uid() + uid(); render(); })
+      .catch(function (e) { toast(e.message, 'err'); render(); });
+  };
+  var save = function (replace) {
+    if (st.saving) return; // cegah kirim ganda
+    st.saving = true;
+    var btn = $('#save', main), up = $('#up', main);
+    btn.disabled = true; $('#redo', main).disabled = true;
+    up.innerHTML = '<div class="sh-up"><div class="st-prog run"><i></i></div><span>Mengunggah foto… jangan tutup aplikasi</span></div>';
+    var d = st.detail || card;
+    api('photo.save', { variantId: d.variantId, dataUrl: st.data, kind: 'MAIN', expectFileId: d.fileId || '', replace: !!replace, requestKey: st.key }, { silent: true }).then(function (r) {
+      st.saving = false;
+      toast('Foto tersimpan · ' + d.sku, 'ok');
+      next(false, r);
+    }).catch(function (e) {
+      st.saving = false;
+      if (e.code === 'CONFLICT') {
+        up.innerHTML = '';
+        btn.disabled = false; $('#redo', main).disabled = false;
+        ask(e.message, 'Tetap ganti', true).then(function (y) { if (y) save(true); else { st.data = null; load(); } });
+        return;
+      }
+      // gagal (sinyal putus dll.): foto tetap di layar, kirim ulang aman (kode permintaan sama → tidak dobel)
+      up.innerHTML = '<div class="sh-err">' + icon('alertCircle') + '<span><b>Foto belum terkirim.</b> ' + esc(e.message || 'Periksa sinyal') + '</span></div>';
+      btn.disabled = false; $('#redo', main).disabled = false;
+      btn.innerHTML = icon('refresh') + 'Coba Kirim Lagi';
+    });
+  };
+  var next = function (skipped) {
+    var d = st.detail || card;
+    if (skipped) skip.push(d.variantId);
+    main.innerHTML = loadingBox('Membuka produk berikutnya…');
+    api('photo.next', { after: d.variantId, skip: skip }, { quiet: true }).then(function (c) {
+      if (c) return App.go('photoShoot', { card: c, skip: skip, back: arg.back });
+      main.innerHTML = '<div class="st-done big">' + icon('check') + '<b>Semua produk di daftar sudah difoto</b><span>Kerja bagus! ' + (skip.length ? skip.length + ' produk dilewati — bisa dikerjakan nanti.' : '') + '</span><button class="st-cta" id="home" type="button">' + icon('grid') + 'Ke Beranda</button></div>';
+      $('#home', main).onclick = function () { App.go(staff ? 'photoHome' : 'photos'); };
+    }).catch(function (e) { main.innerHTML = errBox(e.message); });
+  };
+  var load = function () {
+    render();
+    api('photo.get', { variantId: card.variantId }, { quiet: true, silent: true }).then(function (d) { st.detail = d; if (!st.data) render(); }).catch(function (e) { if (e.code === 'NOT_FOUND') { toast(e.message, 'err'); back(); } });
+  };
+  if (!card || !card.variantId) return back();
+  load();
+};
+
+Pages.photoProfile = function (main) {
+  Pages.profile(main);
+  main.insertAdjacentHTML('beforeend', '<div class="card" style="max-width:520px;margin-top:16px"><button class="btn big w100" id="lo" type="button">' + icon('logout') + 'Keluar dari akun</button></div>');
+  $('#lo', main).onclick = function () { ask('Keluar dari aplikasi?', 'Keluar').then(function (y) { if (y) { document.body.classList.remove('staff'); App.logout(); } }); };
+};
+
+/* ───────── Admin: pemantauan & penugasan foto (Master Produk › Foto) ───────── */
+Pages.photos = function (main, arg) {
+  arg = arg || {};
+  var f = { filter: arg.filter || 'none', q: arg.q || '', assignee: '', page: 1 }, sel = {}, rows = [], staff = [];
+  var M = can('photo.manage');
+  main.innerHTML = pageHead('Master data', 'Master Produk', '', 'Pantau foto SKU Produk, tugaskan ke Staf Foto, dan minta foto ulang bila kurang jelas.') +
+    '<div id="psum" class="pchips"></div>' +
+    '<div class="filters"><div class="search has-cam">' + icon('search') + '<input class="in" id="fq" placeholder="Cari nama, SKU, atau scan barcode" value="' + esc(f.q) + '">' + camBtn('Scan barcode') + '</div>' +
+    '<select class="in" id="ff"><option value="none">Tanpa foto</option><option value="retake">Perlu foto ulang</option><option value="review">Menunggu review</option><option value="done">Foto tersedia</option><option value="all">Semua</option></select>' +
+    (M ? '<select class="in" id="fa"><option value="">Semua staf</option><option value="none">Belum ditugaskan</option></select>' : '') + '</div>' +
+    '<div class="bulkbar hidden" id="bb"><b id="bn"></b>' + (M ? '<select class="in" id="bto"><option value="">Tugaskan ke…</option></select><button class="btn" id="bas">' + icon('user') + 'Tugaskan</button><button class="btn" id="bre">' + icon('refresh') + 'Minta foto ulang</button><button class="btn" id="bap">' + icon('check') + 'Setujui</button>' : '') + '<button class="btn ghost" id="bcl">Batal pilih</button></div>' +
+    '<div id="pl">' + loadingBox() + '</div>';
+  masterTabs(main, 'photos');
+  $('#ff', main).value = f.filter;
+  var staffName = function (id) { var s = staff.find(function (x) { return x.id === id; }); return s ? s.name : ''; };
+  var summary = function () {
+    api('photo.summary', {}, { quiet: true, silent: true }).then(function (s) {
+      var pct = s.total ? Math.round((s.done + s.review) / s.total * 100) : 0;
+      $('#psum', main).innerHTML = '<div class="pchip"><b>' + pct + '%</b><span>SKU Produk berfoto</span></div><div class="pchip"><b>' + fmtNum(s.todo) + '</b><span>Tanpa foto</span></div><div class="pchip warn"><b>' + fmtNum(s.retake) + '</b><span>Perlu foto ulang</span></div>' + (s.reviewRequired ? '<div class="pchip"><b>' + fmtNum(s.review) + '</b><span>Menunggu review</span></div>' : '') + '<div class="pchip ok"><b>' + fmtNum(s.done) + '</b><span>Selesai</span></div>';
+    }).catch(function () {});
+  };
+  var bar = function () {
+    var n = Object.keys(sel).length;
+    $('#bb', main).classList.toggle('hidden', !n);
+    $('#bn', main).textContent = n + ' SKU dipilih';
+  };
+  var load = function () {
+    $('#pl', main).innerHTML = loadingBox();
+    api('photo.list', { filter: f.filter, q: f.q, assignee: f.assignee, page: f.page, pageSize: 25 }, { quiet: true }).then(function (d) {
+      rows = d.rows;
+      $('#pl', main).innerHTML = rows.length ? '<div class="tablewrap"><table class="t ptab"><thead><tr>' + (M ? '<th class="ck"><input type="checkbox" id="pca" aria-label="Pilih semua"></th>' : '') + '<th>Foto</th><th>SKU Produk</th><th>Status</th><th>Diunggah</th>' + (M ? '<th>Ditugaskan</th>' : '') + '<th></th></tr></thead><tbody>' + rows.map(function (c, i) {
+        return '<tr' + (sel[c.variantId] ? ' class="sel"' : '') + '>' + (M ? '<td class="ck"><input type="checkbox" data-ck="' + esc(c.variantId) + '"' + (sel[c.variantId] ? ' checked' : '') + ' aria-label="Pilih ' + esc(c.name) + '"></td>' : '') +
+          '<td data-l="Foto"><button type="button" class="pv" data-pv="' + i + '">' + photoThumbHtml(c, 'ph-th sm') + '</button></td><td class="nm" data-l="SKU Produk"><b>' + esc(c.name) + '</b><div class="sku">' + esc(c.sku) + '</div></td>' +
+          '<td data-l="Status">' + photoBadge(c.state) + (c.state === 'RETAKE' && c.note ? '<div class="muted" style="font-size:11.5px">' + esc(c.note) + '</div>' : '') + '</td>' +
+          '<td data-l="Diunggah" class="nowrap">' + (c.by ? esc(c.by.split('@')[0]) + '<div class="muted" style="font-size:11.5px">' + fmtDate(c.at) + '</div>' : '<span class="muted">—</span>') + '</td>' +
+          (M ? '<td data-l="Ditugaskan">' + (c.assignee ? esc(staffName(c.assignee) || 'Staf') : '<span class="muted">—</span>') + '</td>' : '') +
+          '<td><button class="btn sm" data-sh="' + i + '">' + icon('camera') + 'Foto</button></td></tr>';
+      }).join('') + '</tbody></table></div>' + (d.pages > 1 ? '<div class="pager"><button class="btn sm" id="pp"' + (d.page <= 1 ? ' disabled' : '') + '>' + icon('arrowLeft') + '</button><span class="muted">Halaman ' + d.page + ' / ' + d.pages + ' · ' + fmtNum(d.total) + ' SKU</span><button class="btn sm" id="pn"' + (d.page >= d.pages ? ' disabled' : '') + '>' + icon('arrowRight') + '</button></div>' : '<div class="muted" style="margin-top:8px">' + fmtNum(d.total) + ' SKU</div>')
+        : '<div class="tablewrap">' + emptyBox('Tidak ada SKU di sini', f.filter === 'none' ? 'Semua SKU Produk aktif sudah punya foto.' : '', 'image') + '</div>';
+      $$('[data-ck]', main).forEach(function (c) { c.onchange = function () { var id = c.getAttribute('data-ck'); if (c.checked) sel[id] = 1; else delete sel[id]; c.closest('tr').classList.toggle('sel', c.checked); bar(); }; });
+      if ($('#pca', main)) $('#pca', main).onchange = function (e) { rows.forEach(function (r) { if (e.target.checked) sel[r.variantId] = 1; else delete sel[r.variantId]; }); load(); };
+      $$('[data-sh]', main).forEach(function (b) { b.onclick = function () { App.go('photoShoot', { card: rows[Number(b.getAttribute('data-sh'))], skip: [], back: { filter: f.filter, q: f.q } }); }; });
+      $$('[data-pv]', main).forEach(function (b) { b.onclick = function () { preview(rows[Number(b.getAttribute('data-pv'))]); }; });
+      if ($('#pp', main)) $('#pp', main).onclick = function () { f.page--; load(); };
+      if ($('#pn', main)) $('#pn', main).onclick = function () { f.page++; load(); };
+      bar();
+    }).catch(function (e) { $('#pl', main).innerHTML = errBox(e.message); });
+  };
+  var preview = function (c) {
+    var m = modal('<h3>' + esc(c.name) + '</h3><div class="muted">' + esc(c.sku) + ' · ' + photoBadge(c.state) + '</div><div id="pvb">' + loadingBox() + '</div><div class="row" style="margin-top:14px"><button class="btn pri" id="pvs">' + icon('camera') + 'Ganti / ambil foto</button><button class="btn" data-close>Tutup</button></div>');
+    $('#pvs', m).onclick = function () { m.close(); App.go('photoShoot', { card: c, skip: [], back: { filter: f.filter, q: f.q } }); };
+    api('photo.get', { variantId: c.variantId }, { quiet: true }).then(function (d) {
+      $('#pvb', m).innerHTML = (d.large ? '<img class="pv-big" src="' + esc(d.large) + '" alt="">' : emptyBox('Belum ada foto', '', 'image')) +
+        (d.history.length ? '<div class="sect" style="margin:12px 0 6px">Riwayat unggahan</div><ul class="feed">' + d.history.map(function (h) { return '<li><img class="ph-th sm" src="' + esc(h.thumb) + '" alt="" loading="lazy"><div><b>' + esc(h.by.split('@')[0]) + '</b> · ' + fmtDate(h.at) + '<div class="muted">' + esc({ APPROVED: 'Foto utama', UPLOADED: 'Menunggu review', RETAKE: 'Diminta foto ulang', EXTRA: 'Foto tambahan' }[h.status] || h.status) + (h.note ? ' — ' + esc(h.note) : '') + '</div></div></li>'; }).join('') + '</ul>' : '');
+    }).catch(function (e) { $('#pvb', m).innerHTML = errBox(e.message); });
+  };
+  var ids = function () { return Object.keys(sel); };
+  var after = function (msg) { toast(msg, 'ok'); sel = {}; summary(); load(); };
+  if (M) {
+    api('photo.staff', {}, { quiet: true, silent: true }).then(function (s) {
+      staff = s;
+      var opts = s.map(function (x) { return '<option value="' + esc(x.id) + '">' + esc(x.name) + '</option>'; }).join('');
+      $('#fa', main).insertAdjacentHTML('beforeend', opts);
+      $('#bto', main).insertAdjacentHTML('beforeend', '<option value="__none">— Lepas penugasan —</option>' + opts);
+      if (rows.length) load();
+    }).catch(function () {});
+    $('#fa', main).onchange = function (e) { f.assignee = e.target.value; f.page = 1; load(); };
+    $('#bas', main).onclick = function () {
+      var to = $('#bto', main).value;
+      if (!to) return toast('Pilih staf tujuan dulu', 'err');
+      busy($('#bas', main), api('photo.assign', { variantIds: ids(), assignee: to === '__none' ? '' : to, requestKey: uid() })).then(function (r) { after(r.updated + ' SKU ' + (to === '__none' ? 'dilepas dari penugasan' : 'ditugaskan')); }).catch(function () {});
+    };
+    $('#bre', main).onclick = function () {
+      var m = modal('<h3>Minta foto ulang</h3><div class="muted">' + ids().length + ' SKU. Alasan akan terlihat oleh Staf Foto.</div><label class="f">Alasan</label><input class="in w100" id="rn" placeholder="mis. blur, salah varian, tulisan tidak terbaca" maxlength="200"><div class="row" style="margin-top:14px"><button class="btn pri" id="rs">Kirim</button><button class="btn" data-close>Batal</button></div>');
+      $('#rn', m).focus();
+      $('#rs', m).onclick = function () { busy($('#rs', m), api('photo.retake', { variantIds: ids(), note: $('#rn', m).value, requestKey: uid() })).then(function (r) { m.close(); after(r.updated + ' SKU diminta foto ulang'); }).catch(function () {}); };
+    };
+    $('#bap', main).onclick = function () { busy($('#bap', main), api('photo.approve', { variantIds: ids(), requestKey: uid() })).then(function (r) { after(r.updated + ' foto disetujui'); }).catch(function () {}); };
+  }
+  $('#bcl', main).onclick = function () { sel = {}; load(); };
+  $('#ff', main).onchange = function (e) { f.filter = e.target.value; f.page = 1; load(); };
+  var q = $('#fq', main);
+  q.oninput = debounce(function () { f.q = q.value.trim(); f.page = 1; load(); }, 300);
+  $('[data-cam]', main).onclick = function () { CamScan.open({ title: 'Scan barcode produk' }).then(function (code) { if (code) { q.value = code; f.q = code; f.filter = 'all'; $('#ff', main).value = 'all'; f.page = 1; load(); } }); };
+  summary();
+  load();
+};
+</script>

@@ -915,6 +915,7 @@ Pages.settings = function (main) {
     main.innerHTML = pageHead('Sistem', 'Settings', '', w ? '' : 'Hanya Admin yang dapat mengubah pengaturan.') + '<div class="cfg">' +
       row('Format kode', 'Dibuat otomatis oleh sistem, berurutan, permanen, tidak dipakai ulang. Brand, kategori, barcode, nama, dan kemasan tidak memengaruhi kode.', '<div class="row"><span class="chip-code">PRD000001</span><span class="chip-code">PRD000001-001</span><span class="chip-code">MP000001</span><span class="chip-code">BD000001</span></div>') +
       row('Pencarian GTIN eksternal', 'Saat GTIN baru dipindai, cari detail produk di Open Beauty Facts (API publik, data ODbL) sebagai usulan auto-fill. Hasil di-cache; selalu diperiksa user sebelum disimpan.', '<label class="chk"><span class="sw"><input type="checkbox" id="gl"' + (s.gtin_lookup_enabled ? ' checked' : '') + dis + '><i></i></span>Aktif</label>') +
+      row('Review foto oleh Admin', 'Bila aktif, foto dari Staf Foto berstatus "Menunggu review" sampai disetujui Admin. Bila tidak aktif, foto yang terunggah langsung dianggap selesai (Admin tetap bisa minta foto ulang).', '<label class="chk"><span class="sw"><input type="checkbox" id="prv"' + (s.photo_review_required ? ' checked' : '') + dis + '><i></i></span>Wajib review</label>') +
       row('Satuan dasar (stok)', 'Pilihan satuan stok saat registrasi. Pisahkan dengan koma.', '<textarea class="in w100" rows="2" id="bu"' + dis + '>' + esc(s.base_units.join(', ')) + '</textarea>') +
       row('Satuan kemasan', 'Pilihan satuan kemasan / beli (isi diatur per SKU produk).', '<textarea class="in w100" rows="2" id="pu"' + dis + '>' + esc(s.pack_units.join(', ')) + '</textarea>') +
       row('Jenis atribut varian', 'Pilihan cepat di generator varian.', '<textarea class="in w100" rows="2" id="at"' + dis + '>' + esc(s.attribute_types.join(', ')) + '</textarea>') +
@@ -932,7 +933,7 @@ Pages.settings = function (main) {
     drawAttrs();
     if ($('#aa', main)) $('#aa', main).onclick = function () { busy($('#aa', main), api('attribute.save', { name: $('#an', main).value, value: $('#av', main).value })).then(function (a) { attrs.push(a); $('#av', main).value = ''; drawAttrs(); }).catch(function () {}); };
     if (w) $('#sv', main).onclick = function () {
-      busy($('#sv', main), api('settings.save', { master_code_length: Number($('#cl', main).value), gtin_lookup_enabled: $('#gl', main).checked, base_units: $('#bu', main).value, pack_units: $('#pu', main).value, attribute_types: $('#at', main).value, fuzzy_threshold: Number($('#fz', main).value) }))
+      busy($('#sv', main), api('settings.save', { master_code_length: Number($('#cl', main).value), gtin_lookup_enabled: $('#gl', main).checked, photo_review_required: $('#prv', main).checked, base_units: $('#bu', main).value, pack_units: $('#pu', main).value, attribute_types: $('#at', main).value, fuzzy_threshold: Number($('#fz', main).value) }))
         .then(function () { toast('Pengaturan disimpan', 'ok'); return api('auth.me', {}, { quiet: true }); }).then(function (me) { if (me) App.remember(me); }).catch(function () {});
     };
   }).catch(function (e) { main.innerHTML = errBox(e.message); });

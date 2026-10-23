@@ -94,7 +94,7 @@ function productAuditSummary_(d) {
  * server tambahan.
  */
 function productIndex_() {
-  const key = 'dir2:' + dataVersion_();
+  const key = 'dir3:' + dataVersion_();
   const cached = cacheGetBig_(key);
   if (cached) return cached;
   const brands = indexBy_(db_('MASTER_BRANDS').rows(), 'BrandID');
@@ -108,7 +108,7 @@ function productIndex_() {
     .forEach((v) => {
       const s = st(v.ProductID);
       if (v.Status !== STATUS.DELETED) {
-        s.v.push({ id: v.VariantID, sku: v.SKU, name: variantDisplayName_(v), gtin: v.GTIN || '', internal: v.InternalBarcode || '', status: v.Status, img: v.ImageUrl || '', attrs: (Array.isArray(v.VariantAttributes) ? v.VariantAttributes : []).map((a) => [a.name, a.value]) });
+        s.v.push({ id: v.VariantID, sku: v.SKU, name: variantDisplayName_(v), gtin: v.GTIN || '', internal: v.InternalBarcode || '', status: v.Status, img: v.ImageUrl || '', fid: v.ImageFileId || '', ps: v.PhotoStatus || '', pn: v.PhotoNote || '', pa: v.PhotoAssignee || '', pb: v.PhotoBy || '', pt: v.PhotoAt || '', attrs: (Array.isArray(v.VariantAttributes) ? v.VariantAttributes : []).map((a) => [a.name, a.value]) });
         if (!s.img && v.ImageUrl) s.img = v.ImageUrl;
       }
       s.variants++;

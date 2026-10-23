@@ -95,5 +95,6 @@ function can_(user, perm) {
   return !!user && (ROLE_PERMISSIONS[user.role] || []).indexOf(perm) >= 0;
 }
 function assertPerm_(user, perm) {
+  if (perm === 'self') return; // aksi atas akun sendiri (mis. ganti password) — cukup login
   if (!can_(user, perm)) throw new AppError('Anda tidak memiliki hak akses untuk tindakan ini', [], 'FORBIDDEN');
 }

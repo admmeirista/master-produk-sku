@@ -79,6 +79,7 @@ function settingsSave_(user, input) {
   }
   if (input.pack_units !== undefined) val.pack_units = cleanUnitList_(input.pack_units, 'Satuan kemasan');
   if (input.gtin_lookup_enabled !== undefined) val.gtin_lookup_enabled = !!input.gtin_lookup_enabled;
+  if (input.photo_review_required !== undefined) val.photo_review_required = !!input.photo_review_required;
   if (input.attribute_types !== undefined) {
     const list = (Array.isArray(input.attribute_types) ? input.attribute_types : String(input.attribute_types).split(/[\n,]/)).map(cleanAttrName).filter(Boolean);
     if (!list.length) throw new AppError('Jenis atribut minimal satu');

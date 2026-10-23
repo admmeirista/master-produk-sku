@@ -511,13 +511,13 @@ var NAV = [
   ['SISTEM', [['users', 'Pengguna & Hak Akses', 'users', 'user.manage'], ['settings', 'Pengaturan', 'sliders'], ['audit', 'Audit Log', 'activity', 'audit.read']]]
 ];
 /** Halaman yang tidak punya menu sendiri → menu induknya (untuk menu aktif & breadcrumb). */
-var NAV_PARENT = { product: 'products', brands: 'products', categories: 'products', barcodes: 'products', quality: 'products', photos: 'products', bundle: 'bundles' };
+var NAV_PARENT = { product: 'products', brands: 'products', categories: 'products', barcodes: 'products', quality: 'products', photos: 'products', photoShoot: 'photoList', bundle: 'bundles' };
 var MP = ['MANAJEMEN PRODUK', 'Master Produk'];
 var CRUMB_EXTRA = { product: MP, brands: MP, categories: MP, barcodes: MP, quality: MP, photos: MP, profile: ['AKUN', 'Profil'], bundle: ['MANAJEMEN PRODUK', 'Kemasan & Bundling'] };
 /** Tab di dalam Master Produk. */
 function masterTabs(main, cur) {
   var t = [['products', 'Produk', 'package'], ['brands', 'Brand', 'tag'], ['categories', 'Kategori', 'layers']];
-  var tools = [['quality', 'Kualitas data', 'shield'], ['barcodes', 'Barcode', 'barcode']];
+  var tools = [can('photo.manage') ? ['photos', 'Foto', 'camera'] : null, ['quality', 'Kualitas data', 'shield'], ['barcodes', 'Barcode', 'barcode']].filter(Boolean);
   var html = '<div class="mtabs"><div class="mt-main">' + t.map(function (x) { return '<button type="button" class="' + (x[0] === cur ? 'on' : '') + '" data-mt="' + x[0] + '">' + icon(x[2]) + x[1] + '</button>'; }).join('') + '</div>' +
     '<div class="mt-tools">' + tools.map(function (x) { return '<button type="button" class="' + (x[0] === cur ? 'on' : '') + '" data-mt="' + x[0] + '">' + icon(x[2]) + x[1] + '</button>'; }).join('') + '</div></div>';
   var ph = $('.ph', main);
@@ -595,6 +595,9 @@ var App = {
 
   enter: function (me) {
     App.remember(me);
+    // Staf Foto: tampilan kerja foto khusus HP (tanpa menu administrasi)
+    if (typeof isPhotoStaff === 'function' && isPhotoStaff()) return App.enterStaff(me);
+    document.body.classList.remove('staff');
     setTimeout(Ref.warm, 0);
     PullRefresh.init();
     var u = me.user;
@@ -628,11 +631,14 @@ var App = {
       if (!g()) return ask('Isian registrasi belum disimpan. Tinggalkan halaman ini? (Isian tetap tersimpan sebagai draf di perangkat ini.)', 'Tinggalkan').then(function (y) { if (y) { App.leaveGuard = null; App.go(page, arg); } });
     }
     App.leaveGuard = null;
+    // Staf Foto hanya punya halaman kerja foto (menu lain juga ditolak server)
+    if (typeof isPhotoStaff === 'function' && isPhotoStaff() && !/^photo(Home|List|Shoot|Profile)$/.test(page)) page = 'photoHome';
     // Cari SKU / Scan sekarang tab di Master Produk (tautan lama tetap jalan)
     if (page === 'scan') { arg = { search: (arg && arg.code) || '', focus: true }; page = 'products'; }
     if (!Pages[page]) page = 'dashboard';
     App.page = page; App.pageArg = arg;
     var navOf = NAV_PARENT[page] || page;
+    if (navOf === 'photoList' && !(typeof isPhotoStaff === 'function' && isPhotoStaff())) navOf = 'products';
     $$('.side a.nv').forEach(function (a) { a.classList.toggle('on', a.getAttribute('data-nav') === navOf); });
     document.body.setAttribute('data-page', page);
     var tabOf = NAV_PARENT[page] || page;
@@ -650,7 +656,7 @@ var App = {
   },
   logout: function () {
     api('auth.logout', {}, { silent: true }).catch(function () {});
-    App.forget(); App.page = null; App.showLogin();
+    App.forget(); App.page = null; document.body.classList.remove('staff', 'side-mini'); App.showLogin();
   }
 };
 /** Pilihan ubah status lifecycle (transisi eksplisit dari server) → Promise<{status, reason}|null>. */

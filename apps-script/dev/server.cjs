@@ -23,6 +23,7 @@ const DEV_USERS = [
   ['admin@toko.local', 'Admin Toko', 'admin', 'Admin#Rpm2026'],
   ['entry@toko.local', 'Rina (Admin Data)', 'data_entry', 'Entry#Rpm2026'],
   ['viewer@toko.local', 'Budi (Viewer)', 'viewer', 'Viewer#Rpm2026'],
+  ['foto@toko.local', 'Sari (Staf Foto)', 'photo_staff', 'Foto#Rpm2026'],
 ];
 const owner = JSON.parse(JSON.stringify(ctx.setup())).admin;
 const ownerToken = call(null, 'auth.login', { email: owner.email, password: owner.password }).data.token;

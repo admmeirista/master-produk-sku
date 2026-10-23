@@ -114,7 +114,8 @@ function createGas({ ownerEmail = 'owner@toko.local' } = {}) {
   const cache = new Map();
   const props = new Map();
   const drive = [];
-  const folderOf = (id) => ({ getId: () => id, createFolder: (n) => folderOf('folder-' + n), createFile: (blob) => { const f = { id: 'file-' + (drive.length + 1), blob, sharing: null }; drive.push(f); return { getId: () => f.id, setSharing: (a, p) => (f.sharing = a + ':' + p) }; } });
+  const folders = new Map();
+  const folderOf = (id) => ({ getId: () => id, createFolder: (n) => (folders.set(id + '/' + n, 1), folderOf(id + '/' + n)), getFoldersByName: (n) => { const ok = folders.has(id + '/' + n); let done = false; return { hasNext: () => ok && !done, next: () => ((done = true), folderOf(id + '/' + n)) }; }, createFile: (blob) => { const f = { id: 'file-' + (drive.length + 1), blob, sharing: null, folder: id }; drive.push(f); return { getId: () => f.id, setSharing: (a, p) => (f.sharing = a + ':' + p), setDescription: (d) => (f.description = d) }; } });
   const state = { lockBusy: false, fetch: null, fetchLog: [] }; // simulasi user lain sedang memegang lock
   const toSigned = (buf) => [...buf].map((b) => (b > 127 ? b - 256 : b));
   const ctx = {
