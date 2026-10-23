@@ -65,39 +65,77 @@ function pickProduct(title) {
 }
 
 /* ───────── Dashboard ───────── */
+/* Istilah: SKU Parent = produk induk (mis. "Viva Milk Cleanser"); SKU Produk = varian yang dijual (mis. "… Lemon 100 ml"). */
 Pages.dashboard = function (main) {
   main.innerHTML = pageHead('Ringkasan', 'Dashboard', can('product.write') ? '<button class="btn pri hide-m" data-go="register">' + icon('plus') + 'Registrasi Produk</button>' : '') + '<div id="db-body">' + loadingBox() + '</div>';
   $$('[data-go]', main).forEach(function (b) { b.onclick = function () { App.go(b.getAttribute('data-go')); }; });
   api('dashboard.get', {}, { quiet: true }).then(function (d) {
-    var c = d.counts;
-    var kpi = function (ic, label, v, sub, cls, go) { return '<div class="kpi ' + (cls || '') + '"' + (go ? ' data-go2="' + go + '" style="cursor:pointer"' : '') + '><div class="top"><span class="chip">' + icon(ic) + '</span>' + esc(label) + '</div><div class="v">' + fmtNum(v) + '</div><div class="s">' + sub + '</div></div>'; };
-    var max = Math.max.apply(null, d.byBrand.map(function (b) { return b.n; }).concat([1]));
-    var pct = c.variants ? Math.round((c.withGtin + c.withInternal) / c.variants * 100) : 0;
-    var chRows = Object.keys(d.channels || {}).map(function (k) { var x = d.channels[k]; return '<tr><td><b>' + esc(STATUS_TXT[k] || k) + '</b></td><td class="num">' + fmtNum(x.unmapped || 0) + '</td><td class="num">' + fmtNum(x.mapped || 0) + '</td><td class="num">' + fmtNum(x.exported || 0) + '</td><td class="num">' + fmtNum(x.confirmed || 0) + '</td><td class="num">' + fmtNum((x.error || 0) + (x.mismatch || 0)) + '</td></tr>'; }).join('');
-    $('#db-body', main).innerHTML = '<div class="kpi4">' + kpi('package', 'Produk induk aktif', c.products, fmtNum(c.brands) + ' brand · ' + fmtNum(c.categories) + ' kategori' + (c.drafts ? ' · ' + c.drafts + ' draft' : ''), 'dark', 'products') +
-      kpi('layers', 'Kode SKU Produk aktif', c.variants, fmtNum(c.bundles) + ' paket aktif', '', 'products') +
-      kpi('barcode', 'Kelengkapan barcode', pct, '% SKU produk · ' + fmtNum(c.withGtin) + ' GTIN, ' + fmtNum(c.withInternal) + ' internal', '', 'barcodes') +
-      kpi('boxes', 'Data kemasan lengkap', c.variants ? Math.round(c.packagingComplete / c.variants * 100) : 0, '% SKU produk · ' + fmtNum(c.variants - c.packagingComplete) + ' belum lengkap (opsional)', '', 'quality') + '</div>' +
-      '<div class="dash2"><div style="display:flex;flex-direction:column;gap:16px"><div class="panel"><div class="panel-h"><h3>Status mapping kanal</h3><button class="btn sm ghost right" data-go2="mapping">Buka ' + icon('arrowRight') + '</button></div>' +
-      (chRows ? '<div class="tablewrap"><table class="t"><thead><tr><th>Kanal</th><th class="num">Belum</th><th class="num">Dipetakan</th><th class="num">Diekspor</th><th class="num">Terkonfirmasi</th><th class="num">Error</th></tr></thead><tbody>' + chRows + '</tbody></table></div>' : '<div class="muted">Belum ada mapping kanal. Import listing dari Seller Center atau petakan manual.</div>') + '</div>' +
-      '<div class="panel"><div class="panel-h"><h3>Data quality</h3><button class="btn sm ghost right" data-go2="quality">Periksa ' + icon('arrowRight') + '</button></div><div id="dq" class="muted">Memuat…</div></div>' +
-      '<div class="panel"><div class="panel-h"><h3>Produk terbaru</h3><button class="btn sm ghost right" data-go2="products">Lihat semua ' + icon('arrowRight') + '</button></div>' +
-      (d.recentProducts.length ? '<div class="tablewrap"><table class="t"><thead><tr><th>Produk</th><th>Brand</th><th class="num">Varian</th><th>Dibuat</th></tr></thead><tbody>' + d.recentProducts.map(function (p) {
-        return '<tr class="click" data-id="' + esc(p.id) + '"><td><b>' + esc(p.name) + '</b><div class="sku" style="font-size:11.5px">' + esc(p.productNo) + '</div></td><td>' + esc(p.brandName) + '</td><td class="num">' + p.variants + '</td><td class="nowrap">' + fmtDate(p.createdAt) + '</td></tr>';
-      }).join('') + '</tbody></table></div>' : emptyBox('Belum ada produk', 'Scan barcode di atas atau mulai dari Registrasi Produk.')) + '</div></div>' +
-      '<div style="display:flex;flex-direction:column;gap:16px"><div class="panel"><div class="panel-h"><h3>SKU produk aktif per brand</h3></div>' +
-      (d.byBrand.length ? '<div class="bars">' + d.byBrand.map(function (b) { return '<div class="bar"><span>' + esc(b.name) + '</span><span class="t"><i style="width:' + Math.round(b.n / max * 100) + '%"></i></span><b class="num">' + b.n + '</b></div>'; }).join('') + '</div>' : '<div class="muted">Belum ada data.</div>') + '</div>' +
-      '<div class="panel"><div class="panel-h"><h3>Aktivitas terbaru</h3></div><ul class="feed">' + (d.recent.length ? d.recent.map(function (a) { return '<li><span class="dot"></span><div><b>' + esc(actionLabel(a.action)) + '</b><div class="muted">' + esc(a.actor) + ' · ' + fmtDate(a.createdAt) + '</div></div></li>'; }).join('') : '<li class="muted">Belum ada aktivitas.</li>') + '</ul></div></div></div>';
-    $$('[data-go2]', main).forEach(function (b) { b.onclick = function () { App.go(b.getAttribute('data-go2')); }; });
+    var c = d.counts, L = d.logistics || {}, n = c.variants || 0;
+    var pc = function (x) { return n ? Math.round((x || 0) / n * 100) : 0; };
+    var kpi = function (ic, label, v, sub, cls, go, extra) { return '<div class="kpi ' + (cls || '') + '"' + (go ? ' data-go2="' + go + '" role="button" tabindex="0"' : '') + '><div class="top"><span class="chip">' + icon(ic) + '</span>' + label + '</div><div class="v">' + v + '</div><div class="s">' + sub + '</div>' + (extra || '') + '</div>'; };
+    var barcodePct = pc(c.withGtin + c.withInternal);
+    var avg = c.products ? (n / c.products).toFixed(1).replace('.', ',') : '0';
+    // kelengkapan data SKU Produk
+    var meter = function (label, hint, have) {
+      var p = pc(have), tone = p >= 90 ? 'ok' : p >= 50 ? 'mid' : 'low';
+      return '<div class="dmeter ' + tone + '"><div class="dm-h"><b>' + label + '</b><span class="dm-p">' + p + '%</span></div><div class="dm-t"><i style="width:' + p + '%"></i></div><div class="dm-s">' + fmtNum(have || 0) + ' dari ' + fmtNum(n) + ' SKU Produk · ' + hint + '</div></div>';
+    };
+    var brandRows = d.byBrand.length ? (function () {
+      var max = Math.max.apply(null, d.byBrand.map(function (b) { return b.n; }).concat([1]));
+      return '<div class="dbrands">' + d.byBrand.map(function (b) { return '<div class="dbr"><div class="dbr-n"><b>' + esc(b.name) + '</b><span>' + fmtNum(b.parents || 0) + ' SKU Parent</span></div><div class="dbr-t"><i style="width:' + Math.max(3, Math.round(b.n / max * 100)) + '%"></i></div><b class="dbr-v">' + fmtNum(b.n) + '</b></div>'; }).join('') + '</div>';
+    })() : '<div class="muted">Belum ada data.</div>';
+    var chRows = Object.keys(d.channels || {}).map(function (k) { var x = d.channels[k]; return '<tr><td><b>' + esc(STATUS_TXT[k] || k) + '</b></td><td class="num">' + fmtNum(x.unmapped || 0) + '</td><td class="num">' + fmtNum(x.mapped || 0) + '</td><td class="num">' + fmtNum((x.exported || 0) + (x.confirmed || 0)) + '</td><td class="num">' + fmtNum((x.error || 0) + (x.mismatch || 0)) + '</td></tr>'; }).join('');
+
+    $('#db-body', main).innerHTML =
+      '<div class="dterms">' + icon('layers') + '<span><b>SKU Parent</b> = produk induk (mis. <i>Viva Milk Cleanser</i>). <b>SKU Produk</b> = varian yang dijual, dengan barcode sendiri (mis. <i>Viva Milk Cleanser Lemon 100 ml</i>). Satu SKU Parent bisa punya beberapa SKU Produk.</span></div>' +
+      '<div class="kpi4">' +
+        kpi('package', 'SKU Parent aktif', fmtNum(c.products), fmtNum(c.brands) + ' brand · ' + fmtNum(c.categories) + ' kategori' + (c.drafts ? ' · ' + fmtNum(c.drafts) + ' draft' : ''), 'dark', 'products') +
+        kpi('layers', 'SKU Produk aktif', fmtNum(n), 'Rata-rata ' + avg + ' SKU Produk per SKU Parent', '', 'products') +
+        kpi('barcode', 'SKU Produk ber-barcode', barcodePct + '%', fmtNum(c.withGtin) + ' GTIN · ' + fmtNum(c.withInternal) + ' internal · <b class="' + (c.withoutBarcode ? 'tx-err' : '') + '">' + fmtNum(c.withoutBarcode) + ' belum</b>', '', 'quality', '<div class="bar2"><i style="width:' + barcodePct + '%"></i></div>') +
+        kpi('boxes', 'Paket jual aktif', fmtNum(c.bundles), 'Paket produk sama, kombinasi & pilih sendiri', '', 'bundles') +
+      '</div>' +
+      '<div class="dash2">' +
+        '<div class="dcol">' +
+          '<div class="panel"><div class="panel-h"><h3>Kelengkapan data SKU Produk</h3><button class="btn sm ghost right" data-go2="quality">Detail ' + icon('arrowRight') + '</button></div>' +
+            '<div class="dmeters">' +
+              meter('GTIN / barcode', 'wajib untuk scan & marketplace', c.withGtin + c.withInternal) +
+              meter('Kemasan BOX (isi per box)', 'untuk pembelian & gudang', L.box) +
+              meter('Berat satuan', 'untuk ongkos kirim', L.weight) +
+              meter('Dimensi satuan (P × L × T)', 'opsional, untuk logistik', L.size) +
+            '</div></div>' +
+          '<div class="panel"><div class="panel-h"><h3>Perlu ditindaklanjuti</h3><button class="btn sm ghost right" data-go2="quality">Periksa semua ' + icon('arrowRight') + '</button></div><div id="dq">' + loadingBox() + '</div></div>' +
+          '<div class="panel"><div class="panel-h"><h3>SKU Parent terbaru</h3><button class="btn sm ghost right" data-go2="products">Lihat semua ' + icon('arrowRight') + '</button></div>' +
+            (d.recentProducts.length ? '<div class="tablewrap"><table class="t"><thead><tr><th>SKU Parent</th><th>Brand</th><th class="num">SKU Produk</th><th>Dibuat</th></tr></thead><tbody>' + d.recentProducts.map(function (p) {
+              return '<tr class="click" data-id="' + esc(p.id) + '"><td><b>' + esc(p.brandName && String(p.name).toLowerCase().indexOf(String(p.brandName).toLowerCase()) !== 0 ? p.brandName + ' ' + p.name : p.name) + '</b><div class="sku" style="font-size:11.5px">' + esc(p.productNo) + '</div></td><td>' + esc(p.brandName || '') + '</td><td class="num">' + p.variants + '</td><td class="nowrap">' + fmtDate(p.createdAt) + '</td></tr>';
+            }).join('') + '</tbody></table></div>' : emptyBox('Belum ada produk', 'Mulai dari Registrasi Produk.')) + '</div>' +
+        '</div>' +
+        '<div class="dcol">' +
+          '<div class="panel"><div class="panel-h"><h3>SKU Produk per brand</h3><span class="right muted" style="font-size:12px">' + (d.byBrand.length >= 8 ? '8 brand teratas' : '') + '</span></div>' + brandRows + '</div>' +
+          '<div class="panel"><div class="panel-h"><h3>Mapping marketplace</h3><button class="btn sm ghost right" data-go2="mapping">Buka ' + icon('arrowRight') + '</button></div>' +
+            (chRows ? '<div class="tablewrap"><table class="t"><thead><tr><th>Kanal</th><th class="num">Belum</th><th class="num">Dipetakan</th><th class="num">Terkirim</th><th class="num">Error</th></tr></thead><tbody>' + chRows + '</tbody></table></div>' : '<div class="dempty">' + icon('link') + '<div><b>Belum ada SKU Produk yang dipetakan ke marketplace</b><span>Import listing dari Seller Center (Shopee, TikTok, Tokopedia) atau petakan manual.</span></div></div>') + '</div>' +
+          '<div class="panel"><div class="panel-h"><h3>Aktivitas terbaru</h3>' + (can('audit.read') ? '<button class="btn sm ghost right" data-go2="audit">Semua ' + icon('arrowRight') + '</button>' : '') + '</div><ul class="feed">' + (d.recent.length ? d.recent.slice(0, 6).map(function (a) { return '<li><span class="dot"></span><div><b>' + esc(actionLabel(a.action)) + '</b><div class="muted">' + esc(String(a.actor || '').split('@')[0]) + ' · ' + fmtDate(a.createdAt) + '</div></div></li>'; }).join('') : '<li class="muted">Belum ada aktivitas.</li>') + '</ul></div>' +
+        '</div>' +
+      '</div>';
+    $$('[data-go2]', main).forEach(function (b) {
+      var go = function () { App.go(b.getAttribute('data-go2')); };
+      b.onclick = go;
+      b.onkeydown = function (e) { if (e.key === 'Enter') go(); };
+    });
     $$('tr[data-id]', main).forEach(function (r) { r.onclick = function () { App.go('product', r.getAttribute('data-id')); }; });
     api('quality.get', {}, { quiet: true, silent: true }).then(function (q) {
       var el = $('#dq', main); if (!el) return;
-      el.innerHTML = '<div class="row"><span class="badge b-ERR">Harus diperbaiki: ' + q.summary.error + '</span><span class="badge b-NONE">Perlu dicek: ' + q.summary.warn + '</span><span class="badge b-CHECK">Info: ' + q.summary.info + '</span></div>' +
-        '<ul class="feed" style="margin-top:8px">' + q.sections.filter(function (s) { return s.count; }).slice(0, 5).map(function (s) { return '<li><span class="dot"></span><div><b>' + esc(s.label) + '</b> — ' + s.count + '</div></li>'; }).join('') + '</ul>';
-    }).catch(function () { var el = $('#dq', main); if (el) el.textContent = 'Gagal memuat.'; });
+      var term = function (s) { return String(s).replace(/Kandidat Parent/g, 'Kandidat SKU Parent').replace(/SKU produk/g, 'SKU Produk'); };
+      var todo = q.sections.filter(function (s) { return s.count && s.severity !== 'info'; });
+      var info = q.sections.filter(function (s) { return s.count && s.severity === 'info'; });
+      el.innerHTML = (todo.length ? '<div class="dtodo">' + todo.map(function (s) {
+        var err = s.severity === 'error';
+        return '<button class="dt ' + (err ? 'err' : 'warn') + '"><span class="dt-i">' + icon(err ? 'alertCircle' : 'alert') + '</span><span class="dt-l"><b>' + esc(term(s.label)) + '</b><small>' + (err ? 'Harus diperbaiki' : 'Perlu dicek') + '</small></span><span class="dt-c">' + fmtNum(s.count) + '</span>' + icon('arrowRight') + '</button>';
+      }).join('') + '</div>' : '<div class="dempty ok">' + icon('check') + '<div><b>Tidak ada masalah data</b><span>Semua pemeriksaan wajib lolos.</span></div></div>') +
+        (info.length ? '<div class="dinfo">Catatan opsional: ' + info.map(function (s) { return esc(term(s.label)) + ' (' + fmtNum(s.count) + ')'; }).join(' · ') + '</div>' : '');
+      $$('.dt', el).forEach(function (b) { b.onclick = function () { App.go('quality'); }; });
+    }).catch(function () { var el = $('#dq', main); if (el) el.innerHTML = '<div class="muted">Gagal memuat.</div>'; });
   }).catch(function (e) { $('#db-body', main).innerHTML = errBox(e.message); });
 };
-
 
 /* ───────── Master Produk (direktori) ───────── */
 Pages.products = function (main, arg) {

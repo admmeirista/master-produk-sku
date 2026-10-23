@@ -609,6 +609,55 @@ tr.open .exp{transform:rotate(90deg)}
   .t.lvt tr.lv-trade td{grid-column:1;grid-row:auto}
   .t.lvt tr.lv-trade td::before{content:none}
 }
+/* ---- v6.13: dashboard mudah dibaca (SKU Parent / SKU Produk, kelengkapan, tindak lanjut) ---- */
+#db-body .dterms{display:flex;gap:10px;align-items:flex-start;background:#fff;border:1px solid var(--line);border-radius:14px;padding:11px 14px;margin-bottom:14px;font-size:12.5px;color:var(--muted);line-height:1.5}
+#db-body .dterms .ic{width:16px;height:16px;flex:none;margin-top:2px;color:var(--acc)}
+#db-body .dterms b{color:var(--fg)}
+#db-body .kpi[role=button]{cursor:pointer;transition:transform .12s,box-shadow .12s}
+#db-body .kpi[role=button]:hover{transform:translateY(-1px)}
+#db-body .kpi .s b{font-weight:800}
+#db-body .tx-err{color:var(--err)}
+#db-body .dcol{display:flex;flex-direction:column;gap:16px;min-width:0}
+#db-body .dmeters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 22px}
+#db-body .dmeter .dm-h{display:flex;align-items:baseline;gap:8px;font-size:13px}
+#db-body .dmeter .dm-p{margin-left:auto;font-weight:900;font-size:18px;letter-spacing:-.02em}
+#db-body .dmeter .dm-t{height:8px;background:var(--line-2);border-radius:8px;overflow:hidden;margin:7px 0 6px}
+#db-body .dmeter .dm-t i{display:block;height:100%;border-radius:8px;background:var(--ok)}
+#db-body .dmeter.mid .dm-t i{background:#e0a92b}#db-body .dmeter.mid .dm-p{color:#b7861a}
+#db-body .dmeter.low .dm-t i{background:var(--acc)}#db-body .dmeter.low .dm-p{color:var(--acc)}
+#db-body .dmeter.ok .dm-p{color:var(--ok)}
+#db-body .dmeter .dm-s{font-size:11.5px;color:var(--muted);font-weight:600}
+#db-body .dtodo{display:flex;flex-direction:column;gap:8px}
+#db-body .dt{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 12px;cursor:pointer;font:inherit;color:inherit}
+#db-body .dt:hover{border-color:var(--acc);background:#fffaf7}
+#db-body .dt .dt-i{width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex:none}
+#db-body .dt .dt-i .ic{width:16px;height:16px}
+#db-body .dt.err .dt-i{background:var(--err-soft);color:var(--err)}
+#db-body .dt.warn .dt-i{background:#fdf3dc;color:#b7861a}
+#db-body .dt .dt-l{flex:1;min-width:0;display:flex;flex-direction:column;font-size:13px}
+#db-body .dt .dt-l small{font-size:11.5px;color:var(--muted);font-weight:600}
+#db-body .dt .dt-c{font-weight:900;font-size:16px}
+#db-body .dt>.ic{width:15px;height:15px;color:var(--muted)}
+#db-body .dinfo{margin-top:10px;font-size:11.5px;color:var(--muted)}
+#db-body .dempty{display:flex;gap:12px;align-items:flex-start;background:var(--line-2);border-radius:12px;padding:12px 14px;font-size:12.5px}
+#db-body .dempty .ic{width:18px;height:18px;flex:none;color:var(--muted);margin-top:1px}
+#db-body .dempty b{display:block;margin-bottom:2px}
+#db-body .dempty span{color:var(--muted)}
+#db-body .dempty.ok .ic{color:var(--ok)}
+#db-body .dbrands{display:flex;flex-direction:column;gap:10px}
+#db-body .dbr{display:grid;grid-template-columns:minmax(0,130px) minmax(0,1fr) 48px;gap:12px;align-items:center}
+#db-body .dbr-n{display:flex;flex-direction:column;min-width:0;font-size:13px}
+#db-body .dbr-n b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#db-body .dbr-n span{font-size:11px;color:var(--muted);font-weight:600}
+#db-body .dbr-t{height:9px;background:var(--line-2);border-radius:9px;overflow:hidden}
+#db-body .dbr-t i{display:block;height:100%;background:var(--acc);border-radius:9px}
+#db-body .dbr-v{text-align:right;font-size:13px}
+@media (max-width:760px){
+  #db-body .dterms{font-size:12px}
+  #db-body .dmeters{grid-template-columns:minmax(0,1fr);gap:14px}
+  #db-body .dbr{grid-template-columns:minmax(0,104px) minmax(0,1fr) 40px;gap:8px}
+}
+
 /* ---- v6.12: kotak dimensi & berat rapi, foto SKU besar, kelengkapan data ---- */
 .fgrp{display:flex;align-items:center;height:40px;border:1px solid var(--line);border-radius:10px;background:#fff;padding:0 4px;min-width:0;transition:border-color .12s,box-shadow .12s}
 .fgrp:focus-within{border-color:var(--acc);box-shadow:0 0 0 3px rgba(232,105,58,.12)}

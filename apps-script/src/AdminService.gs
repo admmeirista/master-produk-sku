@@ -107,11 +107,25 @@ function dashboard_() {
   const liveV = V.filter((v) => v.Status === STATUS.ACTIVE && liveP[v.ProductID]);
   const brands = indexBy_(db_('MASTER_BRANDS').rows(), 'BrandID');
   const byBrand = {};
+  const parentsByBrand = {};
   liveV.forEach((v) => {
     const p = pById[v.ProductID];
     const b = (brands[p.BrandID] || {}).BrandName || '-';
     byBrand[b] = (byBrand[b] || 0) + 1;
+    (parentsByBrand[b] = parentsByBrand[b] || {})[p.ProductID] = 1;
   });
+  // kelengkapan logistik per SKU Produk (satuan dasar & kemasan BOX)
+  const dims = dimensionsByVariant_();
+  const packOf = {};
+  C.forEach((c) => !c.IsBaseUnit && c.Status === STATUS.ACTIVE && (packOf[c.VariantID] = c.UnitName));
+  const baseOf = (v) => v.BaseUnit || (pById[v.ProductID] || {}).BaseUnit;
+  const dimOf = (v, u) => (dims[v.VariantID] || []).find((d) => d.unit === u);
+  const logistics = {
+    box: liveV.filter((v) => packOf[v.VariantID]).length,
+    weight: liveV.filter((v) => { const d = dimOf(v, baseOf(v)); return d && Number(d.grossWeightGrams) > 0; }).length,
+    size: liveV.filter((v) => { const d = dimOf(v, baseOf(v)); return d && d.lengthCm && d.widthCm && d.heightCm; }).length,
+    boxSize: liveV.filter((v) => { const d = packOf[v.VariantID] && dimOf(v, packOf[v.VariantID]); return d && d.lengthCm && d.widthCm && d.heightCm && Number(d.grossWeightGrams) > 0; }).length,
+  };
   return {
     counts: {
       brands: db_('MASTER_BRANDS').filter((b) => b.Status === STATUS.ACTIVE).length,
@@ -128,20 +142,18 @@ function dashboard_() {
       drafts: P.filter((p) => p.Status === STATUS.DRAFT).length,
       discontinued: V.filter((v) => v.Status === STATUS.DISCONTINUED).length,
       bundles: db_('BUNDLE_MASTERS').filter((b) => b.Status === STATUS.ACTIVE).length,
-      packagingComplete: (() => {
-        const dims = dimensionsByVariant_();
-        return liveV.filter((v) => packagingComplete_(v.BaseUnit || (pById[v.ProductID] || {}).BaseUnit, dims[v.VariantID])).length;
-      })(),
+      packagingComplete: liveV.filter((v) => packagingComplete_(baseOf(v), dims[v.VariantID])).length,
     },
+    logistics,
     channels: mappingSummary_(),
     byBrand: Object.keys(byBrand)
-      .map((k) => ({ name: k, n: byBrand[k] }))
+      .map((k) => ({ name: k, n: byBrand[k], parents: Object.keys(parentsByBrand[k]).length }))
       .sort((a, b) => b.n - a.n)
       .slice(0, 8),
-    recentProducts: P.slice()
+    recentProducts: P.filter((p) => p.Status !== STATUS.DELETED)
       .sort((a, b) => String(b.CreatedAt).localeCompare(String(a.CreatedAt)))
       .slice(0, 6)
-      .map((p) => ({ id: p.ProductID, name: p.ProductName, productNo: p.ProductCode, brandName: (brands[p.BrandID] || {}).BrandName, createdAt: p.CreatedAt, createdBy: p.CreatedBy, variants: V.filter((v) => v.ProductID === p.ProductID).length })),
+      .map((p) => ({ id: p.ProductID, name: p.ProductName, productNo: p.ProductCode, brandName: (brands[p.BrandID] || {}).BrandName, createdAt: p.CreatedAt, createdBy: p.CreatedBy, variants: V.filter((v) => v.ProductID === p.ProductID && v.Status !== STATUS.DELETED).length })),
     recent: db_('AUDIT_LOGS')
       .rows()
       .slice(-10)
