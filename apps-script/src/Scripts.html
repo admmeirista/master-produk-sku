@@ -397,28 +397,43 @@ function combo(host, o) {
     (o.disabled ? '' : '<button type="button" class="cb-clear hidden" tabindex="-1" title="Kosongkan">' + icon('x') + '</button>') + '<span class="cb-caret">' + icon('chevDown') + '</span><div class="cb-list hidden"></div>';
   var input = $('input', host), list = $('.cb-list', host), clear = $('.cb-clear', host);
   var show = function () { input.value = cur ? o.label(cur) : ''; if (clear) clear.classList.toggle('hidden', !cur); };
+  // o.create = { label: function (q) → teks tombol, run: function (q) → Promise<item|null> }: tambah data baru tanpa meninggalkan form
+  var typed = function () { return String(input.value || '').trim(); };
+  var canCreate = function () {
+    var q = typed();
+    if (!o.create || q.length < 2 || (cur && q === o.label(cur))) return false;
+    var k = q.toLowerCase().replace(/\s+/g, ' ');
+    return !items.some(function (it) { return String(o.label(it)).toLowerCase().replace(/\s+/g, ' ') === k; });
+  };
   var render = function () {
-    list.innerHTML = items.length ? items.map(function (it, i) {
+    var add = canCreate();
+    list.innerHTML = (items.length ? items.map(function (it, i) {
       return '<div class="cb-opt' + (i === active ? ' on' : '') + '" data-i="' + i + '"><div style="min-width:0"><div class="t">' + esc(o.label(it)) + '</div>' + (o.sub && o.sub(it) ? '<div class="s">' + esc(o.sub(it)) + '</div>' : '') + '</div>' + (o.code && o.code(it) ? '<span class="chip-code ghost">' + esc(o.code(it)) + '</span>' : '') + '</div>';
-    }).join('') : '<div class="cb-empty">' + (o.empty || 'Tidak ada hasil') + '</div>';
-    $$('.cb-opt', list).forEach(function (el) { el.onmousedown = function (e) { e.preventDefault(); pick(items[Number(el.getAttribute('data-i'))]); }; });
+    }).join('') : (add ? '' : '<div class="cb-empty">' + (o.empty || 'Tidak ada hasil') + '</div>')) +
+      (add ? '<div class="cb-opt cb-add' + (active === items.length ? ' on' : '') + '">' + icon('plus') + '<div class="t">' + esc(o.create.label(typed())) + '</div></div>' : '');
+    $$('.cb-opt[data-i]', list).forEach(function (el) { el.onmousedown = function (e) { e.preventDefault(); pick(items[Number(el.getAttribute('data-i'))]); }; });
+    var addEl = $('.cb-add', list); if (addEl) addEl.onmousedown = function (e) { e.preventDefault(); create(); };
     var on = $('.cb-opt.on', list); if (on && on.scrollIntoView) on.scrollIntoView({ block: 'nearest' });
   };
   var query = function (q) {
     var my = ++seq;
     if (!items.length) list.innerHTML = '<div class="cb-empty">Memuat…</div>';
-    Promise.resolve(o.load(q)).then(function (res) { if (my !== seq) return; items = res || []; active = items.length ? 0 : -1; render(); }).catch(function () {});
+    Promise.resolve(o.load(q)).then(function (res) { if (my !== seq) return; items = res || []; active = items.length ? 0 : canCreate() ? 0 : -1; render(); }).catch(function () {});
   };
   var openList = function () { if (o.disabled) return; open = true; list.classList.remove('hidden'); query(input.value && cur && input.value === o.label(cur) ? '' : input.value); };
   var close = function () { open = false; list.classList.add('hidden'); show(); };
   var pick = function (it) { cur = it; close(); if (o.onChange) o.onChange(it); };
+  var create = function () {
+    var q = typed(); close();
+    Promise.resolve(o.create.run(q)).then(function (it) { if (it) pick(it); }).catch(function () {});
+  };
   input.onfocus = function () { input.select(); openList(); };
   input.oninput = debounce(function () { if (!open) openList(); else query(input.value); }, 120);
   input.onblur = function () { setTimeout(close, 120); };
   input.onkeydown = function (e) {
-    if (e.key === 'ArrowDown') { e.preventDefault(); if (!open) openList(); active = Math.min(items.length - 1, active + 1); render(); }
+    if (e.key === 'ArrowDown') { e.preventDefault(); if (!open) openList(); active = Math.min(items.length - (canCreate() ? 0 : 1), active + 1); render(); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); active = Math.max(0, active - 1); render(); }
-    else if (e.key === 'Enter') { if (open && items[active]) { e.preventDefault(); pick(items[active]); } }
+    else if (e.key === 'Enter') { if (open && items[active]) { e.preventDefault(); pick(items[active]); } else if (open && canCreate()) { e.preventDefault(); create(); } }
     else if (e.key === 'Escape') { input.blur(); }
   };
   if (clear) clear.onmousedown = function (e) { e.preventDefault(); cur = null; show(); if (o.onChange) o.onChange(null); };
@@ -488,15 +503,27 @@ function downloadTable(d, format) {
 }
 
 /* ═════════════ Aplikasi: login, kerangka sidebar, router ═════════════ */
+/* Menu disusun per fungsi bisnis. Brand, Kategori, Barcode & Kualitas data ada di dalam Master Produk (tab / alat). */
 var NAV = [
-  ['RINGKASAN', [['dashboard', 'Dashboard', 'grid'], ['quality', 'Data Quality', 'shield']]],
-  ['PRODUK', [['register', 'Registrasi Produk', 'plus', 'product.write'], ['products', 'Master Produk', 'package']]],
-  ['MASTER DATA', [['brands', 'Master Brand', 'tag'], ['categories', 'Master Kategori', 'layers']]],
-  ['OPERASIONAL', [['bundles', 'Paket & Kemasan', 'boxes'], ['mapping', 'Channel SKU Mapping', 'link'], ['barcodes', 'Registry Barcode', 'barcode']]],
-  ['SISTEM', [['io', 'Import & Export', 'upload', 'export.run'], ['settings', 'Settings', 'sliders'], ['users', 'Pengguna', 'users', 'user.manage'], ['audit', 'Audit Log', 'activity', 'audit.read']]]
+  ['DASHBOARD', [['dashboard', 'Dashboard', 'grid']]],
+  ['MANAJEMEN PRODUK', [['products', 'Master Produk', 'package'], ['register', 'Registrasi Produk', 'plus', 'product.write'], ['bundles', 'Kemasan & Bundling', 'boxes']]],
+  ['INTEGRASI', [['mapping', 'Channel SKU Mapping', 'link'], ['io', 'Import & Export', 'upload', 'export.run']]],
+  ['SISTEM', [['users', 'Pengguna & Hak Akses', 'users', 'user.manage'], ['settings', 'Pengaturan', 'sliders'], ['audit', 'Audit Log', 'activity', 'audit.read']]]
 ];
-/** Breadcrumb otomatis dari struktur menu: "Grup › Halaman". */
-var CRUMB_EXTRA = { product: ['PRODUK', 'Master Produk'], profile: ['AKUN', 'Profil'], bundle: ['OPERASIONAL', 'Paket & Kemasan'] };
+/** Halaman yang tidak punya menu sendiri → menu induknya (untuk menu aktif & breadcrumb). */
+var NAV_PARENT = { product: 'products', brands: 'products', categories: 'products', barcodes: 'products', quality: 'products', photos: 'products', bundle: 'bundles' };
+var MP = ['MANAJEMEN PRODUK', 'Master Produk'];
+var CRUMB_EXTRA = { product: MP, brands: MP, categories: MP, barcodes: MP, quality: MP, photos: MP, profile: ['AKUN', 'Profil'], bundle: ['MANAJEMEN PRODUK', 'Kemasan & Bundling'] };
+/** Tab di dalam Master Produk. */
+function masterTabs(main, cur) {
+  var t = [['products', 'Produk', 'package'], ['brands', 'Brand', 'tag'], ['categories', 'Kategori', 'layers']];
+  var tools = [['quality', 'Kualitas data', 'shield'], ['barcodes', 'Barcode', 'barcode']];
+  var html = '<div class="mtabs"><div class="mt-main">' + t.map(function (x) { return '<button type="button" class="' + (x[0] === cur ? 'on' : '') + '" data-mt="' + x[0] + '">' + icon(x[2]) + x[1] + '</button>'; }).join('') + '</div>' +
+    '<div class="mt-tools">' + tools.map(function (x) { return '<button type="button" class="' + (x[0] === cur ? 'on' : '') + '" data-mt="' + x[0] + '">' + icon(x[2]) + x[1] + '</button>'; }).join('') + '</div></div>';
+  var ph = $('.ph', main);
+  if (ph) ph.insertAdjacentHTML('afterend', html); else main.insertAdjacentHTML('afterbegin', html);
+  $$('[data-mt]', main).forEach(function (b) { b.onclick = function () { if (b.getAttribute('data-mt') !== cur) App.go(b.getAttribute('data-mt')); }; });
+}
 function crumb(page) {
   if (CRUMB_EXTRA[page]) return CRUMB_EXTRA[page];
   for (var i = 0; i < NAV.length; i++) for (var j = 0; j < NAV[i][1].length; j++) if (NAV[i][1][j][0] === page) return [NAV[i][0], NAV[i][1][j][1]];
@@ -571,15 +598,17 @@ var App = {
     setTimeout(Ref.warm, 0);
     PullRefresh.init();
     var u = me.user;
-    var nav = function (n) { return can(n[3] || 'product.read') ? '<a class="nv" data-nav="' + n[0] + '">' + icon(n[2]) + '<span class="grow">' + n[1] + '</span></a>' : ''; };
+    var nav = function (n) { return can(n[3] || 'product.read') ? '<a class="nv" data-nav="' + n[0] + '" data-tip="' + esc(n[1]) + '" title="' + esc(n[1]) + '">' + icon(n[2]) + '<span class="grow">' + n[1] + '</span></a>' : ''; };
     var closed = {};
     try { closed = JSON.parse(Store.get('rpm_nav') || '{}'); } catch (e) { closed = {}; }
+    document.body.classList.toggle('side-mini', Store.get('rpm_mini') === '1');
     $app().innerHTML = '<div class="adm"><div class="mtop"><button class="icon-btn" id="m-open" aria-label="Menu">' + icon('menu') + '</button>' + brand('sm') + '</div>' +
-      '<div class="side-bg" id="side-bg"></div><nav class="side" id="side">' + brand() +
+      '<div class="side-bg" id="side-bg"></div><nav class="side" id="side">' + brand() + '<button type="button" class="side-mini-btn" id="side-mini" title="Ciutkan / lebarkan menu" aria-label="Ciutkan menu">' + icon('chevDown') + '</button>' +
       NAV.map(function (s, i) { var links = s[1].map(nav).join(''); return links ? '<div class="navgrp' + (closed[s[0]] ? ' closed' : '') + '"><button type="button" class="sec" data-grp="' + s[0] + '"' + (i ? ' style="margin-top:6px"' : '') + '>' + s[0] + icon('chevDown', 'gch') + '</button><div class="grp-links">' + links + '</div></div>' : ''; }).join('') +
       '<div class="me"><a class="avatar" data-nav="profile" style="cursor:pointer" title="Profil & password">' + esc(initials(u.fullName)) + '</a><div style="min-width:0;cursor:pointer" data-nav="profile"><div class="n">' + esc(u.fullName) + '</div><div class="r">' + esc(STATUS_TXT[u.role] || u.role) + '</div></div><button id="adm-out" title="Keluar">' + icon('logout') + '</button></div></nav><main class="main" id="main"></main>' + App.tabbar() + '</div>';
     $$('[data-nav]').forEach(function (a) { a.onclick = function () { App.go(a.getAttribute('data-nav')); }; });
     $$('[data-grp]').forEach(function (b) { b.onclick = function () { var g = b.parentNode; g.classList.toggle('closed'); closed[b.getAttribute('data-grp')] = g.classList.contains('closed'); Store.set('rpm_nav', JSON.stringify(closed)); }; });
+    $('#side-mini').onclick = function () { var on = !document.body.classList.contains('side-mini'); document.body.classList.toggle('side-mini', on); Store.set('rpm_mini', on ? '1' : '0'); };
     $('#adm-out').onclick = function () { ask('Keluar dari aplikasi?', 'Keluar').then(function (y) { if (y) App.logout(); }); };
     var side = $('#side'), bg = $('#side-bg');
     $('#m-open').onclick = function () { side.classList.add('open'); bg.classList.add('open'); };
@@ -603,10 +632,11 @@ var App = {
     if (page === 'scan') { arg = { search: (arg && arg.code) || '', focus: true }; page = 'products'; }
     if (!Pages[page]) page = 'dashboard';
     App.page = page; App.pageArg = arg;
-    $$('.side a.nv').forEach(function (a) { a.classList.toggle('on', a.getAttribute('data-nav') === page || (page === 'product' && a.getAttribute('data-nav') === 'products')); });
+    var navOf = NAV_PARENT[page] || page;
+    $$('.side a.nv').forEach(function (a) { a.classList.toggle('on', a.getAttribute('data-nav') === navOf); });
     document.body.setAttribute('data-page', page);
-    var tabOf = { product: 'products' }[page] || page;
-    $$('#tabbar [data-tab]').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-tab') === tabOf || (b.getAttribute('data-tab') === 'menu' && ['dashboard', 'register', 'products', 'quality'].indexOf(tabOf) < 0)); });
+    var tabOf = NAV_PARENT[page] || page;
+    $$('#tabbar [data-tab]').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-tab') === tabOf || (b.getAttribute('data-tab') === 'menu' && ['dashboard', 'register', 'products', 'bundles'].indexOf(tabOf) < 0)); });
     var side = $('#side'); if (side) { side.classList.remove('open'); $('#side-bg').classList.remove('open'); }
     var main = $('#main');
     main.innerHTML = loadingBox();
@@ -615,7 +645,7 @@ var App = {
   },
   /** Navigasi bawah untuk tampilan HP (≤ 760 px). */
   tabbar: function () {
-    var t = [['dashboard', 'grid', 'Beranda'], ['products', 'package', 'Produk'], can('product.write') ? ['register', 'plus', 'Registrasi'] : null, ['quality', 'shield', 'Cek Data'], ['menu', 'menu', 'Menu']].filter(Boolean);
+    var t = [['dashboard', 'grid', 'Beranda'], ['products', 'package', 'Produk'], can('product.write') ? ['register', 'plus', 'Registrasi'] : null, ['bundles', 'boxes', 'Kemasan'], ['menu', 'menu', 'Menu']].filter(Boolean);
     return '<nav class="tabbar" id="tabbar">' + t.map(function (x) { return '<button type="button" data-tab="' + x[0] + '"' + (x[0] === 'register' ? ' class="fab"' : '') + '><span class="ti">' + icon(x[1]) + '</span><span class="tl">' + x[2] + '</span></button>'; }).join('') + '</nav>';
   },
   logout: function () {

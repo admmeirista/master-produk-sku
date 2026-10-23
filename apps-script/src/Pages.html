@@ -146,6 +146,7 @@ Pages.products = function (main, arg) {
     '<div class="filters"><div class="search has-cam">' + icon('search') + '<input class="in" id="fq" placeholder="Cari / scan GTIN, Kode SKU, Kode Produk, nama…" spellcheck="false">' + camBtn('Scan barcode pakai kamera HP') + '</div><div id="fb" style="width:190px"></div><div id="fc" style="width:190px"></div>' +
     '<select class="in" id="fs"><option value="ACTIVE">Aktif</option><option value="DRAFT">Draft</option><option value="INACTIVE">Nonaktif</option><option value="DISCONTINUED">Discontinued</option><option value="ARCHIVED">Diarsipkan</option><option value="all">Semua status</option></select>' +
     '<select class="in" id="fk"><option value="">Semua</option><option value="incomplete">GTIN belum didata</option><option value="complete">Barcode lengkap</option></select></div><div id="pl"></div>';
+  masterTabs(main, 'products');
   // Cari SKU: ketik / scanner USB / kamera HP → pencarian (GTIN, barcode internal, Kode SKU, Kode Produk, nama)
   var fq = $('#fq', main);
   if (arg.search) { fq.value = arg.search; f.search = arg.search; f.status = 'all'; $('#fs', main).value = 'all'; autoOpen = true; }
@@ -331,7 +332,42 @@ function refCombo(host, kind, value, onChange, placeholder, includeInactive, dis
       if (cat) return [it.source === 'LOCAL' ? 'Lainnya' : catGroup(it), info].filter(Boolean).join(' · ');
       return info || (it.productCount ? it.productCount + ' produk' : '');
     },
-    empty: cat ? 'Kategori tidak ditemukan. Coba kata lain, mis. toner, serum, lipstik, sabun.' : 'Tidak ditemukan. Tambahkan di Master Brand.', onChange: onChange
+    empty: cat ? 'Kategori tidak ditemukan. Coba kata lain, mis. toner, serum, lipstik, sabun.' : 'Brand tidak ditemukan.', onChange: onChange,
+    create: !disabled && can('master.write') ? { label: function (q) { return 'Tambahkan ' + (cat ? 'kategori' : 'brand') + ' "' + q + '"'; }, run: function (q) { return quickCreateMaster(kind, q); } } : null
+  });
+}
+
+/**
+ * Tambah brand / kategori langsung dari form (tanpa pindah halaman, isian form tidak hilang). Nama bisa diperbaiki
+ * dulu; server tetap menolak duplikat (abaikan huruf besar/kecil, spasi & tanda baca) dan minta konfirmasi bila mirip.
+ * → Promise<item baru | null>
+ */
+function quickCreateMaster(kind, name) {
+  var cat = kind === 'category', L = cat ? 'kategori' : 'brand';
+  return new Promise(function (resolve) {
+    var done = false, ack = false;
+    var m = modal('<h3>Tambah ' + L + ' baru</h3><div class="muted">' + (cat ? 'Kategori baru masuk kelompok "Lainnya" di Master Kategori.' : 'Brand langsung terpilih di form ini.') + '</div>' +
+      '<label class="f">Nama ' + L + '</label><input class="in w100" id="qn" maxlength="60" value="' + esc(name) + '"><div id="qw"></div>' +
+      '<div class="row" style="margin-top:16px"><button class="btn pri" id="qs">' + icon('check') + 'Simpan & pilih</button><button class="btn" data-close>Batal</button></div>', { onClose: function () { if (!done) resolve(null); } });
+    var inp = $('#qn', m); inp.focus(); inp.select();
+    var label = function (t) { $('#qs', m).innerHTML = icon('check') + t; };
+    inp.oninput = function () { ack = false; $('#qw', m).innerHTML = ''; label('Simpan & pilih'); };
+    var go = function () {
+      var v = inp.value.trim();
+      if (v.length < 2) { $('#qw', m).innerHTML = errBox('Isi nama ' + L + ' minimal 2 huruf'); return; }
+      busy($('#qs', m), api(kind + '.create', { name: v, acknowledgeSimilar: ack }, { silent: true })).then(function (rec) {
+        done = true; Ref.drop(kind); Ref.get(kind, true).catch(function () {});
+        toast((cat ? 'Kategori ' : 'Brand ') + rec.name + ' ditambahkan', 'ok'); m.close(); resolve(rec);
+      }).catch(function (e) {
+        if (e.code === 'SIMILAR_EXISTS') {
+          ack = true;
+          $('#qw', m).innerHTML = '<div class="qwarn">' + icon('alert') + '<div><b>' + esc(e.message) + '</b><ul>' + (e.details || []).map(function (d) { return '<li>' + esc(d.message) + '</li>'; }).join('') + '</ul>Pilih yang sudah ada bila sama, atau simpan lagi bila memang berbeda.</div></div>';
+          label('Tetap simpan');
+        } else $('#qw', m).innerHTML = errBox(e.message);
+      });
+    };
+    $('#qs', m).onclick = go;
+    inp.onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); go(); } };
   });
 }
 
@@ -464,7 +500,7 @@ function deleteProduct(p, after) {
 Pages.brands = function (main) { masterPage(main, 'brand'); };
 Pages.categories = function (main) { masterPage(main, 'category'); };
 function masterPage(main, kind) {
-  var L = kind === 'brand' ? { t: 'Master Brand', one: 'brand' } : { t: 'Master Kategori', one: 'kategori' };
+  var L = kind === 'brand' ? { t: 'Master Produk', one: 'brand' } : { t: 'Master Produk', one: 'kategori' };
   var cat = kind === 'category';
   var w = can('master.write'), wAdd = w && !cat;
   var f = { q: '', status: 'ACTIVE', src: 'SHOPEE' };
@@ -475,6 +511,7 @@ function masterPage(main, kind) {
     (w ? '<div class="card" style="margin-bottom:16px"><div class="add-card"><div><label class="f" style="margin-top:0">Nama ' + (kind === 'brand' ? 'Brand' : 'Kategori') + ' <span class="req">*</span></label><input class="in w100" id="nm" placeholder="Ketik nama ' + L.one + ', lalu Enter" maxlength="60" autocomplete="off"></div>' +
       '<button class="btn pri" id="sv" style="height:40px">' + icon('plus') + 'Simpan</button></div><div id="pw"></div></div>' : '') +
     '<div class="toolbar"><div class="search">' + icon('search') + '<input class="in" id="q" placeholder="Cari nama…"></div><div class="seg" id="sg"><button data-s="ACTIVE" class="on">Aktif</button><button data-s="INACTIVE">Nonaktif</button><button data-s="">Semua</button></div>' + (w ? '<label class="chk-all"><input type="checkbox" id="ca"> Pilih semua</label>' : '') + '<span class="muted right" id="cnt"></span></div><div id="bb"></div><div id="ml">' + loadingBox() + '</div>';
+  masterTabs(main, cat ? 'categories' : 'brands');
   var rows = [], cur = [], sel = {};
   var selIds = function () { return Object.keys(sel).filter(function (id) { return rows.some(function (r) { return r.id === id; }); }); };
   var bar = function () {
@@ -687,6 +724,7 @@ Pages.barcodes = function (main) {
     'GTIN produsen diinput dari kemasan. Barcode internal (prefix 200) hanya untuk barang tanpa GTIN — tidak pernah menggantikan GTIN resmi. SKU internal bukan barcode.') +
     '<div class="filters"><div class="search">' + icon('search') + '<input class="in" id="q" placeholder="Cari kode atau nama produk…"></div><select class="in" id="ty"><option value="">Semua jenis</option><option value="GTIN">GTIN produsen</option><option value="INTERNAL">Barcode internal</option></select>' +
     '<select class="in" id="ss"><option value="">Semua status</option><option value="ACTIVE">Aktif (terpasang)</option><option value="ALLOCATED">Cadangan</option><option value="RETIRED">Dipensiunkan</option><option value="VOID">Void</option></select></div><div id="bl"></div>';
+  masterTabs(main, 'barcodes');
   var load = function () {
     var box = $('#bl', main); box.innerHTML = loadingBox();
     api('barcode.list', f).then(function (d) {

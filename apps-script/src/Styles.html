@@ -609,6 +609,56 @@ tr.open .exp{transform:rotate(90deg)}
   .t.lvt tr.lv-trade td{grid-column:1;grid-row:auto}
   .t.lvt tr.lv-trade td::before{content:none}
 }
+/* ---- v6.14: navigasi per fungsi bisnis, sidebar bisa diciutkan, tab Master Produk, tambah data dari dropdown ---- */
+.side .side-mini-btn{position:absolute;top:28px;right:10px;width:28px;height:28px;border-radius:8px;border:1px solid var(--ink-line);background:transparent;color:var(--sage);display:flex;align-items:center;justify-content:center;cursor:pointer}
+.side .side-mini-btn .ic{width:15px;height:15px;transform:rotate(90deg);transition:transform .15s}
+.side .side-mini-btn:hover{color:#fff;background:rgba(255,255,255,.06)}
+.side a.nv.on{box-shadow:inset 3px 0 0 var(--acc)}
+.side a.nv{min-height:40px}
+@media (min-width:901px){
+  body.side-mini .adm{grid-template-columns:76px minmax(0,1fr)}
+  body.side-mini .side{padding:22px 10px;overflow:visible}
+  body.side-mini .side .brand{padding:0 0 22px;justify-content:center}
+  body.side-mini .side .brand .bt,body.side-mini .side .brand>div:not(:first-child){display:none}
+  body.side-mini .side .side-mini-btn{position:static;margin:0 auto 10px}
+  body.side-mini .side .side-mini-btn .ic{transform:rotate(-90deg)}
+  body.side-mini .side button.sec{font-size:0;padding:6px 0;justify-content:center;border-top:1px solid var(--ink-line);margin-top:8px}
+  body.side-mini .side button.sec .gch{display:none}
+  body.side-mini .navgrp.closed .grp-links{display:block}
+  body.side-mini .side a.nv{justify-content:center;padding:10px 0;position:relative}
+  body.side-mini .side a.nv .grow,body.side-mini .side a.nv .nb{display:none}
+  body.side-mini .side a.nv:hover::after{content:attr(data-tip);position:absolute;left:calc(100% + 10px);top:50%;transform:translateY(-50%);background:var(--ink);color:#fff;font-size:12.5px;font-weight:700;white-space:nowrap;padding:7px 11px;border-radius:8px;box-shadow:0 8px 20px rgba(0,0,0,.25);z-index:50;pointer-events:none}
+  body.side-mini .side .me{flex-direction:column;padding:12px 0 0}
+  body.side-mini .side .me>div{display:none}
+  body.side-mini .side .me button{margin:0}
+}
+@media (max-width:900px){.side .side-mini-btn{display:none}}
+/* tab Master Produk */
+.mtabs{display:flex;align-items:center;gap:10px;flex-wrap:wrap;border-bottom:1px solid var(--line);margin:-4px 0 18px}
+.mtabs .mt-main,.mtabs .mt-tools{display:flex;gap:2px}
+.mtabs .mt-tools{margin-left:auto;gap:6px}
+.mtabs button{display:inline-flex;align-items:center;gap:7px;background:none;border:0;font:inherit;font-weight:700;font-size:13.5px;color:var(--muted);padding:11px 14px;border-bottom:2.5px solid transparent;margin-bottom:-1px;cursor:pointer;min-height:44px}
+.mtabs button .ic{width:16px;height:16px}
+.mtabs button:hover{color:var(--fg)}
+.mtabs button.on{color:var(--fg);border-bottom-color:var(--acc)}
+.mtabs button.on .ic{color:var(--acc)}
+.mtabs .mt-tools button{font-size:12.5px;padding:8px 10px;border:1px solid var(--line);border-radius:999px;min-height:36px;margin-bottom:6px;background:#fff}
+.mtabs .mt-tools button.on{border-color:var(--acc);background:#fffaf7}
+@media (max-width:760px){
+  .mtabs{gap:0;margin-top:0}
+  .mtabs .mt-main{width:100%}
+  .mtabs .mt-main button{flex:1;justify-content:center;padding:10px 6px}
+  .mtabs .mt-tools{margin:8px 0 0;width:100%;padding-bottom:4px}
+  .mtabs .mt-tools button{flex:1;justify-content:center}
+}
+/* dropdown: tambah data baru */
+.cb-opt.cb-add{color:var(--acc);border-top:1px dashed var(--line);border-radius:0 0 9px 9px;margin-top:2px}
+.cb-opt.cb-add .ic{width:16px;height:16px;flex:none}
+.cb-opt.cb-add .t{color:var(--acc)}
+.qwarn{display:flex;gap:10px;background:#fdf3dc;border:1px solid #f1dfae;border-radius:12px;padding:10px 12px;margin-top:12px;font-size:12.5px;color:#6e5410}
+.qwarn .ic{width:16px;height:16px;flex:none;margin-top:2px}
+.qwarn ul{margin:6px 0;padding-left:18px}
+
 /* ---- v6.13: dashboard mudah dibaca (SKU Parent / SKU Produk, kelengkapan, tindak lanjut) ---- */
 #db-body .dterms{display:flex;gap:10px;align-items:flex-start;background:#fff;border:1px solid var(--line);border-radius:14px;padding:11px 14px;margin-bottom:14px;font-size:12.5px;color:var(--muted);line-height:1.5}
 #db-body .dterms .ic{width:16px;height:16px;flex:none;margin-top:2px;color:var(--acc)}

@@ -14,7 +14,8 @@ function feList(err) { return '<ul class="err-list">' + (err.details && err.deta
 
 /* ───────── Data Quality ───────── */
 Pages.quality = function (main) {
-  main.innerHTML = pageHead('Ringkasan', 'Data Quality', '<button class="btn" id="rq">' + icon('refresh') + 'Periksa ulang</button>', 'Deteksi duplikasi & inkonsistensi master data. Sistem hanya memberi rekomendasi — tidak ada merge otomatis.') + '<div id="qb">' + loadingBox('Memeriksa master data…') + '</div>';
+  main.innerHTML = pageHead('Master data', 'Kualitas Data', '<button class="btn" id="rq">' + icon('refresh') + 'Periksa ulang</button>', 'Deteksi duplikasi & inkonsistensi master data. Sistem hanya memberi rekomendasi — tidak ada merge otomatis.') + '<div id="qb">' + loadingBox('Memeriksa master data…') + '</div>';
+  masterTabs(main, 'quality');
   var load = function () {
     $('#qb', main).innerHTML = loadingBox('Memeriksa master data…');
     api('quality.get').then(function (q) {
