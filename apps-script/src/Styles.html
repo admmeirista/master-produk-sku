@@ -1097,7 +1097,8 @@ table.t tr.sel td{background:#FBF6F1}
 .ptr.ready,.ptr.spin{color:var(--acc)}
 .ptr.spin svg{animation:spin .8s linear infinite}
 @media (max-width:760px){
-  html,body{overflow-x:hidden;overscroll-behavior-y:contain}
+  html{overflow-x:hidden;overscroll-behavior-y:contain;touch-action:pan-x pan-y}
+  body{overflow-x:clip}
   .main{max-width:100vw;overflow-x:clip}
   .tablewrap:has(table.mt){overflow:visible;max-height:none!important;border:0;background:transparent;box-shadow:none;border-radius:0}
   .tbl-x:has(table.mt){overflow:visible}
@@ -1282,6 +1283,43 @@ body[data-page=dashboard] .ph{margin-bottom:14px}
 .side .navgrp .sec{display:block;cursor:default}
 .side .navgrp:first-of-type .grp-links{margin-top:2px}
 @media (max-width:900px){#db-body .dpane{grid-template-columns:1fr;height:auto}#db-body .dtab-body{height:auto!important;overflow:visible}}
+/* ── Detail SKU di HP: kepala ringkas, tab satu baris digeser, kartu per SKU Produk ── */
+.sheet-acts{display:grid;gap:8px;margin-top:14px}.sheet-acts .btn{justify-content:flex-start}
+@media (max-width:760px){
+  .dt-head{gap:12px;margin-bottom:12px}
+  .dt-head .thumb{width:64px;height:64px;flex:0 0 64px}
+  .dt-head>.grow{flex:1 1 calc(100% - 76px);min-width:0}
+  .dt-head h2{font-size:19px;line-height:1.25;margin-top:2px;overflow-wrap:anywhere}
+  .dt-head .eyebrow{font-size:10.5px}
+  .dt-head .dt-meta{font-size:12.5px;line-height:1.6;margin-top:4px}
+  .dt-head .grow>.muted{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;font-size:12.5px}
+  .dt-head>.row{flex:1 1 100%;display:flex;gap:8px;flex-wrap:nowrap}
+  .dt-head>.row .btn{min-height:42px;justify-content:center}
+  .dt-head>.row #ed{flex:1}
+  .dt-head>.row #more{flex:0 0 auto;min-width:46px}
+  .dt-head>.row #more:only-child{flex:1}
+  .dtabs{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;margin:10px -14px 12px;padding:0 14px;scroll-padding:0 14px}
+  .dtabs::-webkit-scrollbar{display:none}
+  .dtabs a{flex:0 0 auto}
+  .mvcs{display:grid;gap:10px}
+  .mvc{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px}
+  .mvc.off{opacity:.62}
+  .mvc-h{display:flex;gap:10px;align-items:flex-start}
+  .mvc-h>.badge{flex:0 0 auto}
+  .mvc-img{width:48px;height:48px;border-radius:10px;object-fit:cover;border:1px solid var(--line);flex:0 0 48px;background:var(--line-2);display:inline-flex;align-items:center;justify-content:center;color:var(--muted)}
+  .mvc-img .ic{width:20px;height:20px}
+  .mvc-n{display:block;font-size:14px;line-height:1.35;overflow-wrap:anywhere}
+  .mvc-sku{display:inline-flex;align-items:center;gap:5px;margin-top:4px;padding:3px 8px;border:1px solid var(--line);border-radius:6px;background:var(--line-2);font:600 12px/1.3 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--fg-2);cursor:pointer}
+  .mvc-sku .ic{width:13px;height:13px;color:var(--muted)}
+  .mvc-attr{margin-top:8px}
+  .mvc-kv{margin-top:10px;border-top:1px dashed var(--line);padding-top:8px;display:grid;gap:7px}
+  .mvc-r{display:flex;gap:10px;font-size:13px;line-height:1.5}
+  .mvc-r>span{flex:0 0 74px;font-size:11.5px;font-weight:700;color:var(--muted);padding-top:1px}
+  .mvc-r>div{flex:1;min-width:0;overflow-wrap:anywhere}
+  .mvc-act{display:flex;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
+  .mvc-act .btn{flex:1;justify-content:center;min-height:38px}
+  #tb .grid2{margin-top:12px!important;gap:12px}
+}
 /* ── filter di HP: tombol "Filter" membuka panel, jumlah filter aktif, Reset ── */
 .f-more,.f-act{display:none}
 @media (max-width:760px){
