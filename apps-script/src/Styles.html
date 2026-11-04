@@ -630,6 +630,7 @@ tr.open .exp{transform:rotate(90deg)}
 .sc-stage .cam-frame i{position:absolute;left:6%;right:6%;top:50%;height:2px;background:var(--champ);box-shadow:0 0 10px var(--champ);animation:scLine 1.8s ease-in-out infinite}
 @keyframes scLine{0%,100%{transform:translateY(-38px)}50%{transform:translateY(38px)}}
 @media (prefers-reduced-motion:reduce){.sc-stage .cam-frame i{animation:none}}
+.sc-stage .cam-frame{display:block}.sc-stage .cam-frame i{width:auto;border:0;border-radius:2px}.sc-stage .cam-frame i::after{content:none;display:none}
 .sc-state{position:absolute;left:12px;right:12px;bottom:12px;background:rgba(31,26,22,.72);color:#FFFDF9;font-size:13px;font-weight:700;padding:8px 12px;border-radius:10px;text-align:center}
 .sc-state.found{background:rgba(54,121,93,.92)}
 .sc-state.denied,.sc-state.unavailable{background:rgba(185,67,61,.92)}
