@@ -70,6 +70,7 @@ Pages.dashboard = function (main) {
   main.innerHTML = pageHead('Ringkasan', 'Dashboard', can('product.write') ? '<button class="btn pri hide-m" data-go="register">' + icon('plus') + 'Registrasi Produk</button>' : '') + '<div id="db-body">' + loadingBox() + '</div>';
   $$('[data-go]', main).forEach(function (b) { b.onclick = function () { App.go(b.getAttribute('data-go')); }; });
   api('dashboard.get', {}, { quiet: true }).then(function (d) {
+    if (isPhone()) return mobileHome(main, d); // HP: beranda berorientasi tindakan (Scan dulu)
     var c = d.counts, L = d.logistics || {}, n = c.variants || 0;
     var pc = function (x) { return n ? Math.round((x || 0) / n * 100) : 0; };
     var kpi = function (ic, label, v, sub, cls, go, extra) { return '<div class="kpi ' + (cls || '') + '"' + (go ? ' data-go2="' + go + '" role="button" tabindex="0"' : '') + '><div class="top"><span class="chip">' + icon(ic) + '</span>' + label + '</div><div class="v">' + v + '</div><div class="s">' + sub + '</div>' + (extra || '') + '</div>'; };
@@ -111,6 +112,8 @@ Pages.dashboard = function (main) {
         '</div>' +
         '<div class="dcol">' +
           '<div class="panel"><div class="panel-h"><h3>SKU Produk per brand</h3><span class="right muted" style="font-size:12px">' + (d.byBrand.length >= 8 ? '8 brand teratas' : '') + '</span></div>' + brandRows + '</div>' +
+          '<div class="panel"><div class="panel-h"><h3>Status import data</h3>' + (can('export.run') ? '<button class="btn sm ghost right" data-go2="io">Import ' + icon('arrowRight') + '</button>' : '') + '</div>' +
+            ((d.imports || []).length ? '<ul class="imp-feed">' + d.imports.map(function (b) { return '<li><span class="dt-i ' + (b.errors ? 'err' : 'ok') + '">' + icon(b.errors ? 'alert' : 'check') + '</span><div class="grow" style="min-width:0"><b>' + esc(b.file || b.type) + '</b><div class="muted">' + fmtNum(b.total) + ' baris · ' + fmtNum(b.created) + ' diproses · ' + fmtNum(b.skipped) + ' dilewati · <span class="' + (b.errors ? 'tx-err' : '') + '">' + fmtNum(b.errors) + ' ditolak</span></div><div class="muted">' + esc(b.by) + ' · ' + fmtDate(b.at) + '</div></div></li>'; }).join('') + '</ul>' : '<div class="dempty">' + icon('upload') + '<div><b>Belum ada import</b><span>Data master bisa dimasukkan lewat Import & Export (Excel).</span></div></div>') + '</div>' +
           '<div class="panel"><div class="panel-h"><h3>Mapping marketplace</h3><button class="btn sm ghost right" data-go2="mapping">Buka ' + icon('arrowRight') + '</button></div>' +
             (chRows ? '<div class="tablewrap"><table class="t"><thead><tr><th>Kanal</th><th class="num">Belum</th><th class="num">Dipetakan</th><th class="num">Terkirim</th><th class="num">Error</th></tr></thead><tbody>' + chRows + '</tbody></table></div>' : '<div class="dempty">' + icon('link') + '<div><b>Belum ada SKU Produk yang dipetakan ke marketplace</b><span>Import listing dari Seller Center (Shopee, TikTok, Tokopedia) atau petakan manual.</span></div></div>') + '</div>' +
           '<div class="panel"><div class="panel-h"><h3>Aktivitas terbaru</h3>' + (can('audit.read') ? '<button class="btn sm ghost right" data-go2="audit">Semua ' + icon('arrowRight') + '</button>' : '') + '</div><ul class="feed">' + (d.recent.length ? d.recent.slice(0, 6).map(function (a) { return '<li><span class="dot"></span><div><b>' + esc(actionLabel(a.action)) + '</b><div class="muted">' + esc(String(a.actor || '').split('@')[0]) + ' · ' + fmtDate(a.createdAt) + '</div></div></li>'; }).join('') : '<li class="muted">Belum ada aktivitas.</li>') + '</ul></div>' +
@@ -152,6 +155,7 @@ Pages.products = function (main, arg) {
   var fq = $('#fq', main);
   if (arg.search) { fq.value = arg.search; f.search = arg.search; f.status = 'all'; $('#fs', main).value = 'all'; autoOpen = true; }
   if (arg.completeness) { f.completeness = arg.completeness; $('#fk', main).value = arg.completeness; }
+  if (arg.status) { f.status = arg.status; $('#fs', main).value = arg.status; }
   if (arg.focus && !isPhone()) setTimeout(function () { fq.focus(); }, 30);
   $('.filters [data-cam]', main).onclick = function () {
     CamScan.open({ title: 'Cari SKU — scan barcode' }).then(function (code) {

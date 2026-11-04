@@ -19,14 +19,14 @@ if (/<\?/.test(html)) throw new Error('Masih ada scriptlet Apps Script yang belu
 html = html.replace('<base target="_top" />', '');
 html = html.replace(
   '<meta charset="utf-8" />',
-  '<meta charset="utf-8" />\n    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />\n    <title>Meirista SKU Master</title>\n' +
+  '<meta charset="utf-8" />\n    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />\n    <title>SMS Meirista — SKU Management System</title>\n' +
     '    <link rel="manifest" href="manifest.webmanifest" />\n' +
     '    <link rel="icon" type="image/png" href="favicon.png" />\n' +
     '    <link rel="apple-touch-icon" href="apple-touch-icon.png" />\n' +
-    '    <meta name="theme-color" content="#28302b" />\n' +
+    '    <meta name="theme-color" content="#62564D" />\n' +
     '    <meta name="mobile-web-app-capable" content="yes" />\n' +
     '    <meta name="apple-mobile-web-app-capable" content="yes" />\n' +
-    '    <meta name="apple-mobile-web-app-title" content="SKU Master" />\n' +
+    '    <meta name="apple-mobile-web-app-title" content="SMS Meirista" />\n' +
     `    <script>window.RPM_API_URL = ${JSON.stringify(apiUrl)};</script>`,
 );
 fs.mkdirSync(out, { recursive: true });

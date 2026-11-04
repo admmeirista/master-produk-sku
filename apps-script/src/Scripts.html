@@ -62,10 +62,9 @@ var ICONS = {
   sparkles: '<path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/>'
 };
 function icon(name, cls) { return '<svg class="ic ' + (cls || '') + '" viewBox="0 0 24 24" aria-hidden="true">' + (ICONS[name] || '') + '</svg>'; }
-var APP_NAME = 'Meirista SKU Master';
-var ASSET_BASE = 'https://admmeirista.github.io/fms-meirista/';
-function brandLogo() { return '<img class="brand-logo" src="' + ASSET_BASE + 'logo-full.webp" alt="Meirista Cosmetics" onerror="this.style.display=\'none\'">'; }
-function brand(cls) { return '<div class="brand ' + (cls || '') + '"><img class="mark" src="' + BRAND_MARK + '" alt=""><div class="bt"><div class="word">Meirista</div><div class="tag">SKU Master</div></div></div>'; }
+var APP_NAME = 'SMS Meirista';
+function brandLogo() { return '<img class="brand-logo" src="' + BRAND_LOGO + '" alt="SMS Meirista">'; }
+function brand(cls) { return '<div class="brand ' + (cls || '') + '"><img class="mark" src="' + BRAND_MARK + '" alt=""><div class="bt"><div class="word">SMS Meirista</div><div class="tag">SKU Management</div></div></div>'; }
 function initials(name) { return String(name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(function (w) { return w[0]; }).join('').toUpperCase(); }
 
 /* ───────── util ───────── */
@@ -134,7 +133,9 @@ function labelTables(root) {
  * CamScan.open({ title, validate(code) → pesan error | '' }) → Promise<kode | null>. Selalu ada isian manual. */
 var CamScan = {
   ZXING: 'https://unpkg.com/@zxing/library@0.20.0/umd/index.min.js',
-  FORMATS: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'itf', 'qr_code'],
+  // hanya format yang dipakai barang (EAN/UPC = GTIN produsen & barcode internal 2xx, Code 128 label gudang) — lebih cepat & lebih sedikit salah baca
+  FORMATS: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128'],
+  zxingFormats: function (F) { return [F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E, F.CODE_128]; },
   available: function () { return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia); },
   loadZxing: function () {
     if (window.ZXing) return Promise.resolve();
@@ -209,7 +210,7 @@ var CamScan = {
           return CamScan.loadZxing().then(function () {
             if (done) return;
             var hints = new Map(), F = ZXing.BarcodeFormat;
-            hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E, F.CODE_128, F.CODE_39, F.ITF, F.QR_CODE]);
+            hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, CamScan.zxingFormats(F));
             reader = new ZXing.BrowserMultiFormatReader(hints, 150);
             reader.decodeFromStream(s, video, function (res) { if (res) accept(res.getText()); });
           });
@@ -332,7 +333,7 @@ function modal(html, opts) {
 function ask(msg, okLabel, danger) {
   return new Promise(function (resolve) {
     var answered = false;
-    var m = modal('<h3>Konfirmasi</h3><p style="color:#4e5751;margin:0">' + esc(msg) + '</p><div class="row" style="margin-top:20px"><button class="btn ' + (danger ? 'err' : 'pri') + '" id="ask-ok">' + esc(okLabel || 'Ya') + '</button><button class="btn" data-close>Batal</button></div>',
+    var m = modal('<h3>Konfirmasi</h3><p style="color:#5A5048;margin:0">' + esc(msg) + '</p><div class="row" style="margin-top:20px"><button class="btn ' + (danger ? 'err' : 'pri') + '" id="ask-ok">' + esc(okLabel || 'Ya') + '</button><button class="btn" data-close>Batal</button></div>',
       { onClose: function () { if (!answered) resolve(false); } });
     $('#ask-ok', m).onclick = function () { answered = true; m.close(); resolve(true); };
   });
@@ -506,14 +507,14 @@ function downloadTable(d, format) {
 /* Menu disusun per fungsi bisnis. Brand, Kategori, Barcode & Kualitas data ada di dalam Master Produk (tab / alat). */
 var NAV = [
   ['DASHBOARD', [['dashboard', 'Dashboard', 'grid']]],
-  ['MANAJEMEN PRODUK', [['products', 'Master Produk', 'package'], ['register', 'Registrasi Produk', 'plus', 'product.write'], ['bundles', 'Kemasan & Bundling', 'boxes']]],
+  ['MANAJEMEN PRODUK', [['scan', 'Scan Barcode', 'camera'], ['products', 'Master Produk', 'package'], ['register', 'Registrasi Produk', 'plus', 'product.write'], ['bundles', 'Kemasan & Bundling', 'boxes']]],
   ['INTEGRASI', [['mapping', 'Channel SKU Mapping', 'link'], ['io', 'Import & Export', 'upload', 'export.run']]],
   ['SISTEM', [['users', 'Pengguna & Hak Akses', 'users', 'user.manage'], ['settings', 'Pengaturan', 'sliders'], ['audit', 'Audit Log', 'activity', 'audit.read']]]
 ];
 /** Halaman yang tidak punya menu sendiri → menu induknya (untuk menu aktif & breadcrumb). */
 var NAV_PARENT = { product: 'products', brands: 'products', categories: 'products', barcodes: 'products', quality: 'products', photos: 'products', photoShoot: 'photoList', bundle: 'bundles' };
 var MP = ['MANAJEMEN PRODUK', 'Master Produk'];
-var CRUMB_EXTRA = { product: MP, brands: MP, categories: MP, barcodes: MP, quality: MP, photos: MP, profile: ['AKUN', 'Profil'], bundle: ['MANAJEMEN PRODUK', 'Kemasan & Bundling'] };
+var CRUMB_EXTRA = { activity: ['AKUN', 'Aktivitas'], account: ['AKUN', 'Akun'], product: MP, brands: MP, categories: MP, barcodes: MP, quality: MP, photos: MP, profile: ['AKUN', 'Profil'], bundle: ['MANAJEMEN PRODUK', 'Kemasan & Bundling'] };
 /** Tab di dalam Master Produk. */
 function masterTabs(main, cur) {
   var t = [['products', 'Produk', 'package'], ['brands', 'Brand', 'tag'], ['categories', 'Kategori', 'layers']];
@@ -552,11 +553,11 @@ var App = {
   forget: function () { App.token = null; App.me = null; Store.del('rpm_token'); Store.del('rpm_me'); Ref.data = {}; },
 
   authShell: function (formHtml) {
-    var flow = [['tag', 'Master brand & kategori', 'Cukup isi nama — kode dibuat otomatis & permanen'], ['package', 'Identifikasi produk', 'Product master, kode produk, satuan dasar'],
-      ['layers', 'Varian & GTIN', 'Kombinasi atribut, satu GTIN per varian fisik'], ['boxes', 'Satuan & konversi', 'BOX, KARTON, isi kemasan per varian']];
+    var flow = [['camera', 'Scan barcode', 'Kamera HP langsung mengenali SKU'], ['plus', 'Registrasi SKU', 'Barcode terisi otomatis, tanpa ketik ulang'],
+      ['package', 'Master data', 'SKU Parent, SKU Produk, brand & kategori'], ['shield', 'Aman & tercatat', 'Anti duplikat, setiap perubahan masuk audit']];
     $app().innerHTML = '<div class="auth"><section class="auth-art"><div class="art-top">' + brand() + '</div>' +
-      '<div class="art-mid"><div class="eyebrow eb">Single source of truth produk</div>' +
-      '<h1>Satu master,<br>SKU <em>pasti.</em></h1>' +
+      '<div class="art-mid"><div class="eyebrow eb">SKU Management System</div>' +
+      '<h1>Scan, daftar,<br>SKU <em>pasti.</em></h1>' +
       '<p class="lead">Registrasi produk kosmetik yang rapi — dari brand hingga kemasan karton — siap dipakai BeeCloud dan Shopee.</p>' +
       '<ol class="flow">' + flow.map(function (f, i) { return '<li><div class="node">' + icon(f[0]) + '</div><div><div class="k">Tahap ' + (i + 1) + '</div><div class="v">' + f[1] + '</div><div class="d">' + f[2] + '</div></div></li>'; }).join('') + '</ol></div>' +
       '<div class="foot"><span>© ' + new Date().getFullYear() + ' Meirista</span><span class="sep"></span>' + icon('lock') + '<span>Akses individual · tercatat di audit trail</span></div></section>' +
@@ -631,10 +632,9 @@ var App = {
       if (!g()) return ask('Isian registrasi belum disimpan. Tinggalkan halaman ini? (Isian tetap tersimpan sebagai draf di perangkat ini.)', 'Tinggalkan').then(function (y) { if (y) { App.leaveGuard = null; App.go(page, arg); } });
     }
     App.leaveGuard = null;
+    if (App.onLeave) { try { App.onLeave(); } catch (e) {} App.onLeave = null; }
     // Staf Foto hanya punya halaman kerja foto (menu lain juga ditolak server)
     if (typeof isPhotoStaff === 'function' && isPhotoStaff() && !/^photo(Home|List|Shoot|Profile)$/.test(page)) page = 'photoHome';
-    // Cari SKU / Scan sekarang tab di Master Produk (tautan lama tetap jalan)
-    if (page === 'scan') { arg = { search: (arg && arg.code) || '', focus: true }; page = 'products'; }
     if (!Pages[page]) page = 'dashboard';
     App.page = page; App.pageArg = arg;
     var navOf = NAV_PARENT[page] || page;
@@ -642,7 +642,7 @@ var App = {
     $$('.side a.nv').forEach(function (a) { a.classList.toggle('on', a.getAttribute('data-nav') === navOf); });
     document.body.setAttribute('data-page', page);
     var tabOf = NAV_PARENT[page] || page;
-    $$('#tabbar [data-tab]').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-tab') === tabOf || (b.getAttribute('data-tab') === 'menu' && ['dashboard', 'register', 'products', 'bundles'].indexOf(tabOf) < 0)); });
+    $$('#tabbar [data-tab]').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-tab') === tabOf || (b.getAttribute('data-tab') === 'account' && ['dashboard', 'products', 'scan', 'activity', 'product'].indexOf(tabOf) < 0 && tabOf !== 'products')); });
     var side = $('#side'); if (side) { side.classList.remove('open'); $('#side-bg').classList.remove('open'); }
     var main = $('#main');
     main.innerHTML = loadingBox();
@@ -651,8 +651,8 @@ var App = {
   },
   /** Navigasi bawah untuk tampilan HP (≤ 760 px). */
   tabbar: function () {
-    var t = [['dashboard', 'grid', 'Beranda'], ['products', 'package', 'Produk'], can('product.write') ? ['register', 'plus', 'Registrasi'] : null, ['bundles', 'boxes', 'Kemasan'], ['menu', 'menu', 'Menu']].filter(Boolean);
-    return '<nav class="tabbar" id="tabbar">' + t.map(function (x) { return '<button type="button" data-tab="' + x[0] + '"' + (x[0] === 'register' ? ' class="fab"' : '') + '><span class="ti">' + icon(x[1]) + '</span><span class="tl">' + x[2] + '</span></button>'; }).join('') + '</nav>';
+    var t = [['dashboard', 'grid', 'Beranda'], ['products', 'package', 'SKU'], ['scan', 'camera', 'Scan'], can('audit.read') ? ['activity', 'activity', 'Aktivitas'] : null, ['account', 'user', 'Akun']].filter(Boolean);
+    return '<nav class="tabbar" id="tabbar" aria-label="Navigasi utama">' + t.map(function (x) { return '<button type="button" data-tab="' + x[0] + '"' + (x[0] === 'scan' ? ' class="fab"' : '') + '><span class="ti">' + icon(x[1]) + '</span><span class="tl">' + x[2] + '</span></button>'; }).join('') + '</nav>';
   },
   logout: function () {
     api('auth.logout', {}, { silent: true }).catch(function () {});

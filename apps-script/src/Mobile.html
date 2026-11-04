@@ -1,0 +1,224 @@
+<script>
+/* ═════════════ Pengalaman operasional (HP-first): Scan, Aktivitas, Akun, Beranda HP ═════════════
+ * Scan = fitur utama: kamera tetap menyala di halaman, decoding berhenti sementara setelah kode terbaca (tidak scan
+ * berulang), hasil dicek ke server (barcode.lookup: konflik, barcode internal, check digit), lalu tindakan sesuai hasil.
+ */
+
+/** Pemindai di dalam halaman. el = <video>. → { pause, resume, stop, torch(on), hasTorch } */
+CamScan.mount = function (video, o) {
+  var stream = null, reader = null, timer = null, stopped = false, paused = false, last = '', count = 0, track = null;
+  var ctl = { hasTorch: false };
+  var accept = function (raw) {
+    var code = String(raw || '').replace(/\s+/g, '').trim();
+    if (!code || paused || stopped) return;
+    if (code === last) count++; else { last = code; count = 1; }
+    if (count < 2) return; // dua kali terbaca sama → kurangi salah baca
+    paused = true; count = 0;
+    if (navigator.vibrate) navigator.vibrate(60);
+    o.onCode(code);
+  };
+  ctl.pause = function () { paused = true; };
+  ctl.resume = function () { paused = false; last = ''; count = 0; };
+  ctl.stop = function () {
+    stopped = true;
+    clearTimeout(timer);
+    try { if (reader) reader.reset(); } catch (e) {}
+    if (stream) stream.getTracks().forEach(function (t) { t.stop(); });
+    stream = null;
+    try { video.srcObject = null; } catch (e) {}
+  };
+  ctl.torch = function (on) { if (track) return track.applyConstraints({ advanced: [{ torch: !!on }] }).catch(function () {}); };
+  if (!CamScan.available()) { o.onState('unavailable', 'Kamera tidak tersedia di perangkat/browser ini. Ketik barcode di bawah.'); return ctl; }
+  o.onState('starting', 'Menyalakan kamera…');
+  navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } }).then(function (s) {
+    if (stopped) { s.getTracks().forEach(function (t) { t.stop(); }); return; }
+    stream = s; video.srcObject = s;
+    track = s.getVideoTracks()[0];
+    var caps = track && track.getCapabilities ? track.getCapabilities() : {};
+    ctl.hasTorch = !!caps.torch;
+    if (o.onTorch) o.onTorch(ctl.hasTorch);
+    return video.play().catch(function () {}).then(function () {
+      o.onState('ready', 'Arahkan kamera ke barcode');
+      if ('BarcodeDetector' in window) {
+        return BarcodeDetector.getSupportedFormats().then(function (sup) {
+          var det = new BarcodeDetector({ formats: CamScan.FORMATS.filter(function (f) { return sup.indexOf(f) >= 0; }) });
+          var tick = function () {
+            if (stopped) return;
+            if (paused || video.readyState < 2) { timer = setTimeout(tick, 200); return; }
+            det.detect(video).then(function (r) { if (r && r[0]) accept(r[0].rawValue); }).catch(function () {}).then(function () { if (!stopped) timer = setTimeout(tick, 120); });
+          };
+          tick();
+        });
+      }
+      return CamScan.loadZxing().then(function () {
+        if (stopped) return;
+        var hints = new Map(), F = ZXing.BarcodeFormat;
+        hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, CamScan.zxingFormats(F));
+        reader = new ZXing.BrowserMultiFormatReader(hints, 150);
+        reader.decodeFromStream(s, video, function (res) { if (res) accept(res.getText()); });
+      });
+    });
+  }).catch(function (e) {
+    var denied = e && (e.name === 'NotAllowedError' || e.name === 'SecurityError');
+    var none = e && (e.name === 'NotFoundError' || e.name === 'OverconstrainedError');
+    o.onState(denied ? 'denied' : 'unavailable', denied ? 'Izin kamera ditolak. Izinkan kamera untuk aplikasi ini di pengaturan browser, atau ketik barcode di bawah.' : none ? 'Kamera tidak ditemukan di perangkat ini. Ketik barcode di bawah.' : 'Kamera tidak bisa dibuka. Ketik barcode di bawah.');
+  });
+  return ctl;
+};
+
+/* ───────── Halaman Scan Barcode ───────── */
+Pages.scan = function (main, arg) {
+  arg = arg || {};
+  var seen = {}; // hasil lookup per kode dalam sesi ini (tidak memanggil server berulang)
+  var cam = null, torchOn = false, busyCode = '';
+  main.innerHTML = '<div class="sc-head"><button type="button" class="icon-btn" id="sbk" aria-label="Kembali">' + icon('arrowLeft') + '</button><div><h2>Scan Barcode</h2><div class="muted">Arahkan kamera ke barcode produk (EAN / UPC / barcode internal).</div></div></div>' +
+    '<div class="sc-stage"><video playsinline muted autoplay></video><div class="cam-frame"><i></i></div><div class="sc-state" id="sst" role="status" aria-live="polite">Menyalakan kamera…</div>' +
+    '<button type="button" class="sc-torch hidden" id="stc" aria-pressed="false" aria-label="Senter">' + icon('zap') + '<span>Senter</span></button></div>' +
+    '<div id="sres" class="sc-res" aria-live="polite"></div>' +
+    '<form class="sc-man" id="sman" autocomplete="off"><input class="in" name="c" inputmode="numeric" enterkeyhint="search" placeholder="Ketik barcode / SKU manual" spellcheck="false" aria-label="Barcode manual"><button class="btn" type="submit">' + icon('search') + 'Cari</button></form>';
+  var video = $('video', main), st = $('#sst', main), res = $('#sres', main);
+  var state = function (k, t) { st.textContent = t; st.className = 'sc-state ' + k; };
+  var again = function () { busyCode = ''; res.innerHTML = ''; if (cam) { cam.resume(); state('ready', 'Arahkan kamera ke barcode'); } };
+  var stop = function () { if (cam) cam.stop(); cam = null; };
+  App.onLeave = stop; // kamera selalu dilepas saat pindah halaman
+  $('#sbk', main).onclick = function () { App.go(isPhone() ? 'dashboard' : 'products'); };
+
+  var card = function (m) {
+    var bc = m.conversion ? (m.conversion.gtin || m.conversion.internalBarcode) : (m.gtin || m.internalBarcode);
+    return '<div class="sc-sku">' + (m.imageUrl ? '<img class="ph-th" src="' + esc(m.imageUrl) + '" alt="" loading="lazy">' : '<span class="ph-th ph-none">' + icon('package') + '</span>') +
+      '<div class="grow" style="min-width:0"><b>' + esc(m.skuName) + '</b><div class="sc-codes"><span class="sku">' + esc(m.childSku || m.sku) + '</span>' + (bc ? '<span class="code">' + esc(bc) + '</span>' : '') + '</div>' +
+      '<div class="sc-meta">' + badge(m.productStatus === 'ACTIVE' ? m.variantStatus : m.productStatus) + '<span class="muted">' + esc(m.via) + (m.conversion ? ' · ' + esc(m.conversion.unitName) + ' isi ' + esc(m.conversion.baseUnitEquivalent) : '') + '</span></div></div>' +
+      '<button type="button" class="icon-btn" data-copy="' + esc(m.childSku || m.sku) + '" aria-label="Salin kode SKU" title="Salin kode SKU">' + icon('copy') + '</button></div>';
+  };
+  var show = function (code, r) {
+    var w = can('product.write'), next = '<button type="button" class="btn big w100" id="snx">' + icon('camera') + 'Scan Berikutnya</button>';
+    var html;
+    if (r.conflict) {
+      html = '<div class="sc-box err">' + icon('alertCircle') + '<div><b>Barcode ' + esc(code) + ' terhubung ke lebih dari satu barang</b><span>Tidak ada data yang diubah. Laporkan ke Admin untuk ditinjau.</span><ul>' + (r.owners || []).map(function (o) { return '<li>' + esc(o.label || '') + '</li>'; }).join('') + '</ul></div></div>' + next;
+    } else if (r.matches.length || r.bundles.length) {
+      var ms = r.matches.slice(0, 6);
+      html = '<div class="sc-box ok">' + icon('check') + '<div><b>' + (ms.length > 1 ? ms.length + ' SKU Produk ditemukan' : 'SKU Produk sudah terdaftar') + '</b><span>Periksa detail sebelum melanjutkan — tidak perlu registrasi ulang.</span></div></div>' +
+        ms.map(card).join('') +
+        r.bundles.map(function (b) { return '<div class="sc-sku"><span class="ph-th ph-none">' + icon('boxes') + '</span><div class="grow"><b>' + esc(b.bundleName) + '</b><div class="sc-codes"><span class="sku">' + esc(b.bundleSku) + '</span></div><div class="sc-meta">' + badge(b.type) + '<span class="muted">' + esc(b.via) + '</span></div></div></div>'; }).join('') +
+        '<div class="sc-acts">' + (ms.length ? '<button type="button" class="st-cta" id="sdt">' + icon('eye') + 'Lihat Detail</button>' : r.bundles.length ? '<button type="button" class="st-cta" id="sbd">' + icon('eye') + 'Lihat Paket</button>' : '') + next + '</div>';
+    } else if (r.kind === 'gtin') {
+      html = '<div class="sc-box warn">' + icon('search') + '<div><b>Barcode belum terdaftar</b><span>GTIN ' + esc(code) + ' valid' + (r.validation && r.validation.symbology ? ' (' + esc(r.validation.symbology) + ')' : '') + ' tetapi belum dipakai SKU mana pun. ' + (w ? 'Buat registrasi SKU baru? Barcode langsung terisi.' : 'Minta Admin Data mendaftarkannya.') + '</span>' +
+        (r.retired && r.retired.length ? '<span>Pernah dipakai lalu dipensiunkan — periksa riwayatnya bila ragu.</span>' : '') + '</div></div>' +
+        '<div class="sc-acts">' + (w ? '<button type="button" class="st-cta" id="srg">' + icon('plus') + 'Registrasi SKU Baru</button>' : '') + next + '</div>';
+    } else if (r.kind === 'internal') {
+      html = '<div class="sc-box warn">' + icon('barcode') + '<div><b>Barcode internal ' + esc(code) + ' belum dipakai SKU</b><span>' + (r.reserved ? 'Sudah dicadangkan, belum ditempel ke barang.' : 'Barcode internal (awalan 2) dibuat oleh sistem saat registrasi SKU tanpa GTIN — tidak bisa didaftarkan sebagai GTIN.') + '</span></div></div>' + next;
+    } else if (r.kind === 'invalid_numeric') {
+      html = '<div class="sc-box err">' + icon('alertCircle') + '<div><b>Barcode tidak valid</b><span>' + esc(code) + ' — ' + esc((r.validation && r.validation.message) || 'check digit salah') + '. Scan ulang dengan lebih dekat & terang, atau ketik manual.</span></div></div>' + next;
+    } else {
+      html = '<div class="sc-box warn">' + icon('search') + '<div><b>Tidak ditemukan</b><span>Tidak ada SKU, barcode, atau nama produk yang cocok dengan "' + esc(code) + '".</span></div></div>' + next;
+    }
+    res.innerHTML = '<div class="sc-code">' + icon('barcode') + '<span class="code">' + esc(code) + '</span></div>' + html;
+    var b;
+    if ((b = $('#snx', res))) b.onclick = again;
+    if ((b = $('#sdt', res))) b.onclick = function () { App.go('product', r.matches[0].productId); };
+    if ((b = $('#sbd', res))) b.onclick = function () { App.go('bundle', r.bundles[0].bundleId); };
+    if ((b = $('#srg', res))) b.onclick = function () { App.go('register', { gtin: code }); };
+    $$('[data-copy]', res).forEach(function (x) { x.onclick = function () { copyText(x.getAttribute('data-copy')); }; });
+    res.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  };
+  var lookup = function (code) {
+    if (busyCode === code) return; // kode yang sama sedang diproses
+    busyCode = code;
+    if (cam) cam.pause();
+    state('found', 'Barcode terbaca: ' + code);
+    if (seen[code]) return show(code, seen[code]);
+    res.innerHTML = '<div class="sc-code">' + icon('barcode') + '<span class="code">' + esc(code) + '</span></div>' + loadingBox('Mencari di master SKU…');
+    api('barcode.lookup', { code: code }, { silent: true, quiet: true }).then(function (r) { seen[code] = r; show(code, r); })
+      .catch(function (e) {
+        busyCode = '';
+        res.innerHTML = '<div class="sc-box err">' + icon('alertCircle') + '<div><b>Data belum berhasil dimuat</b><span>' + esc(e.code === 'FORBIDDEN' ? 'Anda tidak punya akses melihat data SKU.' : 'Periksa koneksi lalu coba lagi.') + '</span></div></div><div class="sc-acts"><button type="button" class="st-cta" id="srt">' + icon('refresh') + 'Coba Lagi</button><button type="button" class="btn big w100" id="snx">Scan Ulang</button></div>';
+        $('#srt', res).onclick = function () { lookup(code); };
+        $('#snx', res).onclick = again;
+      });
+  };
+  $('#sman', main).onsubmit = function (e) { e.preventDefault(); var c = this.c.value.replace(/\s+/g, '').trim(); if (!c) return; this.c.blur(); busyCode = ''; lookup(c); };
+  var tb = $('#stc', main);
+  tb.onclick = function () { torchOn = !torchOn; if (cam) cam.torch(torchOn); tb.classList.toggle('on', torchOn); tb.setAttribute('aria-pressed', torchOn ? 'true' : 'false'); };
+  cam = CamScan.mount(video, { onCode: lookup, onState: state, onTorch: function (has) { tb.classList.toggle('hidden', !has); } });
+  if (arg.code) lookup(String(arg.code));
+};
+window.addEventListener('pagehide', function () { if (App.onLeave) { App.onLeave(); App.onLeave = null; } });
+// aplikasi ke latar belakang → kamera dimatikan; kembali → scanner dibuka lagi (tanpa kamera menyala diam-diam)
+document.addEventListener('visibilitychange', function () {
+  if (App.page !== 'scan') return;
+  if (document.hidden) { if (App.onLeave) { App.onLeave(); App.onLeave = null; } App.scanSuspended = true; }
+  else if (App.scanSuspended) { App.scanSuspended = false; App.go('scan'); }
+});
+
+function copyText(t) {
+  var done = function () { toast('Disalin: ' + t, 'ok'); };
+  if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(t).then(done).catch(function () { toast('Tidak bisa menyalin', 'err'); });
+  var x = document.createElement('textarea'); x.value = t; document.body.appendChild(x); x.select();
+  try { document.execCommand('copy'); done(); } catch (e) { toast('Tidak bisa menyalin', 'err'); }
+  x.remove();
+}
+
+/* ───────── Aktivitas (riwayat registrasi & perubahan) ───────── */
+Pages.activity = function (main) {
+  var f = { mine: true, page: 1 }, rows = [];
+  main.innerHTML = '<div class="st-head"><h2>Aktivitas</h2></div><div class="st-chips" id="ac"><button type="button" data-m="1" class="on">Aktivitas saya</button><button type="button" data-m="0">Semua</button></div><div id="al">' + loadingBox() + '</div>';
+  var link = function (a) { return a.entityType === 'product' ? a.entityId : ''; };
+  var load = function (more) {
+    if (!more) { f.page = 1; rows = []; $('#al', main).innerHTML = loadingBox(); }
+    api('audit.list', { actor: f.mine ? App.me.user.email : '', page: f.page }, { quiet: true }).then(function (d) {
+      rows = rows.concat(d.rows);
+      $('#al', main).innerHTML = rows.length ? '<ul class="act-list">' + rows.map(function (a, i) {
+        var pid = link(a);
+        return '<li' + (pid ? ' data-pid="' + esc(pid) + '" role="button" tabindex="0"' : '') + '><span class="act-dot"></span><div class="grow"><b>' + esc(actionLabel(a.action)) + '</b><div class="muted">' + esc(String(a.actor || '').split('@')[0]) + ' · ' + fmtDate(a.createdAt) + '</div></div>' + (pid ? icon('arrowRight') : '') + '</li>';
+      }).join('') + '</ul>' + (d.page < d.pages ? '<button class="btn big w100" id="amr" type="button">Muat lebih banyak</button>' : '') : emptyBox('Belum ada aktivitas', f.mine ? 'Registrasi & perubahan yang Anda lakukan akan muncul di sini.' : '', 'activity');
+      $$('[data-pid]', main).forEach(function (li) { li.onclick = function () { App.go('product', li.getAttribute('data-pid')); }; });
+      var m = $('#amr', main); if (m) m.onclick = function () { f.page++; m.disabled = true; load(true); };
+    }).catch(function (e) { $('#al', main).innerHTML = errBox(e.code === 'FORBIDDEN' ? 'Riwayat aktivitas hanya untuk Admin & Admin Data.' : e.message); });
+  };
+  $$('#ac [data-m]', main).forEach(function (b) { b.onclick = function () { $$('#ac [data-m]', main).forEach(function (x) { x.classList.toggle('on', x === b); }); f.mine = b.getAttribute('data-m') === '1'; load(); }; });
+  load();
+};
+
+/* ───────── Akun: profil + menu lain + keluar (HP) ───────── */
+Pages.account = function (main) {
+  var u = App.me.user;
+  var links = [];
+  NAV.forEach(function (g) { g[1].forEach(function (n) { if (can(n[3] || 'product.read') && ['dashboard', 'products', 'scan'].indexOf(n[0]) < 0) links.push(n); }); });
+  main.innerHTML = '<div class="acc-card"><span class="avatar">' + esc(initials(u.fullName)) + '</span><div class="grow"><b>' + esc(u.fullName) + '</b><div class="muted">' + esc(u.email) + ' · ' + esc(STATUS_TXT[u.role] || u.role) + '</div></div></div>' +
+    '<div class="acc-list">' + links.map(function (n) { return '<button type="button" data-go="' + n[0] + '">' + icon(n[2]) + '<span class="grow">' + esc(n[1]) + '</span>' + icon('arrowRight') + '</button>'; }).join('') +
+    '<button type="button" data-go="profile">' + icon('lock') + '<span class="grow">Profil & ganti password</span>' + icon('arrowRight') + '</button></div>' +
+    '<button type="button" class="btn big w100" id="alo">' + icon('logout') + 'Keluar</button><div class="muted acc-ver">' + esc(APP_NAME) + ' — SKU Management System</div>';
+  $$('[data-go]', main).forEach(function (b) { b.onclick = function () { App.go(b.getAttribute('data-go')); }; });
+  $('#alo', main).onclick = function () { ask('Keluar dari aplikasi?', 'Keluar').then(function (y) { if (y) App.logout(); }); };
+};
+
+/* ───────── Beranda versi HP: aksi dulu, angka secukupnya ───────── */
+function mobileHome(main, d) {
+  var c = d.counts, u = App.me.user, w = can('product.write');
+  main.innerHTML = '<div id="db-body" class="mh"><div class="mh-hello"><div class="muted">Selamat bekerja,</div><h2>' + esc(String(u.fullName || '').split(' (')[0]) + '</h2></div>' +
+    '<button type="button" class="mh-scan" id="mhs">' + icon('camera') + '<span><b>Scan Barcode</b><small>Cek SKU atau daftarkan barang baru</small></span>' + icon('arrowRight') + '</button>' +
+    (w ? '<button type="button" class="btn big w100 mh-reg" id="mhr">' + icon('plus') + 'Registrasi SKU</button>' : '') +
+    '<div class="mh-stats"><button type="button" data-go="products"><b>' + fmtNum(c.variants) + '</b><span>SKU Produk aktif</span></button><button type="button" data-go="products"><b>' + fmtNum(c.products) + '</b><span>SKU Parent</span></button>' +
+    '<button type="button" data-gs="enrich"><b>' + fmtNum(c.withoutBarcode) + '</b><span>Tanpa barcode</span></button></div>' +
+    '<div class="mh-sec"><h3>Perlu tindakan</h3><div id="mhp">' + loadingBox() + '</div></div>' +
+    '<div class="mh-sec"><h3>Aktivitas terbaru</h3><ul class="act-list">' + (d.recent.length ? d.recent.slice(0, 5).map(function (a) { return '<li><span class="act-dot"></span><div class="grow"><b>' + esc(actionLabel(a.action)) + '</b><div class="muted">' + esc(String(a.actor || '').split('@')[0]) + ' · ' + fmtDate(a.createdAt) + '</div></div></li>'; }).join('') : '<li class="muted">Belum ada aktivitas.</li>') + '</ul>' +
+    (can('audit.read') ? '<button type="button" class="link-btn" data-go="activity">Lihat semua aktivitas ' + icon('arrowRight') + '</button>' : '') + '</div></div>';
+  $('#mhs', main).onclick = function () { App.go('scan'); };
+  if ($('#mhr', main)) $('#mhr', main).onclick = function () { App.go('register'); };
+  $$('[data-go]', main).forEach(function (b) { b.onclick = function () { App.go(b.getAttribute('data-go')); }; });
+  $$('[data-gs]', main).forEach(function (b) { b.onclick = function () { App.go('products', { completeness: 'incomplete' }); }; });
+  var pend = [];
+  if (c.drafts) pend.push(['edit', fmtNum(c.drafts) + ' SKU Parent masih draft', 'Selesaikan & verifikasi', function () { App.go('products', { status: 'DRAFT' }); }]);
+  if (c.withoutBarcode) pend.push(['barcode', fmtNum(c.withoutBarcode) + ' SKU Produk belum punya barcode', 'Scan GTIN dari kemasan', function () { App.go('products', { completeness: 'incomplete' }); }]);
+  var L = d.logistics || {};
+  if (c.variants && L.photo < c.variants) pend.push(['camera', fmtNum(c.variants - L.photo) + ' SKU Produk tanpa foto', can('photo.manage') ? 'Tugaskan ke Staf Foto' : 'Lengkapi foto', function () { App.go(can('photo.manage') ? 'photos' : 'products', { filter: 'none', completeness: 'nophoto' }); }]);
+  api('quality.get', {}, { quiet: true, silent: true }).then(function (q) {
+    q.sections.filter(function (s) { return s.count && s.severity === 'error'; }).forEach(function (s) { pend.unshift(['alertCircle', s.label + ' (' + fmtNum(s.count) + ')', 'Harus diperbaiki', function () { App.go('quality'); }]); });
+  }).catch(function () {}).then(function () {
+    var el = $('#mhp', main); if (!el) return;
+    el.innerHTML = pend.length ? '<div class="dtodo">' + pend.slice(0, 5).map(function (p, i) { return '<button type="button" class="dt warn" data-p="' + i + '"><span class="dt-i">' + icon(p[0]) + '</span><span class="dt-l"><b>' + esc(p[1]) + '</b><small>' + esc(p[2]) + '</small></span>' + icon('arrowRight') + '</button>'; }).join('') + '</div>'
+      : '<div class="dempty ok">' + icon('check') + '<div><b>Semua beres</b><span>Tidak ada pekerjaan tertunda.</span></div></div>';
+    $$('[data-p]', el).forEach(function (b) { b.onclick = pend[Number(b.getAttribute('data-p'))][3]; });
+  });
+}
+</script>
