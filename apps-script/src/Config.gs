@@ -17,7 +17,7 @@
  * spreadsheet — semua perubahan wajib lewat aplikasi agar validasi & audit tidak terlewati.
  */
 
-const APP_NAME = 'SMS Meirista — SKU Management System';
+const APP_NAME = 'Meirista SKU Management System';
 
 /**
  * ID file database (Google Sheets terpisah di Drive). Ambil dari URL: docs.google.com/spreadsheets/d/<ID>/edit

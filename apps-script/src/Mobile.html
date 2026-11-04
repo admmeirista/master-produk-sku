@@ -187,7 +187,7 @@ Pages.account = function (main) {
   main.innerHTML = '<div class="acc-card"><span class="avatar">' + esc(initials(u.fullName)) + '</span><div class="grow"><b>' + esc(u.fullName) + '</b><div class="muted">' + esc(u.email) + ' · ' + esc(STATUS_TXT[u.role] || u.role) + '</div></div></div>' +
     '<div class="acc-list">' + links.map(function (n) { return '<button type="button" data-go="' + n[0] + '">' + icon(n[2]) + '<span class="grow">' + esc(n[1]) + '</span>' + icon('arrowRight') + '</button>'; }).join('') +
     '<button type="button" data-go="profile">' + icon('lock') + '<span class="grow">Profil & ganti password</span>' + icon('arrowRight') + '</button></div>' +
-    '<button type="button" class="btn big w100" id="alo">' + icon('logout') + 'Keluar</button><div class="muted acc-ver">' + esc(APP_NAME) + ' — SKU Management System</div>';
+    '<button type="button" class="btn big w100" id="alo">' + icon('logout') + 'Keluar</button><div class="muted acc-ver">' + 'SMS · ' + esc(APP_NAME) + '</div>';
   $$('[data-go]', main).forEach(function (b) { b.onclick = function () { App.go(b.getAttribute('data-go')); }; });
   $('#alo', main).onclick = function () { ask('Keluar dari aplikasi?', 'Keluar').then(function (y) { if (y) App.logout(); }); };
 };
