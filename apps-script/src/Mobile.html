@@ -17,6 +17,7 @@ CamScan.mount = function (video, o) {
     if (navigator.vibrate) navigator.vibrate(60);
     o.onCode(code);
   };
+  ctl.running = function () { return !!stream && !stopped; };
   ctl.pause = function () { paused = true; };
   ctl.resume = function () { paused = false; last = ''; count = 0; };
   ctl.stop = function () {
@@ -66,6 +67,32 @@ CamScan.mount = function (video, o) {
   return ctl;
 };
 
+/**
+ * Indeks barcode di perangkat: hasil scan SKU terdaftar tampil seketika (tanpa menunggu jaringan), lalu dipastikan
+ * server di belakang layar. Disimpan per versi data; dimuat ulang saat halaman Scan dibuka (sekaligus memanaskan
+ * indeks server agar scan pertama cepat). "Belum terdaftar" / konflik selalu menunggu jawaban server.
+ */
+var ScanIndex = {
+  map: null, version: '', pending: null,
+  key: function () { return 'rpm_bx_' + (App.me ? App.me.user.id : ''); },
+  build: function (d) {
+    var m = {};
+    (d.rows || []).forEach(function (r) { r[0].split(' ').forEach(function (c) { var k = c.toUpperCase(); (m[k] = m[k] || []).push(r); }); });
+    ScanIndex.map = m; ScanIndex.version = d.version;
+  },
+  load: function () {
+    if (!ScanIndex.map) { try { var saved = JSON.parse(Store.get(ScanIndex.key()) || 'null'); if (saved) ScanIndex.build(saved); } catch (e) {} }
+    if (ScanIndex.pending) return ScanIndex.pending;
+    ScanIndex.pending = api('barcode.index', {}, { quiet: true, silent: true }).then(function (d) {
+      ScanIndex.build(d);
+      try { Store.set(ScanIndex.key(), JSON.stringify(d)); } catch (e) {} // terlalu besar untuk penyimpanan → tetap di memori
+      return d;
+    }).catch(function () {}).then(function (x) { ScanIndex.pending = null; return x; });
+    return ScanIndex.pending;
+  },
+  find: function (code) { return ScanIndex.map ? ScanIndex.map[String(code).toUpperCase()] || null : null; }
+};
+
 /* ───────── Halaman Scan Barcode ───────── */
 Pages.scan = function (main, arg) {
   arg = arg || {};
@@ -90,7 +117,7 @@ Pages.scan = function (main, arg) {
       '<div class="sc-meta">' + badge(m.productStatus === 'ACTIVE' ? m.variantStatus : m.productStatus) + '<span class="muted">' + esc(m.via) + (m.conversion ? ' · ' + esc(m.conversion.unitName) + ' isi ' + esc(m.conversion.baseUnitEquivalent) : '') + '</span></div></div>' +
       '<button type="button" class="icon-btn" data-copy="' + esc(m.childSku || m.sku) + '" aria-label="Salin kode SKU" title="Salin kode SKU">' + icon('copy') + '</button></div>';
   };
-  var show = function (code, r) {
+  var show = function (code, r, verifying) {
     var w = can('product.write'), next = '<button type="button" class="btn big w100" id="snx">' + icon('camera') + 'Scan Berikutnya</button>';
     var html;
     if (r.conflict) {
@@ -112,7 +139,7 @@ Pages.scan = function (main, arg) {
     } else {
       html = '<div class="sc-box warn">' + icon('search') + '<div><b>Tidak ditemukan</b><span>Tidak ada SKU, barcode, atau nama produk yang cocok dengan "' + esc(code) + '".</span></div></div>' + next;
     }
-    res.innerHTML = '<div class="sc-code">' + icon('barcode') + '<span class="code">' + esc(code) + '</span></div>' + html;
+    res.innerHTML = '<div class="sc-code">' + icon('barcode') + '<span class="code">' + esc(code) + '</span>' + (verifying ? '<span class="sc-verify"><span class="spinner"></span>memastikan…</span>' : '') + '</div>' + html;
     var b;
     if ((b = $('#snx', res))) b.onclick = again;
     if ((b = $('#sdt', res))) b.onclick = function () { App.go('product', r.matches[0].productId); };
@@ -127,9 +154,16 @@ Pages.scan = function (main, arg) {
     if (cam) cam.pause();
     state('found', 'Barcode terbaca: ' + code);
     if (seen[code]) return show(code, seen[code]);
-    res.innerHTML = '<div class="sc-code">' + icon('barcode') + '<span class="code">' + esc(code) + '</span></div>' + loadingBox('Mencari di master SKU…');
-    api('barcode.lookup', { code: code }, { silent: true, quiet: true }).then(function (r) { seen[code] = r; show(code, r); })
+    var local = ScanIndex.find(code);
+    if (local) {
+      show(code, { kind: 'local', conflict: false, matches: local.map(function (r) { return { via: 'Data di perangkat', productId: r[2], variantId: r[1], skuName: r[3], sku: r[4], childSku: r[4], gtin: r[5], imageUrl: r[6], productStatus: 'ACTIVE', variantStatus: r[7] }; }), bundles: [] }, true);
+    }
+    if (!local) res.innerHTML = '<div class="sc-code">' + icon('barcode') + '<span class="code">' + esc(code) + '</span></div>' + loadingBox('Mencari di master SKU…');
+    var current = function () { return busyCode === code; }; // jawaban lama tidak menimpa scan berikutnya
+    api('barcode.lookup', { code: code }, { silent: true, quiet: true }).then(function (r) { seen[code] = r; if (current()) show(code, r); })
       .catch(function (e) {
+        if (!current()) return;
+        if (local) { var v = $('.sc-verify', res); if (v) v.innerHTML = icon('alert') + 'belum terverifikasi (offline)'; return; }
         busyCode = '';
         res.innerHTML = '<div class="sc-box err">' + icon('alertCircle') + '<div><b>Data belum berhasil dimuat</b><span>' + esc(e.code === 'FORBIDDEN' ? 'Anda tidak punya akses melihat data SKU.' : 'Periksa koneksi lalu coba lagi.') + '</span></div></div><div class="sc-acts"><button type="button" class="st-cta" id="srt">' + icon('refresh') + 'Coba Lagi</button><button type="button" class="btn big w100" id="snx">Scan Ulang</button></div>';
         $('#srt', res).onclick = function () { lookup(code); };
@@ -139,16 +173,21 @@ Pages.scan = function (main, arg) {
   $('#sman', main).onsubmit = function (e) { e.preventDefault(); var c = this.c.value.replace(/\s+/g, '').trim(); if (!c) return; this.c.blur(); busyCode = ''; lookup(c); };
   var tb = $('#stc', main);
   tb.onclick = function () { torchOn = !torchOn; if (cam) cam.torch(torchOn); tb.classList.toggle('on', torchOn); tb.setAttribute('aria-pressed', torchOn ? 'true' : 'false'); };
-  cam = CamScan.mount(video, { onCode: lookup, onState: state, onTorch: function (has) { tb.classList.toggle('hidden', !has); } });
+  ScanIndex.load(); // indeks perangkat + panaskan indeks server sebelum scan pertama
+  var camOpts = { onCode: lookup, onState: state, onTorch: function (has) { tb.classList.toggle('hidden', !has); } };
+  cam = CamScan.mount(video, camOpts);
+  // aplikasi ke latar belakang → kamera dimatikan; kembali terlihat → hanya kamera yang dinyalakan lagi
+  // (hasil scan di layar tetap; dialog izin kamera yang sempat menyembunyikan halaman tidak menghapus apa pun)
+  var suspended = false;
+  var onVis = function () {
+    if (document.hidden) { if (cam && cam.running && cam.running()) { cam.stop(); cam = null; suspended = true; } }
+    else if (suspended) { suspended = false; torchOn = false; tb.classList.remove('on'); cam = CamScan.mount(video, camOpts); if (busyCode) cam.pause(); }
+  };
+  document.addEventListener('visibilitychange', onVis);
+  App.onLeave = function () { stop(); document.removeEventListener('visibilitychange', onVis); };
   if (arg.code) lookup(String(arg.code));
 };
 window.addEventListener('pagehide', function () { if (App.onLeave) { App.onLeave(); App.onLeave = null; } });
-// aplikasi ke latar belakang → kamera dimatikan; kembali → scanner dibuka lagi (tanpa kamera menyala diam-diam)
-document.addEventListener('visibilitychange', function () {
-  if (App.page !== 'scan') return;
-  if (document.hidden) { if (App.onLeave) { App.onLeave(); App.onLeave = null; } App.scanSuspended = true; }
-  else if (App.scanSuspended) { App.scanSuspended = false; App.go('scan'); }
-});
 
 function copyText(t) {
   var done = function () { toast('Disalin: ' + t, 'ok'); };

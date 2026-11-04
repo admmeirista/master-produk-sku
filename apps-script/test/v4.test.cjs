@@ -281,3 +281,8 @@ test('[AC-23] data konsisten setelah edit & muat ulang; export BeeCloud & master
   assert.ok(bee.rows.some((r) => r[0] === p.variants[0].sku));
   for (const k of ['master', 'conversions', 'bundles', 'suppliers', 'mappings']) assert.ok(ok(call(T, 'export.data', { kind: k, system: 'shopee' })).headers.length > 5, k);
 });
+
+test('pencocokan barcode cepat (indeks cache) = hasil barcodeLookup_ untuk semua kode di database', () => {
+  const n = require('./lookup-equivalence.cjs').checkLookupEquivalence(G);
+  assert.ok(n > 20, 'kode yang dibandingkan: ' + n);
+});

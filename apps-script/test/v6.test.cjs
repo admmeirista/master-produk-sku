@@ -645,3 +645,8 @@ test('satuan berat "gr": nama SKU baru & migrasi produk lama ("10 g" → "10 gr"
   const after = L.ctx.db_('PRODUCT_VARIANTS').byId(v.VariantID);
   assert.deepEqual([after.VariantAttributes[0].value, after.ProductSKUName, after.SKU], ['5 gr', 'Kelly Pearl Cream 5 gr', v.SKU]);
 });
+
+test('pencocokan barcode cepat (indeks cache) = hasil barcodeLookup_ untuk semua kode di database', () => {
+  const n = require('./lookup-equivalence.cjs').checkLookupEquivalence(G);
+  assert.ok(n > 20, 'kode yang dibandingkan: ' + n);
+});

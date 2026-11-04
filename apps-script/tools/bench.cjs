@@ -77,6 +77,13 @@ for (const n of SIZES) {
   row.filter_brand = ms(() => api('product.list', { brandId: 'b7', pageSize: 25 }), 5).ms;
   row.detail_first = ms(() => api('product.get', { id: target.ProductID })).ms;
   row.detail = ms(() => api('product.get', { id: target.ProductID }), 5).ms;
+  const code = target.GTIN || target.SKU;
+  if (G.ctx.barcodeLookupFast_) {
+    G.ctx.bumpDataVersion_();
+    row.scan_first = ms(() => api('barcode.lookup', { code })).ms;
+    row.scan = ms(() => api('barcode.lookup', { code }), 5).ms;
+  }
+  row.scan_old = ms(() => { G.ctx.resetDbCache_(); return G.ctx.barcodeLookup_(code); }, 3).ms;
   try {
     row.photo_list = ms(() => api('photo.list', { filter: 'todo', pageSize: 20 }), 5).ms;
   } catch (e) {
@@ -85,6 +92,6 @@ for (const n of SIZES) {
   results.push(row);
 }
 const f = (x) => (x === null || x === undefined ? '—' : x.toFixed(1));
-console.log('SKU     | daftar (dingin) | daftar (cache) | hal. 10 | cari nama | cari GTIN | filter brand | detail (pertama) | detail (ulang) | foto: daftar | payload KB');
-results.forEach((r) => console.log([String(r.skus).padEnd(7), f(r.list_cold).padStart(15), f(r.list_warm).padStart(14), f(r.page_10).padStart(7), f(r.search_name).padStart(9), f(r.search_gtin).padStart(9), f(r.filter_brand).padStart(12), f(r.detail_first).padStart(16), f(r.detail).padStart(14), f(r.photo_list).padStart(12), f(r.payload_kb).padStart(10)].join(' | ')));
+console.log('SKU     | daftar (dingin) | daftar (cache) | hal. 10 | cari nama | cari GTIN | filter brand | detail (pertama) | detail (ulang) | foto: daftar | payload KB | scan lama | scan baru (pertama) | scan baru');
+results.forEach((r) => console.log([String(r.skus).padEnd(7), f(r.list_cold).padStart(15), f(r.list_warm).padStart(14), f(r.page_10).padStart(7), f(r.search_name).padStart(9), f(r.search_gtin).padStart(9), f(r.filter_brand).padStart(12), f(r.detail_first).padStart(16), f(r.detail).padStart(14), f(r.photo_list).padStart(12), f(r.payload_kb).padStart(10), f(r.scan_old).padStart(9), f(r.scan_first).padStart(19), f(r.scan).padStart(9)].join(' | ')));
 if (process.env.JSON_OUT) require('fs').writeFileSync(process.env.JSON_OUT, JSON.stringify(results, null, 1));

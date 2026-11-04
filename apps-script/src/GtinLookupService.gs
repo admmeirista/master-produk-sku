@@ -153,7 +153,7 @@ function gtinSuggestion_(gtin, ext) {
 /** Endpoint: Scan GTIN → (internal) → (eksternal + cache) → usulan auto-fill. */
 function gtinLookup_(user, p) {
   const code = cleanBarcode(p.gtin);
-  const internal = barcodeLookup_(code);
+  const internal = barcodeLookupFast_(code);
   if (internal.found) return { gtin: code, stage: 'internal', internal };
   const v = validateManufacturerGtin(code);
   if (!v.ok) return { gtin: code, stage: 'invalid', valid: false, message: v.message, internal };

@@ -67,7 +67,7 @@ function pickProduct(title) {
 /* ───────── Dashboard ───────── */
 /* Istilah: SKU Parent = produk induk (mis. "Viva Milk Cleanser"); SKU Produk = varian yang dijual (mis. "… Lemon 100 ml"). */
 Pages.dashboard = function (main) {
-  main.innerHTML = pageHead('Ringkasan', 'Dashboard', can('product.write') ? '<button class="btn pri hide-m" data-go="register">' + icon('plus') + 'Registrasi Produk</button>' : '') + '<div id="db-body">' + loadingBox() + '</div>';
+  main.innerHTML = pageHead('', 'Ringkasan', can('product.write') ? '<button class="btn pri hide-m" data-go="register">' + icon('plus') + 'Registrasi Produk</button>' : '') + '<div id="db-body">' + loadingBox() + '</div>';
   $$('[data-go]', main).forEach(function (b) { b.onclick = function () { App.go(b.getAttribute('data-go')); }; });
   api('dashboard.get', {}, { quiet: true }).then(function (d) {
     if (isPhone()) return mobileHome(main, d); // HP: beranda berorientasi tindakan (Scan dulu)
@@ -87,38 +87,64 @@ Pages.dashboard = function (main) {
     })() : '<div class="muted">Belum ada data.</div>';
     var chRows = Object.keys(d.channels || {}).map(function (k) { var x = d.channels[k]; return '<tr><td><b>' + esc(STATUS_TXT[k] || k) + '</b></td><td class="num">' + fmtNum(x.unmapped || 0) + '</td><td class="num">' + fmtNum(x.mapped || 0) + '</td><td class="num">' + fmtNum((x.exported || 0) + (x.confirmed || 0)) + '</td><td class="num">' + fmtNum((x.error || 0) + (x.mismatch || 0)) + '</td></tr>'; }).join('');
 
+    var P = function (title, act, body, cls) { return '<div class="panel ' + (cls || '') + '"><div class="panel-h"><h3>' + title + '</h3>' + (act || '') + '</div><div class="pbody">' + body + '</div></div>'; };
+    var go2 = function (page, label) { return '<button class="btn sm ghost right" data-go2="' + page + '">' + label + ' ' + icon('arrowRight') + '</button>'; };
+    var TABS = [['quality', 'Kelengkapan & tindak lanjut', 'shield'], ['brands', 'SKU per brand & terbaru', 'layers'], ['activity', 'Aktivitas & integrasi', 'activity']];
+    var tabNow = Store.get('rpm_dtab') || 'quality';
+    if (!TABS.some(function (t) { return t[0] === tabNow; })) tabNow = 'quality';
+    var paneQuality =
+      P('Kelengkapan data SKU Produk', go2('quality', 'Detail'),
+        '<div class="dmeters">' +
+          meter('GTIN / barcode', 'disarankan · scan & marketplace', c.withGtin + c.withInternal, 'incomplete') +
+          meter('Foto produk', 'disarankan · katalog & marketplace', L.photo, 'photos') +
+          meter('Berat satuan', 'disarankan · ongkos kirim', L.weight, 'noweight') +
+          meter('Kemasan BOX (isi per box)', 'opsional · pembelian & gudang', L.box) +
+        '</div>') +
+      P('Perlu ditindaklanjuti', go2('quality', 'Periksa semua'), '<div id="dq">' + loadingBox() + '</div>');
+    var paneBrands =
+      P('SKU Produk per brand', '<span class="right muted" style="font-size:12px">' + (d.byBrand.length >= 8 ? '8 brand teratas' : '') + '</span>', brandRows) +
+      P('SKU Parent terbaru', go2('products', 'Lihat semua'),
+        d.recentProducts.length ? '<div class="tablewrap"><table class="t"><thead><tr><th>SKU Parent</th><th>Brand</th><th class="num">SKU Produk</th><th>Dibuat</th></tr></thead><tbody>' + d.recentProducts.map(function (p) {
+          return '<tr class="click" data-id="' + esc(p.id) + '"><td><b>' + esc(p.brandName && String(p.name).toLowerCase().indexOf(String(p.brandName).toLowerCase()) !== 0 ? p.brandName + ' ' + p.name : p.name) + '</b><div class="sku" style="font-size:11.5px">' + esc(p.productNo) + '</div></td><td>' + esc(p.brandName || '') + '</td><td class="num">' + p.variants + '</td><td class="nowrap">' + fmtDate(p.createdAt) + '</td></tr>';
+        }).join('') + '</tbody></table></div>' : emptyBox('Belum ada produk', 'Mulai dari Registrasi Produk.'));
+    var paneActivity =
+      P('Aktivitas terbaru', can('audit.read') ? go2('audit', 'Semua') : '', '<ul class="feed">' + (d.recent.length ? d.recent.slice(0, 8).map(function (a) { return '<li><span class="dot"></span><div><b>' + esc(actionLabel(a.action)) + '</b><div class="muted">' + esc(String(a.actor || '').split('@')[0]) + ' · ' + fmtDate(a.createdAt) + '</div></div></li>'; }).join('') : '<li class="muted">Belum ada aktivitas.</li>') + '</ul>') +
+      '<div class="dstack">' +
+        P('Status import data', can('export.run') ? go2('io', 'Import') : '',
+          (d.imports || []).length ? '<ul class="imp-feed">' + d.imports.map(function (b) { return '<li><span class="dt-i ' + (b.errors ? 'err' : 'ok') + '">' + icon(b.errors ? 'alert' : 'check') + '</span><div class="grow" style="min-width:0"><b>' + esc(b.file || b.type) + '</b><div class="muted">' + fmtNum(b.total) + ' baris · ' + fmtNum(b.created) + ' diproses · ' + fmtNum(b.skipped) + ' dilewati · <span class="' + (b.errors ? 'tx-err' : '') + '">' + fmtNum(b.errors) + ' ditolak</span></div><div class="muted">' + esc(b.by) + ' · ' + fmtDate(b.at) + '</div></div></li>'; }).join('') + '</ul>' : '<div class="dempty">' + icon('upload') + '<div><b>Belum ada import</b><span>Data master dapat dimasukkan melalui Import & Export.</span></div></div>') +
+        P('Mapping marketplace', go2('mapping', 'Buka'),
+          chRows ? '<div class="tablewrap"><table class="t"><thead><tr><th>Kanal</th><th class="num">Belum</th><th class="num">Dipetakan</th><th class="num">Terkirim</th><th class="num">Error</th></tr></thead><tbody>' + chRows + '</tbody></table></div>' : '<div class="dempty">' + icon('link') + '<div><b>Belum ada SKU Produk yang dipetakan</b><span>Import listing dari Seller Center atau petakan secara manual.</span></div></div>') +
+      '</div>';
     $('#db-body', main).innerHTML =
-      '<div class="dterms">' + icon('layers') + '<span><b>SKU Parent</b> = produk induk (mis. <i>Viva Milk Cleanser</i>). <b>SKU Produk</b> = varian yang dijual, dengan barcode sendiri (mis. <i>Viva Milk Cleanser Lemon 100 ml</i>). Satu SKU Parent bisa punya beberapa SKU Produk.</span></div>' +
       '<div class="kpi4">' +
         kpi('package', 'SKU Parent aktif', fmtNum(c.products), fmtNum(c.brands) + ' brand · ' + fmtNum(c.categories) + ' kategori' + (c.drafts ? ' · ' + fmtNum(c.drafts) + ' draft' : ''), 'dark', 'products') +
         kpi('layers', 'SKU Produk aktif', fmtNum(n), 'Rata-rata ' + avg + ' SKU Produk per SKU Parent', '', 'products') +
         kpi('barcode', 'SKU Produk ber-barcode', barcodePct + '%', fmtNum(c.withGtin) + ' GTIN · ' + fmtNum(c.withInternal) + ' internal · <b class="' + (c.withoutBarcode ? 'tx-err' : '') + '">' + fmtNum(c.withoutBarcode) + ' belum</b>', '', 'quality', '<div class="bar2"><i style="width:' + barcodePct + '%"></i></div>') +
         kpi('boxes', 'Paket jual aktif', fmtNum(c.bundles), 'Paket produk sama, kombinasi & pilih sendiri', '', 'bundles') +
       '</div>' +
-      '<div class="dash2">' +
-        '<div class="dcol">' +
-          '<div class="panel"><div class="panel-h"><h3>Kelengkapan data SKU Produk</h3><button class="btn sm ghost right" data-go2="quality">Detail ' + icon('arrowRight') + '</button></div>' +
-            '<div class="dmeters">' +
-              meter('GTIN / barcode', 'disarankan · scan & marketplace', c.withGtin + c.withInternal, 'incomplete') +
-              meter('Foto produk', 'disarankan · katalog & marketplace', L.photo, 'photos') +
-              meter('Berat satuan', 'disarankan · ongkos kirim', L.weight, 'noweight') +
-              meter('Kemasan BOX (isi per box)', 'opsional · pembelian & gudang', L.box) +
-            '</div></div>' +
-          '<div class="panel"><div class="panel-h"><h3>Perlu ditindaklanjuti</h3><button class="btn sm ghost right" data-go2="quality">Periksa semua ' + icon('arrowRight') + '</button></div><div id="dq">' + loadingBox() + '</div></div>' +
-          '<div class="panel"><div class="panel-h"><h3>SKU Parent terbaru</h3><button class="btn sm ghost right" data-go2="products">Lihat semua ' + icon('arrowRight') + '</button></div>' +
-            (d.recentProducts.length ? '<div class="tablewrap"><table class="t"><thead><tr><th>SKU Parent</th><th>Brand</th><th class="num">SKU Produk</th><th>Dibuat</th></tr></thead><tbody>' + d.recentProducts.map(function (p) {
-              return '<tr class="click" data-id="' + esc(p.id) + '"><td><b>' + esc(p.brandName && String(p.name).toLowerCase().indexOf(String(p.brandName).toLowerCase()) !== 0 ? p.brandName + ' ' + p.name : p.name) + '</b><div class="sku" style="font-size:11.5px">' + esc(p.productNo) + '</div></td><td>' + esc(p.brandName || '') + '</td><td class="num">' + p.variants + '</td><td class="nowrap">' + fmtDate(p.createdAt) + '</td></tr>';
-            }).join('') + '</tbody></table></div>' : emptyBox('Belum ada produk', 'Mulai dari Registrasi Produk.')) + '</div>' +
-        '</div>' +
-        '<div class="dcol">' +
-          '<div class="panel"><div class="panel-h"><h3>SKU Produk per brand</h3><span class="right muted" style="font-size:12px">' + (d.byBrand.length >= 8 ? '8 brand teratas' : '') + '</span></div>' + brandRows + '</div>' +
-          '<div class="panel"><div class="panel-h"><h3>Status import data</h3>' + (can('export.run') ? '<button class="btn sm ghost right" data-go2="io">Import ' + icon('arrowRight') + '</button>' : '') + '</div>' +
-            ((d.imports || []).length ? '<ul class="imp-feed">' + d.imports.map(function (b) { return '<li><span class="dt-i ' + (b.errors ? 'err' : 'ok') + '">' + icon(b.errors ? 'alert' : 'check') + '</span><div class="grow" style="min-width:0"><b>' + esc(b.file || b.type) + '</b><div class="muted">' + fmtNum(b.total) + ' baris · ' + fmtNum(b.created) + ' diproses · ' + fmtNum(b.skipped) + ' dilewati · <span class="' + (b.errors ? 'tx-err' : '') + '">' + fmtNum(b.errors) + ' ditolak</span></div><div class="muted">' + esc(b.by) + ' · ' + fmtDate(b.at) + '</div></div></li>'; }).join('') + '</ul>' : '<div class="dempty">' + icon('upload') + '<div><b>Belum ada import</b><span>Data master bisa dimasukkan lewat Import & Export (Excel).</span></div></div>') + '</div>' +
-          '<div class="panel"><div class="panel-h"><h3>Mapping marketplace</h3><button class="btn sm ghost right" data-go2="mapping">Buka ' + icon('arrowRight') + '</button></div>' +
-            (chRows ? '<div class="tablewrap"><table class="t"><thead><tr><th>Kanal</th><th class="num">Belum</th><th class="num">Dipetakan</th><th class="num">Terkirim</th><th class="num">Error</th></tr></thead><tbody>' + chRows + '</tbody></table></div>' : '<div class="dempty">' + icon('link') + '<div><b>Belum ada SKU Produk yang dipetakan ke marketplace</b><span>Import listing dari Seller Center (Shopee, TikTok, Tokopedia) atau petakan manual.</span></div></div>') + '</div>' +
-          '<div class="panel"><div class="panel-h"><h3>Aktivitas terbaru</h3>' + (can('audit.read') ? '<button class="btn sm ghost right" data-go2="audit">Semua ' + icon('arrowRight') + '</button>' : '') + '</div><ul class="feed">' + (d.recent.length ? d.recent.slice(0, 6).map(function (a) { return '<li><span class="dot"></span><div><b>' + esc(actionLabel(a.action)) + '</b><div class="muted">' + esc(String(a.actor || '').split('@')[0]) + ' · ' + fmtDate(a.createdAt) + '</div></div></li>'; }).join('') : '<li class="muted">Belum ada aktivitas.</li>') + '</ul></div>' +
-        '</div>' +
-      '</div>';
+      '<div class="dtabs-h" role="tablist">' + TABS.map(function (t) { return '<button type="button" role="tab" data-dt="' + t[0] + '" aria-selected="' + (t[0] === tabNow) + '"' + (t[0] === tabNow ? ' class="on"' : '') + '>' + icon(t[2]) + t[1] + '</button>'; }).join('') + '</div>' +
+      '<div class="dtab-body" id="dtb">' +
+        '<div class="dpane" data-pane="quality"' + (tabNow === 'quality' ? '' : ' hidden') + '>' + paneQuality + '</div>' +
+        '<div class="dpane" data-pane="brands"' + (tabNow === 'brands' ? '' : ' hidden') + '>' + paneBrands + '</div>' +
+        '<div class="dpane" data-pane="activity"' + (tabNow === 'activity' ? '' : ' hidden') + '>' + paneActivity + '</div>' +
+      '</div>' +
+      '<p class="dgloss"><b>SKU Parent</b> — produk induk yang mengelompokkan seluruh varian satu produk. <b>SKU Produk</b> — unit jual dengan kode SKU dan barcode tersendiri. Satu SKU Parent dapat memiliki beberapa SKU Produk.</p>';
+    // tab: pindah tanpa memuat ulang; tinggi area tab = sisa layar (halaman tidak menggulir ke bawah)
+    var fit = function () {
+      var b = $('#dtb', main); if (!b || isPhone()) return;
+      var gl = $('.dgloss', main);
+      b.style.height = Math.max(260, window.innerHeight - b.getBoundingClientRect().top - (gl ? gl.offsetHeight + 12 : 0) - 20) + 'px';
+    };
+    $$('[data-dt]', main).forEach(function (t) {
+      t.onclick = function () {
+        var k = t.getAttribute('data-dt');
+        $$('[data-dt]', main).forEach(function (x) { x.classList.toggle('on', x === t); x.setAttribute('aria-selected', x === t ? 'true' : 'false'); });
+        $$('[data-pane]', main).forEach(function (p) { p.hidden = p.getAttribute('data-pane') !== k; });
+        Store.set('rpm_dtab', k);
+      };
+    });
+    fit();
+    window.onresize = function () { if (App.page === 'dashboard') fit(); };
     $$('[data-go2]', main).forEach(function (b) {
       var go = function () { App.go(b.getAttribute('data-go2')); };
       b.onclick = go;

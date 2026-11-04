@@ -506,15 +506,15 @@ function downloadTable(d, format) {
 /* ═════════════ Aplikasi: login, kerangka sidebar, router ═════════════ */
 /* Menu disusun per fungsi bisnis. Brand, Kategori, Barcode & Kualitas data ada di dalam Master Produk (tab / alat). */
 var NAV = [
-  ['DASHBOARD', [['dashboard', 'Dashboard', 'grid']]],
-  ['MANAJEMEN PRODUK', [['scan', 'Scan Barcode', 'camera'], ['products', 'Master Produk', 'package'], ['register', 'Registrasi Produk', 'plus', 'product.write'], ['bundles', 'Kemasan & Bundling', 'boxes']]],
+  ['', [['dashboard', 'Ringkasan', 'grid']]],
+  ['MANAJEMEN PRODUK', [['products', 'Master Produk', 'package'], ['register', 'Registrasi Produk', 'plus', 'product.write'], ['bundles', 'Kemasan & Bundling', 'boxes']]],
   ['INTEGRASI', [['mapping', 'Channel SKU Mapping', 'link'], ['io', 'Import & Export', 'upload', 'export.run']]],
   ['SISTEM', [['users', 'Pengguna & Hak Akses', 'users', 'user.manage'], ['settings', 'Pengaturan', 'sliders'], ['audit', 'Audit Log', 'activity', 'audit.read']]]
 ];
 /** Halaman yang tidak punya menu sendiri → menu induknya (untuk menu aktif & breadcrumb). */
 var NAV_PARENT = { product: 'products', brands: 'products', categories: 'products', barcodes: 'products', quality: 'products', photos: 'products', photoShoot: 'photoList', bundle: 'bundles' };
 var MP = ['MANAJEMEN PRODUK', 'Master Produk'];
-var CRUMB_EXTRA = { activity: ['AKUN', 'Aktivitas'], account: ['AKUN', 'Akun'], product: MP, brands: MP, categories: MP, barcodes: MP, quality: MP, photos: MP, profile: ['AKUN', 'Profil'], bundle: ['MANAJEMEN PRODUK', 'Kemasan & Bundling'] };
+var CRUMB_EXTRA = { scan: ['MANAJEMEN PRODUK', 'Scan Barcode'], activity: ['AKUN', 'Aktivitas'], account: ['AKUN', 'Akun'], product: MP, brands: MP, categories: MP, barcodes: MP, quality: MP, photos: MP, profile: ['AKUN', 'Profil'], bundle: ['MANAJEMEN PRODUK', 'Kemasan & Bundling'] };
 /**
  * Filter di HP (pola FMS): kolom cari tetap tampil, filter lain dilipat di balik tombol "Filter" (jumlah filter aktif),
  * dengan Reset & Terapkan. Di desktop tidak berubah. Dipasang otomatis untuk setiap .filters di halaman.
@@ -565,7 +565,7 @@ function masterTabs(main, cur) {
 }
 function crumb(page) {
   if (CRUMB_EXTRA[page]) return CRUMB_EXTRA[page];
-  for (var i = 0; i < NAV.length; i++) for (var j = 0; j < NAV[i][1].length; j++) if (NAV[i][1][j][0] === page) return [NAV[i][0], NAV[i][1][j][1]];
+  for (var i = 0; i < NAV.length; i++) for (var j = 0; j < NAV[i][1].length; j++) if (NAV[i][1][j][0] === page) return NAV[i][0] ? [NAV[i][0], NAV[i][1][j][1]] : null;
   return null;
 }
 var Pages = {};
@@ -646,10 +646,9 @@ var App = {
     document.body.classList.toggle('side-mini', Store.get('rpm_mini') === '1');
     $app().innerHTML = '<div class="adm"><div class="mtop"><button class="icon-btn" id="m-open" aria-label="Menu">' + icon('menu') + '</button>' + brand('sm') + '</div>' +
       '<div class="side-bg" id="side-bg"></div><nav class="side" id="side">' + brand() + '<button type="button" class="side-mini-btn" id="side-mini" title="Ciutkan / lebarkan menu" aria-label="Ciutkan menu">' + icon('chevDown') + '</button>' +
-      NAV.map(function (s, i) { var links = s[1].map(nav).join(''); return links ? '<div class="navgrp' + (closed[s[0]] ? ' closed' : '') + '"><button type="button" class="sec" data-grp="' + s[0] + '"' + (i ? ' style="margin-top:6px"' : '') + '>' + s[0] + icon('chevDown', 'gch') + '</button><div class="grp-links">' + links + '</div></div>' : ''; }).join('') +
+      NAV.map(function (s) { var links = s[1].map(nav).join(''); return links ? '<div class="navgrp">' + (s[0] ? '<div class="sec">' + s[0] + '</div>' : '') + '<div class="grp-links">' + links + '</div></div>' : ''; }).join('') +
       '<div class="me"><a class="avatar" data-nav="profile" style="cursor:pointer" title="Profil & password">' + esc(initials(u.fullName)) + '</a><div style="min-width:0;cursor:pointer" data-nav="profile"><div class="n">' + esc(u.fullName) + '</div><div class="r">' + esc(STATUS_TXT[u.role] || u.role) + '</div></div><button id="adm-out" title="Keluar">' + icon('logout') + '</button></div></nav><main class="main" id="main"></main>' + App.tabbar() + '</div>';
     $$('[data-nav]').forEach(function (a) { a.onclick = function () { App.go(a.getAttribute('data-nav')); }; });
-    $$('[data-grp]').forEach(function (b) { b.onclick = function () { var g = b.parentNode; g.classList.toggle('closed'); closed[b.getAttribute('data-grp')] = g.classList.contains('closed'); Store.set('rpm_nav', JSON.stringify(closed)); }; });
     $('#side-mini').onclick = function () { var on = !document.body.classList.contains('side-mini'); document.body.classList.toggle('side-mini', on); Store.set('rpm_mini', on ? '1' : '0'); };
     $('#adm-out').onclick = function () { ask('Keluar dari aplikasi?', 'Keluar').then(function (y) { if (y) App.logout(); }); };
     var side = $('#side'), bg = $('#side-bg');
