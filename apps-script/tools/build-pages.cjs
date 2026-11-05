@@ -30,9 +30,9 @@ html = html.replace(
     `    <script>window.RPM_API_URL = ${JSON.stringify(apiUrl)};</script>`,
 );
 fs.mkdirSync(out, { recursive: true });
-// ikon & manifest (pasang ke layar utama / PWA)
+// ikon & manifest (pasang ke layar utama / PWA) + foto sumber import (foto-import/…, dijemput sekali oleh data job)
 const PAGES = path.join(__dirname, '../pages');
-fs.readdirSync(PAGES).forEach((f) => fs.copyFileSync(path.join(PAGES, f), path.join(out, f)));
+fs.cpSync(PAGES, out, { recursive: true });
 fs.writeFileSync(path.join(out, 'index.html'), html);
 fs.writeFileSync(path.join(out, '.nojekyll'), '');
 console.log('Halaman GitHub Pages dibuat di', out, '-> API:', apiUrl);

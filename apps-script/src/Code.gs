@@ -264,7 +264,7 @@ function autoSchema_() {
 }
 
 /** Naikkan bila ensureData_ / DATA_JOBS_ membawa migrasi data baru (memicu pembaruan otomatis sekali). */
-const DATA_MIGRATION_VERSION_ = 12;
+const DATA_MIGRATION_VERSION_ = 13;
 
 /**
  * Import data sekali jalan (mis. katalog pemasok) lewat jalur import produk biasa: tercatat di Riwayat import & audit
@@ -280,6 +280,9 @@ const DATA_JOBS_ = [
   { id: 'job_hanasui_2026', fileName: 'Import_Produk_Hanasui.xlsx', rows: () => HANASUI_ROWS_ },
   { id: 'job_kino_2026', fileName: 'Kino Personal Care utk SR Putra.xlsx', rows: () => KINO_ROWS_, categories: ['Perawatan Kewanitaan'] },
   { id: 'job_cc_2026', fileName: 'Master_SKU_Katalog_CC_2026_Tanpa_Claudia.xlsx', rows: () => CC_2026_ROWS_, categories: ['Pembersih Rumah Tangga', 'Antiseptik & Hand Sanitizer', 'Pengharum Ruangan'] },
+  { id: 'job_emeron_2026', fileName: 'emeron_produk_dengan_foto.xlsx', rows: () => EMERON_ROWS_ },
+  // foto Emeron (setelah produknya dibuat): disimpan ke Drive lewat jalur Foto, bukan import produk
+  { id: 'job_emeron_foto', run: (user) => importPhotoList_(user, 'Emeron', EMERON_PHOTOS_, EMERON_PHOTO_BASE_) },
 ];
 function runDataJobs_() {
   const props = PropertiesService.getScriptProperties();
@@ -294,13 +297,14 @@ function runDataJobs_() {
         (job.categories || []).forEach((name) => {
           if (!db_('MASTER_CATEGORIES').find((c) => c.Status !== STATUS.DELETED && c.NameKey === masterNameKey(name))) masterCreate_(user, 'category', { name, acknowledgeSimilar: true });
         });
+        if (job.run) return job.run(user);
         return importRun_(user, { type: 'products', rows: job.rows(), fileName: job.fileName });
       },
       (rep) => {
         if (!rep) return;
         props.setProperty(job.id, '1'); // hanya setelah data tersimpan
         bumpDataVersion_();
-        console.log(job.id + ': ' + JSON.stringify({ created: rep.created, skipped: rep.skipped, errors: rep.errorCount }));
+        console.log(job.id + ': ' + JSON.stringify(job.run ? rep : { created: rep.created, skipped: rep.skipped, errors: rep.errorCount }));
       }
     );
   });

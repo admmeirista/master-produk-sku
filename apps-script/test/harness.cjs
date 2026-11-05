@@ -146,7 +146,7 @@ function createGas({ ownerEmail = 'owner@toko.local' } = {}) {
     ScriptApp: { getProjectTriggers: () => [], newTrigger: () => ({}) },
     HtmlService: { XFrameOptionsMode: { DEFAULT: 'DEFAULT' } },
     // UrlFetchApp: respons diatur per URL lewat state.fetch (fungsi url → {code, body}); default 404
-    UrlFetchApp: { fetch: (url, opt) => { state.fetchLog.push({ url, opt }); const r = state.fetch ? state.fetch(url, opt) : { code: 404, body: '{}' }; if (r.throw) throw new Error(r.throw); return { getResponseCode: () => r.code, getContentText: () => r.body }; } },
+    UrlFetchApp: { fetch: (url, opt) => { state.fetchLog.push({ url, opt }); const r = state.fetch ? state.fetch(url, opt) : { code: 404, body: '{}' }; if (r.throw) throw new Error(r.throw); return { getResponseCode: () => r.code, getContentText: () => r.body, getContent: () => [...(Buffer.isBuffer(r.body) ? r.body : Buffer.from(String(r.body)))].map((b) => (b > 127 ? b - 256 : b)) }; } },
     ContentService: { MimeType: { JSON: 'application/json' }, createTextOutput: (s) => ({ content: s, setMimeType() { return this; }, getContent() { return this.content; } }) },
   };
   vm.createContext(ctx);
