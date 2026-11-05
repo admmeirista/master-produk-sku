@@ -4,22 +4,59 @@
  * berulang), hasil dicek ke server (barcode.lookup: konflik, barcode internal, check digit), lalu tindakan sesuai hasil.
  */
 
+/**
+ * Bunyi bip saat barcode terbaca (Web Audio, tanpa file suara). Browser HP baru mengizinkan suara setelah layar
+ * disentuh, jadi audio "dibuka" pada sentuhan pertama. Bisa dimatikan dari tombol Bunyi di halaman Scan.
+ */
+var Beep = {
+  ctx: null,
+  on: function () { return Store.get('rpm_beep') !== '0'; },
+  unlock: function () {
+    try {
+      if (!Beep.ctx) { var A = window.AudioContext || window.webkitAudioContext; if (!A) return; Beep.ctx = new A(); }
+      if (Beep.ctx.state === 'suspended') Beep.ctx.resume();
+    } catch (e) {}
+  },
+  play: function () {
+    if (!Beep.on()) return;
+    Beep.unlock();
+    var c = Beep.ctx; if (!c) return;
+    try {
+      var t = c.currentTime, o = c.createOscillator(), g = c.createGain();
+      o.type = 'square'; o.frequency.setValueAtTime(2600, t);
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.18, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+      o.connect(g); g.connect(c.destination); o.start(t); o.stop(t + 0.13);
+    } catch (e) {}
+  }
+};
+['pointerdown', 'touchend', 'keydown'].forEach(function (ev) { document.addEventListener(ev, Beep.unlock, { passive: true, capture: true }); });
+
 /** Pemindai di dalam halaman. el = <video>. → { pause, resume, stop, torch(on), hasTorch } */
 CamScan.mount = function (video, o) {
   var stream = null, reader = null, timer = null, stopped = false, paused = false, last = '', count = 0, track = null;
+  var lastHit = '', coolUntil = 0, seenAt = {}; // mode terus-menerus (o.continuous)
   var ctl = { hasTorch: false };
   var accept = function (raw) {
     var code = String(raw || '').replace(/\s+/g, '').trim();
     if (!code || paused || stopped) return;
+    var now = Date.now();
+    if (o.continuous) {
+      // barcode yang baru dibaca masih di depan kamera → abaikan; terbaca lagi setelah 1,5 dtk tidak terlihat
+      var seen = seenAt[code] || 0; seenAt[code] = now;
+      if (code === lastHit) { if (now - seen < 1500) return; lastHit = ''; }
+      if (now < coolUntil) return;
+    }
     if (code === last) count++; else { last = code; count = 1; }
     if (count < 2) return; // dua kali terbaca sama → kurangi salah baca
-    paused = true; count = 0;
+    count = 0;
+    if (o.continuous) { lastHit = code; coolUntil = now + 900; } else paused = true;
+    Beep.play();
     if (navigator.vibrate) navigator.vibrate(60);
     o.onCode(code);
   };
   ctl.running = function () { return !!stream && !stopped; };
   ctl.pause = function () { paused = true; };
-  ctl.resume = function () { paused = false; last = ''; count = 0; };
+  ctl.resume = function () { paused = false; last = ''; count = 0; lastHit = ''; };
   ctl.stop = function () {
     stopped = true;
     clearTimeout(timer);
@@ -97,10 +134,11 @@ var ScanIndex = {
 Pages.scan = function (main, arg) {
   arg = arg || {};
   var seen = {}; // hasil lookup per kode dalam sesi ini (tidak memanggil server berulang)
-  var cam = null, torchOn = false, busyCode = '';
+  var cam = null, torchOn = false, busyCode = '', stTimer = null;
   main.innerHTML = '<div class="sc-head"><button type="button" class="icon-btn" id="sbk" aria-label="Kembali">' + icon('arrowLeft') + '</button><div><h2>Scan Barcode</h2><div class="muted">Arahkan kamera ke barcode produk (EAN / UPC / barcode internal).</div></div></div>' +
     '<div class="sc-stage"><video playsinline muted autoplay></video><div class="cam-frame"><i></i></div><div class="sc-state" id="sst" role="status" aria-live="polite">Menyalakan kamera…</div>' +
-    '<button type="button" class="sc-torch hidden" id="stc" aria-pressed="false" aria-label="Senter">' + icon('zap') + '<span>Senter</span></button></div>' +
+    '<button type="button" class="sc-torch hidden" id="stc" aria-pressed="false" aria-label="Senter">' + icon('zap') + '<span>Senter</span></button>' +
+    '<button type="button" class="sc-snd" id="ssn" aria-pressed="' + Beep.on() + '" aria-label="Bunyi bip">' + icon(Beep.on() ? 'volume' : 'volumeX') + '</button></div>' +
     '<div id="sres" class="sc-res" aria-live="polite"></div>' +
     '<form class="sc-man" id="sman" autocomplete="off"><input class="in" name="c" inputmode="numeric" enterkeyhint="search" placeholder="Ketik barcode / SKU manual" spellcheck="false" aria-label="Barcode manual"><button class="btn" type="submit">' + icon('search') + 'Cari</button></form>';
   var video = $('video', main), st = $('#sst', main), res = $('#sres', main);
@@ -118,7 +156,7 @@ Pages.scan = function (main, arg) {
       '<button type="button" class="icon-btn" data-copy="' + esc(m.childSku || m.sku) + '" aria-label="Salin kode SKU" title="Salin kode SKU">' + icon('copy') + '</button></div>';
   };
   var show = function (code, r, verifying) {
-    var w = can('product.write'), next = '<button type="button" class="btn big w100" id="snx">' + icon('camera') + 'Scan Berikutnya</button>';
+    var w = can('product.write'), next = '<div class="sc-next">' + icon('camera') + 'Arahkan kamera ke barcode berikutnya — scan otomatis</div>';
     var html;
     if (r.conflict) {
       html = '<div class="sc-box err">' + icon('alertCircle') + '<div><b>Barcode ' + esc(code) + ' terhubung ke lebih dari satu barang</b><span>Tidak ada data yang diubah. Laporkan ke Admin untuk ditinjau.</span><ul>' + (r.owners || []).map(function (o) { return '<li>' + esc(o.label || '') + '</li>'; }).join('') + '</ul></div></div>' + next;
@@ -146,13 +184,13 @@ Pages.scan = function (main, arg) {
     if ((b = $('#sbd', res))) b.onclick = function () { App.go('bundle', r.bundles[0].bundleId); };
     if ((b = $('#srg', res))) b.onclick = function () { App.go('register', { gtin: code }); };
     $$('[data-copy]', res).forEach(function (x) { x.onclick = function () { copyText(x.getAttribute('data-copy')); }; });
-    res.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   };
   var lookup = function (code) {
     if (busyCode === code) return; // kode yang sama sedang diproses
     busyCode = code;
-    if (cam) cam.pause();
     state('found', 'Barcode terbaca: ' + code);
+    clearTimeout(stTimer);
+    stTimer = setTimeout(function () { if (cam && cam.running()) state('ready', 'Siap scan barcode berikutnya'); }, 1800);
     if (seen[code]) return show(code, seen[code]);
     var local = ScanIndex.find(code);
     if (local) {
@@ -174,17 +212,19 @@ Pages.scan = function (main, arg) {
   var tb = $('#stc', main);
   tb.onclick = function () { torchOn = !torchOn; if (cam) cam.torch(torchOn); tb.classList.toggle('on', torchOn); tb.setAttribute('aria-pressed', torchOn ? 'true' : 'false'); };
   ScanIndex.load(); // indeks perangkat + panaskan indeks server sebelum scan pertama
-  var camOpts = { onCode: lookup, onState: state, onTorch: function (has) { tb.classList.toggle('hidden', !has); } };
+  var sn = $('#ssn', main);
+  sn.onclick = function () { var on = !Beep.on(); Store.set('rpm_beep', on ? '1' : '0'); sn.innerHTML = icon(on ? 'volume' : 'volumeX'); sn.setAttribute('aria-pressed', on ? 'true' : 'false'); toast(on ? 'Bunyi bip aktif' : 'Bunyi bip dimatikan'); if (on) Beep.play(); };
+  var camOpts = { continuous: true, onCode: lookup, onState: state, onTorch: function (has) { tb.classList.toggle('hidden', !has); } };
   cam = CamScan.mount(video, camOpts);
   // aplikasi ke latar belakang → kamera dimatikan; kembali terlihat → hanya kamera yang dinyalakan lagi
   // (hasil scan di layar tetap; dialog izin kamera yang sempat menyembunyikan halaman tidak menghapus apa pun)
   var suspended = false;
   var onVis = function () {
     if (document.hidden) { if (cam && cam.running && cam.running()) { cam.stop(); cam = null; suspended = true; } }
-    else if (suspended) { suspended = false; torchOn = false; tb.classList.remove('on'); cam = CamScan.mount(video, camOpts); if (busyCode) cam.pause(); }
+    else if (suspended) { suspended = false; torchOn = false; tb.classList.remove('on'); cam = CamScan.mount(video, camOpts); }
   };
   document.addEventListener('visibilitychange', onVis);
-  App.onLeave = function () { stop(); document.removeEventListener('visibilitychange', onVis); };
+  App.onLeave = function () { stop(); clearTimeout(stTimer); document.removeEventListener('visibilitychange', onVis); };
   if (arg.code) lookup(String(arg.code));
 };
 window.addEventListener('pagehide', function () { if (App.onLeave) { App.onLeave(); App.onLeave = null; } });
