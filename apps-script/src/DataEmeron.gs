@@ -143,3 +143,24 @@ function importPhotoList_(user, brandName, list, base) {
   });
   return out;
 }
+
+/**
+ * Pindah kategori lewat jalur simpan produk biasa (tercatat di audit). Hanya produk dengan brand + nama ini; nama
+ * kategori dicari dari jalur pendek (mis. "Perawatan Rambut > Treatment Rambut"). Produk yang sudah di kategori tujuan dilewati.
+ */
+function moveProductsCategory_(user, brandName, names, catPath) {
+  const cat = db_('MASTER_CATEGORIES').rows().find((c) => c.Status !== STATUS.DELETED && catShortPath_(c) === catPath);
+  if (!cat) throw new Error('Kategori tidak ditemukan: ' + catPath);
+  const brand = db_('MASTER_BRANDS').find((b) => b.Status !== STATUS.DELETED && masterNameKey(b.BrandName) === masterNameKey(brandName));
+  const out = { moved: [], skipped: 0 };
+  if (!brand) return out;
+  db_('MASTER_PRODUCTS')
+    .filter((p) => p.BrandID === brand.BrandID && p.Status !== STATUS.DELETED && names.indexOf(p.ProductName) >= 0)
+    .forEach((p) => {
+      if (p.CategoryID === cat.CategoryID) return out.skipped++;
+      const d = productDetail_(p.ProductID);
+      productSave_(user, { productId: p.ProductID, version: d.version, brandId: d.brand.id, categoryId: cat.CategoryID, name: d.name, baseUnit: d.baseUnit, acknowledgeSimilar: true, variants: [] });
+      out.moved.push(p.ProductCode);
+    });
+  return out;
+}

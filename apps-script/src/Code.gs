@@ -264,7 +264,7 @@ function autoSchema_() {
 }
 
 /** Naikkan bila ensureData_ / DATA_JOBS_ membawa migrasi data baru (memicu pembaruan otomatis sekali). */
-const DATA_MIGRATION_VERSION_ = 13;
+const DATA_MIGRATION_VERSION_ = 14;
 
 /**
  * Import data sekali jalan (mis. katalog pemasok) lewat jalur import produk biasa: tercatat di Riwayat import & audit
@@ -283,6 +283,8 @@ const DATA_JOBS_ = [
   { id: 'job_emeron_2026', fileName: 'emeron_produk_dengan_foto.xlsx', rows: () => EMERON_ROWS_ },
   // foto Emeron (setelah produknya dibuat): disimpan ke Drive lewat jalur Foto, bukan import produk
   { id: 'job_emeron_foto', run: (user) => importPhotoList_(user, 'Emeron', EMERON_PHOTOS_, EMERON_PHOTO_BASE_) },
+  // Hair Vitamin (rambut, bukan pewarna) → Treatment Rambut
+  { id: 'job_emeron_hairvit_cat', run: (user) => moveProductsCategory_(user, 'Emeron', ['Hair Vitamin', 'Hijab Hair Vitamin'], 'Perawatan Rambut > Treatment Rambut') },
 ];
 function runDataJobs_() {
   const props = PropertiesService.getScriptProperties();
