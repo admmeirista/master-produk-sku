@@ -22,10 +22,13 @@ var Beep = {
     Beep.unlock();
     var c = Beep.ctx; if (!c) return;
     try {
-      var t = c.currentTime, o = c.createOscillator(), g = c.createGain();
-      o.type = 'square'; o.frequency.setValueAtTime(2600, t);
-      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.18, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
-      o.connect(g); g.connect(c.destination); o.start(t); o.stop(t + 0.13);
+      // meniru buzzer piezo scanner kasir: nada ~2,7 kHz, keras-datar ±110 ms, putus tegas (bukan memudar)
+      var t = c.currentTime, d = 0.11, o = c.createOscillator(), f = c.createBiquadFilter(), g = c.createGain();
+      o.type = 'square'; o.frequency.setValueAtTime(2730, t);
+      f.type = 'bandpass'; f.frequency.value = 2730; f.Q.value = 1.4; // resonansi piezo, harmonik kasar diredam
+      g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.5, t + 0.003);
+      g.gain.setValueAtTime(0.5, t + d - 0.004); g.gain.linearRampToValueAtTime(0, t + d);
+      o.connect(f); f.connect(g); g.connect(c.destination); o.start(t); o.stop(t + d + 0.01);
     } catch (e) {}
   }
 };
