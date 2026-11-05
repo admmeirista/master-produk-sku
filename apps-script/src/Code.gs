@@ -257,14 +257,15 @@ function autoSchema_() {
     lock.releaseLock();
   }
   ensureData_(false);
-  runDataJobs_();
+  // job yang belum selesai (batas waktu) → versi skema belum dicatat, sehingga panggilan berikutnya melanjutkannya
+  if (runDataJobs_() === false) return true;
   setSchemaVersion_();
   console.log('Struktur database diperbarui otomatis (' + fp + ')');
   return true;
 }
 
 /** Naikkan bila ensureData_ / DATA_JOBS_ membawa migrasi data baru (memicu pembaruan otomatis sekali). */
-const DATA_MIGRATION_VERSION_ = 14;
+const DATA_MIGRATION_VERSION_ = 15;
 
 /**
  * Import data sekali jalan (mis. katalog pemasok) lewat jalur import produk biasa: tercatat di Riwayat import & audit
@@ -284,12 +285,19 @@ const DATA_JOBS_ = [
   // foto Emeron (setelah produknya dibuat): disimpan ke Drive lewat jalur Foto, bukan import produk
   { id: 'job_emeron_foto', run: (user) => importPhotoList_(user, 'Emeron', EMERON_PHOTOS_, EMERON_PHOTO_BASE_) },
   // Hair Vitamin (rambut, bukan pewarna) → Treatment Rambut
+  { id: 'job_yoline_2026', fileName: 'yoline_produk_dan_foto.xlsx', rows: () => YOLINE_ROWS_, categories: ['Tisu Basah', 'Perawatan Mulut'] },
+  // foto Yoline (142): bertahap per eksekusi bila waktu habis
+  { id: 'job_yoline_foto', run: (user, deadline) => importPhotoList_(user, '', YOLINE_PHOTOS_, YOLINE_PHOTO_BASE_, deadline) },
   { id: 'job_emeron_hairvit_cat', run: (user) => moveProductsCategory_(user, 'Emeron', ['Hair Vitamin', 'Hijab Hair Vitamin'], 'Perawatan Rambut > Treatment Rambut') },
 ];
+/** Mengembalikan false bila masih ada job yang belum selesai (batas waktu ±4 menit per eksekusi; dilanjutkan berikutnya). */
 function runDataJobs_() {
   const props = PropertiesService.getScriptProperties();
+  const deadline = Date.now() + 240000;
+  let pending = false;
   DATA_JOBS_.forEach((job) => {
     if (props.getProperty(job.id) === '1') return;
+    if (pending || Date.now() > deadline) return (pending = true);
     withLock_(
       () => {
         if (props.getProperty(job.id) === '1') return null;
@@ -299,17 +307,19 @@ function runDataJobs_() {
         (job.categories || []).forEach((name) => {
           if (!db_('MASTER_CATEGORIES').find((c) => c.Status !== STATUS.DELETED && c.NameKey === masterNameKey(name))) masterCreate_(user, 'category', { name, acknowledgeSimilar: true });
         });
-        if (job.run) return job.run(user);
+        if (job.run) return job.run(user, deadline);
         return importRun_(user, { type: 'products', rows: job.rows(), fileName: job.fileName });
       },
       (rep) => {
         if (!rep) return;
-        props.setProperty(job.id, '1'); // hanya setelah data tersimpan
+        if (rep.done === false) pending = true; // sebagian tersimpan; sisanya pada eksekusi berikutnya
+        else props.setProperty(job.id, '1'); // hanya setelah data tersimpan
         bumpDataVersion_();
         console.log(job.id + ': ' + JSON.stringify(job.run ? rep : { created: rep.created, skipped: rep.skipped, errors: rep.errorCount }));
       }
     );
   });
+  return !pending;
 }
 const OLD_ATTRIBUTE_TYPES_ = [
   JSON.stringify(['Warna', 'Shade', 'Aroma', 'Ukuran', 'Volume', 'Isi', 'Jenis', 'Tipe']),

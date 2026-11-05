@@ -91,9 +91,10 @@ const EMERON_PHOTO_BASE_ = 'https://admmeirista.github.io/master-produk-sku/foto
  * Pasang foto dari daftar (sekali jalan, dipanggil runDataJobs_). Foto disimpan ke Drive lewat photoSave_; bila Drive
  * belum diizinkan, link foto langsung (GitHub Pages) dipakai sebagai foto utama. Mengembalikan ringkasan untuk log.
  */
-function importPhotoList_(user, brandName, list, base) {
-  const brand = db_('MASTER_BRANDS').find((b) => b.Status !== STATUS.DELETED && masterNameKey(b.BrandName) === masterNameKey(brandName));
-  const prods = brand ? db_('MASTER_PRODUCTS').filter((p) => p.BrandID === brand.BrandID && p.Status !== STATUS.DELETED) : [];
+function importPhotoList_(user, brandName, list, base, deadline) {
+  // brandName kosong = semua brand (daftar yang hanya memakai gtin / sku)
+  const brand = brandName ? db_('MASTER_BRANDS').find((b) => b.Status !== STATUS.DELETED && masterNameKey(b.BrandName) === masterNameKey(brandName)) : null;
+  const prods = brandName && !brand ? [] : db_('MASTER_PRODUCTS').filter((p) => (!brand || p.BrandID === brand.BrandID) && p.Status !== STATUS.DELETED);
   const pids = {};
   prods.forEach((p) => (pids[p.ProductID] = p));
   const live = (v) => v.Status !== STATUS.DELETED && pids[v.ProductID];
@@ -106,8 +107,11 @@ function importPhotoList_(user, brandName, list, base) {
       return [];
     }
   };
-  const out = { saved: 0, linked: 0, skipped: 0, missing: [] };
+  const out = { saved: 0, linked: 0, skipped: 0, missing: [], done: true };
   list.forEach((it) => {
+    if (!out.done) return;
+    // batas waktu satu eksekusi Apps Script: sisanya dilanjutkan pada panggilan berikutnya (foto yang sudah ada dilewati)
+    if (deadline && Date.now() > deadline) return (out.done = false);
     const v = V.rows().find((v) => {
       if (!live(v)) return false;
       if (it.sku) return v.SKU === it.sku;
@@ -119,7 +123,7 @@ function importPhotoList_(user, brandName, list, base) {
     if (!v) return out.missing.push(it.f);
     const kind = it.kind === 'EXTRA' ? 'EXTRA' : 'MAIN';
     if (kind === 'MAIN' && v.ImageUrl) return out.skipped++; // foto yang sudah ada tidak ditimpa
-    const url = base + ('0' + it.f).slice(-2) + '.png';
+    const url = base + (typeof it.f === 'number' ? ('0' + it.f).slice(-2) : it.f) + '.png';
     let bytes = null;
     try {
       const res = UrlFetchApp.fetch(url, { muteHttpExceptions: true, followRedirects: true });
