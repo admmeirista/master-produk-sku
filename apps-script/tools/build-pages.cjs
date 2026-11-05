@@ -21,8 +21,8 @@ html = html.replace(
   '<meta charset="utf-8" />',
   '<meta charset="utf-8" />\n    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />\n    <title>Meirista SKU Management System</title>\n' +
     '    <link rel="manifest" href="manifest.webmanifest" />\n' +
-    '    <link rel="icon" type="image/png" href="favicon.png" />\n' +
-    '    <link rel="apple-touch-icon" href="apple-touch-icon.png" />\n' +
+    '    <link rel="icon" type="image/png" href="favicon.png?v=2" />\n' +
+    '    <link rel="apple-touch-icon" href="apple-touch-icon.png?v=2" />\n' +
     '    <meta name="theme-color" content="#62564D" />\n' +
     '    <meta name="mobile-web-app-capable" content="yes" />\n' +
     '    <meta name="apple-mobile-web-app-capable" content="yes" />\n' +

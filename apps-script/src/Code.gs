@@ -11,7 +11,7 @@ function doGet() {
   return HtmlService.createTemplateFromFile('Index')
     .evaluate()
     .setTitle(APP_NAME)
-    .setFaviconUrl(PAGES_BASE_ + 'favicon.png')
+    .setFaviconUrl(PAGES_BASE_ + 'favicon.png?v=2')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT);
 }
