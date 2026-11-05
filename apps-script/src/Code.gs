@@ -264,7 +264,7 @@ function autoSchema_() {
 }
 
 /** Naikkan bila ensureData_ / DATA_JOBS_ membawa migrasi data baru (memicu pembaruan otomatis sekali). */
-const DATA_MIGRATION_VERSION_ = 11;
+const DATA_MIGRATION_VERSION_ = 12;
 
 /**
  * Import data sekali jalan (mis. katalog pemasok) lewat jalur import produk biasa: tercatat di Riwayat import & audit
@@ -279,6 +279,7 @@ const DATA_JOBS_ = [
   { id: 'job_viva_2026', fileName: 'Import_Produk_Viva_2026.xlsx', rows: () => VIVA_2026_ROWS_, categories: ['Tata Rias Artistik'] },
   { id: 'job_hanasui_2026', fileName: 'Import_Produk_Hanasui.xlsx', rows: () => HANASUI_ROWS_ },
   { id: 'job_kino_2026', fileName: 'Kino Personal Care utk SR Putra.xlsx', rows: () => KINO_ROWS_, categories: ['Perawatan Kewanitaan'] },
+  { id: 'job_cc_2026', fileName: 'Master_SKU_Katalog_CC_2026_Tanpa_Claudia.xlsx', rows: () => CC_2026_ROWS_, categories: ['Pembersih Rumah Tangga', 'Antiseptik & Hand Sanitizer', 'Pengharum Ruangan'] },
 ];
 function runDataJobs_() {
   const props = PropertiesService.getScriptProperties();
