@@ -265,7 +265,7 @@ function autoSchema_() {
 }
 
 /** Naikkan bila ensureData_ / DATA_JOBS_ membawa migrasi data baru (memicu pembaruan otomatis sekali). */
-const DATA_MIGRATION_VERSION_ = 15;
+const DATA_MIGRATION_VERSION_ = 16;
 
 /**
  * Import data sekali jalan (mis. katalog pemasok) lewat jalur import produk biasa: tercatat di Riwayat import & audit
@@ -288,6 +288,8 @@ const DATA_JOBS_ = [
   { id: 'job_yoline_2026', fileName: 'yoline_produk_dan_foto.xlsx', rows: () => YOLINE_ROWS_, categories: ['Tisu Basah', 'Perawatan Mulut'] },
   // foto Yoline (142): bertahap per eksekusi bila waktu habis
   { id: 'job_yoline_foto', run: (user, deadline) => importPhotoList_(user, '', YOLINE_PHOTOS_, YOLINE_PHOTO_BASE_, deadline) },
+  { id: 'job_yoline2_2026', fileName: 'yoline_produk_dan_foto.xlsx (Gatsby, Purbasari, Ovale, Eskulin)', rows: () => YOLINE2_ROWS_ },
+  { id: 'job_yoline2_foto', run: (user, deadline) => importPhotoList_(user, '', YOLINE2_PHOTOS_, YOLINE2_PHOTO_BASE_, deadline) },
   { id: 'job_emeron_hairvit_cat', run: (user) => moveProductsCategory_(user, 'Emeron', ['Hair Vitamin', 'Hijab Hair Vitamin'], 'Perawatan Rambut > Treatment Rambut') },
 ];
 /** Mengembalikan false bila masih ada job yang belum selesai (batas waktu ±4 menit per eksekusi; dilanjutkan berikutnya). */

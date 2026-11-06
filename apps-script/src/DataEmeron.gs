@@ -116,6 +116,7 @@ function importPhotoList_(user, brandName, list, base, deadline) {
       if (!live(v)) return false;
       if (it.sku) return v.SKU === it.sku;
       if (it.gtin) return v.GTIN === it.gtin;
+      if (it.brand && masterNameKey((db_('MASTER_BRANDS').byId(pids[v.ProductID].BrandID) || {}).BrandName || '') !== masterNameKey(it.brand)) return false;
       const want = it.attrs.map((a) => a.toLowerCase());
       const have = vals(v);
       return pids[v.ProductID].ProductName === it.product && want.length === have.length && want.every((a, i) => a === have[i]);
