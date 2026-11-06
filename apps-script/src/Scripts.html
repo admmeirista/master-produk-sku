@@ -517,6 +517,15 @@ var NAV = [
 /** Halaman yang tidak punya menu sendiri → menu induknya (untuk menu aktif & breadcrumb). */
 var NAV_PARENT = { product: 'products', brands: 'products', categories: 'products', barcodes: 'products', quality: 'products', photos: 'products', photoShoot: 'photoList', bundle: 'bundles' };
 var MP = ['MANAJEMEN PRODUK', 'Master Produk'];
+/** Tab di dalam Master Produk (pindah tab = ganti halaman, bukan tambah riwayat). */
+var MTAB_GROUP = ['products', 'brands', 'categories', 'photos', 'quality', 'barcodes'];
+var M_TITLE = { dashboard: 'Beranda', scan: 'Scan Barcode', activity: 'Aktivitas', account: 'Akun', profile: 'Profil', product: 'Detail Produk', brands: 'Brand', categories: 'Kategori', barcodes: 'Barcode', quality: 'Kualitas Data', photos: 'Foto Produk', bundle: 'Kemasan & Bundling' };
+/** Judul halaman di bilah atas HP. */
+function pageTitle(p) {
+  if (M_TITLE[p]) return M_TITLE[p];
+  for (var i = 0; i < NAV.length; i++) for (var j = 0; j < NAV[i][1].length; j++) if (NAV[i][1][j][0] === p) return NAV[i][1][j][1];
+  return '';
+}
 var CRUMB_EXTRA = { scan: ['MANAJEMEN PRODUK', 'Scan Barcode'], activity: ['AKUN', 'Aktivitas'], account: ['AKUN', 'Akun'], product: MP, brands: MP, categories: MP, barcodes: MP, quality: MP, photos: MP, profile: ['AKUN', 'Profil'], bundle: ['MANAJEMEN PRODUK', 'Kemasan & Bundling'] };
 /**
  * Filter di HP (pola FMS): kolom cari tetap tampil, filter lain dilipat di balik tombol "Filter" (jumlah filter aktif),
@@ -649,7 +658,7 @@ var App = {
     var closed = {};
     try { closed = JSON.parse(Store.get('rpm_nav') || '{}'); } catch (e) { closed = {}; }
     document.body.classList.toggle('side-mini', Store.get('rpm_mini') === '1');
-    $app().innerHTML = '<div class="adm"><div class="mtop"><button class="icon-btn" id="m-open" aria-label="Menu">' + icon('menu') + '</button>' + brand('sm') + '</div>' +
+    $app().innerHTML = '<div class="adm"><div class="mtop"><button class="icon-btn" id="m-open" aria-label="Menu">' + icon('menu') + '</button><button class="icon-btn" id="m-back" type="button" aria-label="Kembali">' + icon('arrowLeft') + '</button><div class="mt-title" id="m-title"></div>' + brand('sm') + '</div>' +
       '<div class="side-bg" id="side-bg"></div><nav class="side" id="side">' + brand() + '<button type="button" class="side-mini-btn" id="side-mini" title="Ciutkan / lebarkan menu" aria-label="Ciutkan menu">' + icon('chevDown') + '</button>' +
       NAV.map(function (s) { var links = s[1].map(nav).join(''); return links ? '<div class="navgrp">' + (s[0] ? '<div class="sec">' + s[0] + '</div>' : '') + '<div class="grp-links">' + links + '</div></div>' : ''; }).join('') +
       '<div class="me"><a class="avatar" data-nav="profile" style="cursor:pointer" title="Profil & password">' + esc(initials(u.fullName)) + '</a><div style="min-width:0;cursor:pointer" data-nav="profile"><div class="n">' + esc(u.fullName) + '</div><div class="r">' + esc(STATUS_TXT[u.role] || u.role) + '</div></div><button id="adm-out" title="Keluar">' + icon('logout') + '</button></div></nav><main class="main" id="main"></main>' + App.tabbar() + '</div>';
@@ -658,6 +667,7 @@ var App = {
     $('#adm-out').onclick = function () { ask('Keluar dari aplikasi?', 'Keluar').then(function (y) { if (y) App.logout(); }); };
     var side = $('#side'), bg = $('#side-bg');
     $('#m-open').onclick = function () { side.classList.add('open'); bg.classList.add('open'); };
+    $('#m-back').onclick = function () { App.back(); };
     $$('#tabbar [data-tab]').forEach(function (b) { b.onclick = function () { var t = b.getAttribute('data-tab'); if (t === 'menu') { side.classList.add('open'); bg.classList.add('open'); } else App.go(t); }; });
     bg.onclick = function () { side.classList.remove('open'); bg.classList.remove('open'); };
     App.go(App.page || 'dashboard', App.pageArg);
@@ -665,20 +675,30 @@ var App = {
       App.keysBound = true;
       // F2 = langsung ke Master Produk › Cari SKU / Scan (scanner USB cukup ditembakkan setelahnya)
       document.addEventListener('keydown', function (e) { if (e.key === 'F2' && App.me) { e.preventDefault(); App.go('products', { focus: true }); } });
+      // HP: tombol kembali Android/browser = kembali ke halaman sebelumnya (pop-up ditutup dulu)
+      window.addEventListener('popstate', function () {
+        if (!App.me || document.body.classList.contains('staff')) return;
+        if (App.hist > 0) App.hist--;
+        var bgs = document.querySelectorAll('.modal-bg');
+        if (bgs.length) { var mm = bgs[bgs.length - 1].firstChild; if (mm && mm.close) mm.close(); App.histPush(); return; }
+        if (App.page && App.page !== 'dashboard') App.goBack();
+      });
     }
   },
   /** Pindah halaman. arg diteruskan ke halaman (mis. id produk). */
   go: function (page, arg, opts) {
     if (App.leaveGuard && !(opts && opts.force)) {
       var g = App.leaveGuard;
-      if (!g()) return ask('Isian registrasi belum disimpan. Tinggalkan halaman ini? (Isian tetap tersimpan sebagai draf di perangkat ini.)', 'Tinggalkan').then(function (y) { if (y) { App.leaveGuard = null; App.go(page, arg); } });
+      if (!g()) return ask('Isian registrasi belum disimpan. Tinggalkan halaman ini? (Isian tetap tersimpan sebagai draf di perangkat ini.)', 'Tinggalkan').then(function (y) { if (y) { App.leaveGuard = null; App.go(page, arg, opts); } });
     }
     App.leaveGuard = null;
     if (App.onLeave) { try { App.onLeave(); } catch (e) {} App.onLeave = null; }
     // Staf Foto hanya punya halaman kerja foto (menu lain juga ditolak server)
     if (typeof isPhotoStaff === 'function' && isPhotoStaff() && !/^photo(Home|List|Shoot|Profile)$/.test(page)) page = 'photoHome';
     if (!Pages[page]) page = 'dashboard';
+    App.track(page, arg, opts);
     App.page = page; App.pageArg = arg;
+    var mt = $('#m-title'); if (mt) mt.textContent = pageTitle(page);
     var navOf = NAV_PARENT[page] || page;
     if (navOf === 'photoList' && !(typeof isPhotoStaff === 'function' && isPhotoStaff())) navOf = 'products';
     $$('.side a.nv').forEach(function (a) { a.classList.toggle('on', a.getAttribute('data-nav') === navOf); });
@@ -692,7 +712,27 @@ var App = {
     try { Pages[page](main, arg); } catch (e) { main.innerHTML = errBox('Halaman gagal dimuat: ' + e.message); console.error(e); }
     enhanceFilters(main);
   },
-  /** Navigasi bawah untuk tampilan HP (≤ 760 px). */
+  /** Riwayat halaman untuk tombol kembali (HP). Pindah tab di Master Produk tidak menambah riwayat. */
+  stack: [],
+  hist: 0,
+  track: function (page, arg, opts) {
+    var key = function (p, a) { var x; try { x = JSON.stringify(a === undefined ? null : a); } catch (e) { x = ''; } return p + '|' + x; };
+    var S = App.stack;
+    if (opts && opts.back) { S.pop(); return; }
+    if (page === 'dashboard') { S.length = 0; return; }
+    if (!App.page) return;
+    var nk = key(page, arg);
+    if (key(App.page, App.pageArg) === nk) return;
+    for (var i = S.length - 1; i >= 0; i--) if (key(S[i].page, S[i].arg) === nk) { S.length = i; return; }
+    if (MTAB_GROUP.indexOf(App.page) >= 0 && MTAB_GROUP.indexOf(page) >= 0) return;
+    S.push({ page: App.page, arg: App.pageArg });
+    App.histPush();
+  },
+  useHist: function () { try { return window.top === window && isPhone(); } catch (e) { return false; } },
+  histPush: function () { if (!App.useHist()) return; try { history.pushState({ rpm: ++App.hist }, ''); } catch (e) {} },
+  back: function () { if (App.useHist() && App.hist > 0) history.back(); else App.goBack(); },
+  goBack: function () { var S = App.stack, prev = S[S.length - 1] || { page: 'dashboard' }; App.go(prev.page, prev.arg, { back: true }); },
+  /** Navigasi bawah untuk tampilan HP (≤ 760 px) — hanya tampil di Beranda. */
   tabbar: function () {
     var t = [['dashboard', 'grid', 'Beranda'], ['products', 'package', 'SKU'], ['scan', 'camera', 'Scan'], can('audit.read') ? ['activity', 'activity', 'Aktivitas'] : null, ['account', 'user', 'Akun']].filter(Boolean);
     return '<nav class="tabbar" id="tabbar" aria-label="Navigasi utama">' + t.map(function (x) { return '<button type="button" data-tab="' + x[0] + '"' + (x[0] === 'scan' ? ' class="fab"' : '') + '><span class="ti">' + icon(x[1]) + '</span><span class="tl">' + x[2] + '</span></button>'; }).join('') + '</nav>';
@@ -721,6 +761,6 @@ function pageHead(eyebrow, title, actions, sub) {
   var c = crumb(App.page);
   var bc = c ? '<nav class="crumbs" aria-label="Breadcrumb"><a data-crumb="dashboard">Beranda</a><span>›</span><span>' + esc(c[0].charAt(0) + c[0].slice(1).toLowerCase()) + '</span>' + (c[1] !== title ? '<span>›</span><a data-crumb="' + esc(App.page === 'product' ? 'products' : App.page) + '">' + esc(c[1]) + '</a>' : '') + '<span>›</span><b>' + esc(title) + '</b></nav>' : '<div class="eyebrow">' + esc(eyebrow) + '</div>';
   setTimeout(function () { $$('[data-crumb]').forEach(function (x) { x.onclick = function () { App.go(x.getAttribute('data-crumb')); }; }); });
-  return '<div class="ph"><div>' + bc + '<h2>' + esc(title) + '</h2>' + (sub ? '<div class="muted" style="margin-top:4px">' + sub + '</div>' : '') + '</div><div class="act">' + (actions || '') + '</div></div>';
+  return '<div class="ph"><div>' + bc + '<h2' + (title === pageTitle(App.page) ? ' class="ph-dup"' : '') + '>' + esc(title) + '</h2>' + (sub ? '<div class="muted" style="margin-top:4px">' + sub + '</div>' : '') + '</div><div class="act">' + (actions || '') + '</div></div>';
 }
 </script>

@@ -1383,4 +1383,27 @@ tr.sk-row:hover td{background:#FCF9F4}
   .skd-r{grid-template-columns:104px 1fr;gap:10px}
   .skd-act .btn{flex:1}
 }
+/* ---- v7: HP tanpa menu samping — menu ikon di Beranda, tombol kembali di bilah atas, navigasi bawah hanya di Beranda ---- */
+#m-back,.mt-title{display:none}
+.hm{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px 6px;background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px 8px 12px;margin:12px 0 4px;box-shadow:var(--shadow)}
+.hm-i{border:0;background:none;font:inherit;display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;padding:0;min-width:0;-webkit-tap-highlight-color:transparent;color:var(--fg)}
+.hm-ic{width:50px;height:50px;border-radius:16px;display:flex;align-items:center;justify-content:center;background:var(--c);color:#fff;box-shadow:0 4px 10px rgba(0,0,0,.12);transition:transform .1s}
+.hm-ic svg{width:24px;height:24px}
+.hm-i:active .hm-ic{transform:scale(.92)}
+.hm-l{font-size:11.5px;font-weight:700;line-height:1.2;text-align:center;max-width:100%;overflow-wrap:anywhere}
+.hm-more .hm-ic{background:#fff;color:var(--c);border:1.5px solid var(--line);box-shadow:none}
+.hm:not(.open) .hm-x{display:none}
+.hm.open .hm-more{order:99}
+@media (max-width:760px){
+  body:not(.staff) .side,body:not(.staff) .side-bg,body:not(.staff) #m-open{display:none!important}
+  body:not(.staff):not([data-page=dashboard]) #m-back{display:flex}
+  body:not(.staff):not([data-page=dashboard]) .mt-title{display:block;flex:1;min-width:0;color:#F8F1EA;font-weight:800;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  body:not(.staff):not([data-page=dashboard]) .mtop .brand{display:none}
+  body:not(.staff):not([data-page=dashboard]) .tabbar{display:none}
+  body:not(.staff):not([data-page=dashboard]):not([data-page=scan]) .main{padding-bottom:calc(28px + env(safe-area-inset-bottom))}
+  body:not(.staff):not([data-page=dashboard]) #toasts{bottom:calc(20px + env(safe-area-inset-bottom))}
+  body:not(.staff) .main>.back,body:not(.staff) .sc-head>#sbk{display:none}
+  body[data-page=dashboard] .mtop{padding-left:14px}
+  body:not(.staff):not([data-page=dashboard]) .ph h2.ph-dup,body:not(.staff) .sc-head h2{display:none}
+}
 </style>
