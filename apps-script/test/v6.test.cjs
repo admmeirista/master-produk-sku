@@ -650,3 +650,29 @@ test('pencocokan barcode cepat (indeks cache) = hasil barcodeLookup_ untuk semua
   const n = require('./lookup-equivalence.cjs').checkLookupEquivalence(G);
   assert.ok(n > 20, 'kode yang dibandingkan: ' + n);
 });
+
+test('paket Shopee (MULTIPACK) sekali jalan: MP000001 dst., komposisi sama dilewati, SKU tak dikenal dilaporkan', () => {
+  const L = createGas();
+  const o = JSON.parse(JSON.stringify(L.ctx.setup()));
+  const props = L.ctx.PropertiesService.getScriptProperties();
+  assert.equal(props.getProperty('job_shopee_multipack_2026'), '1', 'instalasi baru dilewati');
+  const tk = JSON.parse(JSON.stringify(L.ctx.api(null, 'auth.login', { email: o.admin.email, password: o.admin.password }))).data.token;
+  const c = (a, p) => JSON.parse(JSON.stringify(L.ctx.api(tk, a, p))).data;
+  c('brand.createMany', { names: ['Purbasari'] });
+  const pb = c('brand.list', {})[0];
+  const cat = c('category.list', {}).find((x) => x.name === 'Pelembab Wajah');
+  const p = c('product.save', { input: { brandId: pb.id, categoryId: cat.id, name: 'Body Serum Gluta Hya', baseUnit: 'PCS', variants: [{ attributes: [{ name: 'Volume', value: '180 ml' }], barcode: { mode: 'none' } }] } });
+  const sku = p.variants[0].sku;
+  const user = { email: o.admin.email };
+  const rep = JSON.parse(JSON.stringify(L.ctx.withLock_(() => L.ctx.importShopeeMultipacks_(user, 0, [[sku, 3, 0], [sku, 3, 0], [sku, 6, 1], ['PRD999999-001', 2, 0]]))));
+  assert.deepEqual([rep.created, rep.skipped, rep.errors.length, rep.done], [2, 1, 1, true]);
+  const list = c('bundle.list', { type: 'MULTIPACK' }).rows.sort((a, b) => a.sku.localeCompare(b.sku));
+  assert.deepEqual(list.map((b) => [b.sku, b.name, b.components[0].sku, Number(b.components[0].quantity), b.stockable]), [
+    ['MP000001', 'Paket 3 PCS Purbasari Body Serum Gluta Hya 180 ml', sku, 3, false],
+    ['MP000002', 'Paket 6 PCS Purbasari Body Serum Gluta Hya 180 ml', sku, 6, false],
+  ]);
+  assert.match(list[1].description, /boleh mix/);
+  const again = JSON.parse(JSON.stringify(L.ctx.withLock_(() => L.ctx.importShopeeMultipacks_(user, 0, [[sku, 3, 0], [sku, 6, 1]]))));
+  assert.deepEqual([again.created, again.skipped], [0, 2]);
+  assert.ok(L.ctx.db_('AUDIT_LOGS').rows().some((a) => a.Action === 'bundle.create'));
+});
