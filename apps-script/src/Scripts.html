@@ -518,8 +518,10 @@ var NAV = [
 var NAV_PARENT = { product: 'products', brands: 'products', categories: 'products', barcodes: 'products', quality: 'products', photos: 'products', photoShoot: 'photoList', bundle: 'bundles' };
 var MP = ['MANAJEMEN PRODUK', 'Master Produk'];
 /** Tab di dalam Master Produk (pindah tab = ganti halaman, bukan tambah riwayat). */
+/** Halaman utama HP: navigasi bawah tampil, tanpa tombol kembali. */
+var TOP_PAGES = ['dashboard', 'products', 'scan', 'activity', 'account'];
 var MTAB_GROUP = ['products', 'brands', 'categories', 'photos', 'quality', 'barcodes'];
-var M_TITLE = { dashboard: 'Beranda', scan: 'Scan Barcode', activity: 'Aktivitas', account: 'Akun', profile: 'Profil', product: 'Detail Produk', brands: 'Brand', categories: 'Kategori', barcodes: 'Barcode', quality: 'Kualitas Data', photos: 'Foto Produk', bundle: 'Kemasan & Bundling' };
+var M_TITLE = { dashboard: 'Beranda', scan: 'Scan Barcode', activity: 'Aktivitas', account: 'Menu', profile: 'Profil', product: 'Detail Produk', brands: 'Brand', categories: 'Kategori', barcodes: 'Barcode', quality: 'Kualitas Data', photos: 'Foto Produk', bundle: 'Kemasan & Bundling' };
 /** Judul halaman di bilah atas HP. */
 function pageTitle(p) {
   if (M_TITLE[p]) return M_TITLE[p];
@@ -698,6 +700,7 @@ var App = {
     if (!Pages[page]) page = 'dashboard';
     App.track(page, arg, opts);
     App.page = page; App.pageArg = arg;
+    document.body.classList.toggle('mtopl', TOP_PAGES.indexOf(page) >= 0);
     var mt = $('#m-title'); if (mt) mt.textContent = pageTitle(page);
     var navOf = NAV_PARENT[page] || page;
     if (navOf === 'photoList' && !(typeof isPhotoStaff === 'function' && isPhotoStaff())) navOf = 'products';
@@ -719,12 +722,12 @@ var App = {
     var key = function (p, a) { var x; try { x = JSON.stringify(a === undefined ? null : a); } catch (e) { x = ''; } return p + '|' + x; };
     var S = App.stack;
     if (opts && opts.back) { S.pop(); return; }
-    if (page === 'dashboard') { S.length = 0; return; }
+    if (TOP_PAGES.indexOf(page) >= 0) { S.length = 0; if (page !== 'dashboard' && !App.hist) App.histPush(); return; }
     if (!App.page) return;
     var nk = key(page, arg);
     if (key(App.page, App.pageArg) === nk) return;
     for (var i = S.length - 1; i >= 0; i--) if (key(S[i].page, S[i].arg) === nk) { S.length = i; return; }
-    if (MTAB_GROUP.indexOf(App.page) >= 0 && MTAB_GROUP.indexOf(page) >= 0) return;
+    if (TOP_PAGES.indexOf(App.page) < 0 && MTAB_GROUP.indexOf(App.page) >= 0 && MTAB_GROUP.indexOf(page) >= 0) return;
     S.push({ page: App.page, arg: App.pageArg });
     App.histPush();
   },
@@ -732,9 +735,9 @@ var App = {
   histPush: function () { if (!App.useHist()) return; try { history.pushState({ rpm: ++App.hist }, ''); } catch (e) {} },
   back: function () { if (App.useHist() && App.hist > 0) history.back(); else App.goBack(); },
   goBack: function () { var S = App.stack, prev = S[S.length - 1] || { page: 'dashboard' }; App.go(prev.page, prev.arg, { back: true }); },
-  /** Navigasi bawah untuk tampilan HP (≤ 760 px) — hanya tampil di Beranda. */
+  /** Navigasi bawah untuk tampilan HP (≤ 760 px) — tampil di halaman utama (TOP_PAGES). */
   tabbar: function () {
-    var t = [['dashboard', 'grid', 'Beranda'], ['products', 'package', 'SKU'], ['scan', 'camera', 'Scan'], can('audit.read') ? ['activity', 'activity', 'Aktivitas'] : null, ['account', 'user', 'Akun']].filter(Boolean);
+    var t = [['dashboard', 'grid', 'Beranda'], ['products', 'package', 'SKU'], ['scan', 'camera', 'Scan'], can('audit.read') ? ['activity', 'activity', 'Aktivitas'] : null, ['account', 'menu', 'Menu']].filter(Boolean);
     return '<nav class="tabbar" id="tabbar" aria-label="Navigasi utama">' + t.map(function (x) { return '<button type="button" data-tab="' + x[0] + '"' + (x[0] === 'scan' ? ' class="fab"' : '') + '><span class="ti">' + icon(x[1]) + '</span><span class="tl">' + x[2] + '</span></button>'; }).join('') + '</nav>';
   },
   logout: function () {
