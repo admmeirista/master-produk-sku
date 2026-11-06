@@ -85,13 +85,14 @@ Pages.dashboard = function (main) {
       var p = pc(have), tone = p >= 90 ? 'ok' : p >= 50 ? 'mid' : 'low';
       return '<button type="button" class="dmeter ' + tone + '"' + (go ? ' data-cm="' + go + '"' : '') + '><div class="dm-h"><b>' + label + '</b><span class="dm-p">' + p + '%</span></div><div class="dm-t"><i style="width:' + p + '%"></i></div><div class="dm-s">' + fmtNum(have || 0) + ' dari ' + fmtNum(n) + ' SKU Produk · ' + hint + '</div></button>';
     };
-    var brandRows = d.byBrand.length ? (function () {
-      var max = Math.max.apply(null, d.byBrand.map(function (b) { return b.n; }).concat([1]));
-      return '<div class="dbrands">' + d.byBrand.map(function (b) { return '<div class="dbr"><div class="dbr-n"><b>' + esc(b.name) + '</b><span>' + fmtNum(b.parents || 0) + ' SKU Parent</span></div><div class="dbr-t"><i style="width:' + Math.max(3, Math.round(b.n / max * 100)) + '%"></i></div><b class="dbr-v">' + fmtNum(b.n) + '</b></div>'; }).join('') + '</div>';
+    var topB = (d.byBrand || []).slice(0, 8), topC = (d.byCategory || []).slice(0, 8);
+    var brandRows = topB.length ? (function () {
+      var max = Math.max.apply(null, topB.map(function (b) { return b.n; }).concat([1]));
+      return '<div class="dbrands">' + topB.map(function (b) { return '<div class="dbr"><div class="dbr-n"><b>' + esc(b.name) + '</b><span>' + fmtNum(b.parents || 0) + ' SKU Parent</span></div><div class="dbr-t"><i style="width:' + Math.max(3, Math.round(b.n / max * 100)) + '%"></i></div><b class="dbr-v">' + fmtNum(b.n) + '</b></div>'; }).join('') + '</div>';
     })() : '<div class="muted">Belum ada data.</div>';
-    var catRows = (d.byCategory || []).length ? (function () {
-      var max = Math.max.apply(null, d.byCategory.map(function (b) { return b.n; }).concat([1]));
-      return '<div class="dbrands">' + d.byCategory.map(function (b) { return '<div class="dbr"><div class="dbr-n"><b>' + esc(b.name) + '</b></div><div class="dbr-t"><i style="width:' + Math.max(3, Math.round(b.n / max * 100)) + '%"></i></div><b class="dbr-v">' + fmtNum(b.n) + '</b></div>'; }).join('') + '</div>';
+    var catRows = topC.length ? (function () {
+      var max = Math.max.apply(null, topC.map(function (b) { return b.n; }).concat([1]));
+      return '<div class="dbrands">' + topC.map(function (b) { return '<div class="dbr"><div class="dbr-n"><b>' + esc(b.name) + '</b></div><div class="dbr-t"><i style="width:' + Math.max(3, Math.round(b.n / max * 100)) + '%"></i></div><b class="dbr-v">' + fmtNum(b.n) + '</b></div>'; }).join('') + '</div>';
     })() : '<div class="muted">Belum ada data.</div>';
     var chRows = Object.keys(d.channels || {}).map(function (k) { var x = d.channels[k]; return '<tr><td><b>' + esc(STATUS_TXT[k] || k) + '</b></td><td class="num">' + fmtNum(x.unmapped || 0) + '</td><td class="num">' + fmtNum(x.mapped || 0) + '</td><td class="num">' + fmtNum((x.exported || 0) + (x.confirmed || 0)) + '</td><td class="num">' + fmtNum((x.error || 0) + (x.mismatch || 0)) + '</td></tr>'; }).join('');
 
@@ -110,8 +111,8 @@ Pages.dashboard = function (main) {
         '</div>') +
       P('Perlu ditindaklanjuti', go2('quality', 'Periksa semua'), '<div id="dq">' + loadingBox() + '</div>');
     var paneBrands =
-      P('SKU Produk per brand', '<span class="right muted" style="font-size:12px">' + (d.byBrand.length >= 8 ? '8 brand teratas' : '') + '</span>', brandRows) +
-      P('SKU Produk per kategori', '<span class="right muted" style="font-size:12px">' + ((d.byCategory || []).length >= 8 ? '8 kategori teratas' : '') + '</span>', catRows) +
+      P('SKU Produk per brand', '<span class="right muted" style="font-size:12px">' + (d.byBrand.length > 8 ? '8 dari ' + d.byBrand.length + ' brand' : '') + '</span>', brandRows) +
+      P('SKU Produk per kategori', '<span class="right muted" style="font-size:12px">' + ((d.byCategory || []).length > 8 ? '8 dari ' + d.byCategory.length + ' kategori' : '') + '</span>', catRows) +
       P('SKU Parent terbaru', go2('products', 'Lihat semua'),
         d.recentProducts.length ? '<div class="tablewrap"><table class="t"><thead><tr><th>SKU Parent</th><th>Brand</th><th class="num">SKU Produk</th><th>Dibuat</th></tr></thead><tbody>' + d.recentProducts.map(function (p) {
           return '<tr class="click" data-id="' + esc(p.id) + '"><td><b>' + esc(p.brandName && String(p.name).toLowerCase().indexOf(String(p.brandName).toLowerCase()) !== 0 ? p.brandName + ' ' + p.name : p.name) + '</b><div class="sku" style="font-size:11.5px">' + esc(p.productNo) + '</div></td><td>' + esc(p.brandName || '') + '</td><td class="num">' + p.variants + '</td><td class="nowrap">' + fmtDate(p.createdAt) + '</td></tr>';

@@ -100,7 +100,7 @@ function settingsSave_(user, input) {
 
 /** Dashboard dari cache per versi data — dihitung ulang hanya setelah ada perubahan data. */
 function dashboard_() {
-  const key = 'dash3:' + dataVersion_();
+  const key = 'dash4:' + dataVersion_();
   const hit = cacheGetBig_(key);
   if (hit) return hit;
   const d = dashboardCompute_();
@@ -169,12 +169,10 @@ function dashboardCompute_() {
       .map((b) => ({ file: b.FileName, type: b.ImportType, status: b.Status, total: Number(b.TotalRows) || 0, created: Number(b.CreatedRows) || 0, skipped: Number(b.SkippedRows) || 0, errors: Number(b.ErrorRows) || 0, by: String(b.CreatedBy || '').split('@')[0], at: b.CreatedAt })),
     byBrand: Object.keys(byBrand)
       .map((k) => ({ name: k, n: byBrand[k], parents: Object.keys(parentsByBrand[k]).length }))
-      .sort((a, b) => b.n - a.n)
-      .slice(0, 8),
+      .sort((a, b) => b.n - a.n),
     byCategory: Object.keys(byCat)
       .map((k) => ({ name: k, n: byCat[k] }))
-      .sort((a, b) => b.n - a.n)
-      .slice(0, 8),
+      .sort((a, b) => b.n - a.n),
     recentProducts: P.filter((p) => p.Status !== STATUS.DELETED)
       .sort((a, b) => String(b.CreatedAt).localeCompare(String(a.CreatedAt)))
       .slice(0, 6)
