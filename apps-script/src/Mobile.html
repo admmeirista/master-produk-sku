@@ -328,35 +328,49 @@ Pages.account = function (main) {
   $('#alo', main).onclick = function () { ask('Keluar dari aplikasi?', 'Keluar').then(function (y) { if (y) App.logout(); }); };
 };
 
-/* ───────── Pintasan Beranda HP (menu lengkap ada di tab Menu) ───────── */
-function homeMenu() {
-  var items = [can('product.write') ? ['register', 'Registrasi', 'plus'] : null, ['products', 'Master SKU', 'package'], ['quality', 'Perlu Tindakan', 'alertCircle']].filter(Boolean);
-  return '<div class="hq">' + items.map(function (x) { return '<button type="button" data-hm="' + x[0] + '"><span class="hq-ic">' + icon(x[2]) + '</span><span>' + esc(x[1]) + '</span></button>'; }).join('') + '</div>';
-}
-function bindHomeMenu(main) {
-  $$('[data-hm]', main).forEach(function (b) { b.onclick = function () { App.go(b.getAttribute('data-hm')); }; });
-}
-
-/* ───────── Beranda versi HP: aksi dulu, angka secukupnya ───────── */
+/* ───────── Dashboard versi HP: angka & kelengkapan data sekilas ───────── */
 function mobileHome(main, d) {
-  var c = d.counts, u = App.me.user, w = can('product.write');
-  main.innerHTML = '<div id="db-body" class="mh"><div class="mh-hello"><div class="muted">Selamat bekerja,</div><h2>' + esc(String(u.fullName || '').split(' (')[0]) + '</h2></div>' +
-    '<button type="button" class="mh-scan" id="mhs">' + icon('camera') + '<span><b>Scan Barcode</b><small>Cek SKU atau daftarkan barang baru</small></span>' + icon('arrowRight') + '</button>' +
-    homeMenu() +
-    '<div class="mh-stats"><button type="button" data-go="products"><b>' + fmtNum(c.variants) + '</b><span>SKU Produk aktif</span></button><button type="button" data-go="products"><b>' + fmtNum(c.products) + '</b><span>SKU Parent</span></button>' +
-    '<button type="button" data-gs="enrich"><b>' + fmtNum(c.withoutBarcode) + '</b><span>Tanpa barcode</span></button></div>' +
+  var c = d.counts, L = d.logistics || {}, n = c.variants || 0, u = App.me.user;
+  var pc = function (x) { return n ? Math.round((x || 0) / n * 100) : 0; };
+  var hasBc = (c.withGtin || 0) + (c.withInternal || 0);
+  var score = Math.round((pc(hasBc) + pc(L.photo) + pc(L.weight)) / 3);
+  var tone = function (p) { return p >= 90 ? 'ok' : p >= 50 ? 'mid' : 'low'; };
+  var kpi = function (ic, v, label, sub, go) { return '<button type="button" class="mk" data-go="' + go + '"><span class="mk-i">' + icon(ic) + '</span><b>' + fmtNum(v || 0) + '</b><span class="mk-l">' + label + '</span>' + (sub ? '<small>' + sub + '</small>' : '') + '</button>'; };
+  var meter = function (label, have, missTxt, go) {
+    var p = pc(have), miss = n - (have || 0);
+    return '<button type="button" class="dmeter ' + tone(p) + '"' + (go ? ' data-cm="' + go + '"' : '') + '><div class="dm-h"><b>' + label + '</b><span class="dm-p">' + p + '%</span></div><div class="dm-t"><i style="width:' + p + '%"></i></div><div class="dm-s">' + (miss > 0 ? '<b class="tx-err">' + fmtNum(miss) + '</b> ' + missTxt : 'Semua lengkap') + '</div></button>';
+  };
+  var bars = function (list) {
+    if (!list || !list.length) return '<div class="muted">Belum ada data.</div>';
+    var max = Math.max.apply(null, list.map(function (b) { return b.n; }).concat([1]));
+    return '<div class="dbrands">' + list.map(function (b) { return '<div class="dbr"><div class="dbr-n"><b>' + esc(b.name) + '</b>' + (b.parents ? '<span>' + fmtNum(b.parents) + ' SKU Induk</span>' : '') + '</div><div class="dbr-t"><i style="width:' + Math.max(3, Math.round(b.n / max * 100)) + '%"></i></div><b class="dbr-v">' + fmtNum(b.n) + '</b></div>'; }).join('') + '</div>';
+  };
+  var R = 34, CIRC = 2 * Math.PI * R;
+  var donut = '<svg viewBox="0 0 80 80" class="mdonut ' + tone(score) + '"><circle cx="40" cy="40" r="' + R + '" class="tr"/><circle cx="40" cy="40" r="' + R + '" class="vl" stroke-dasharray="' + (CIRC * score / 100).toFixed(1) + ' ' + CIRC.toFixed(1) + '" transform="rotate(-90 40 40)"/><text x="40" y="46" text-anchor="middle">' + score + '%</text></svg>';
+  main.innerHTML = '<div id="db-body" class="mh"><div class="mh-hello"><div class="muted">Halo, ' + esc(String(u.fullName || '').split(' (')[0]) + '</div><h2>Dashboard</h2></div>' +
+    '<div class="mk4">' +
+      kpi('tag', c.brands, 'Brand', '', 'brands') +
+      kpi('package', c.products, 'SKU Induk', c.drafts ? fmtNum(c.drafts) + ' draft' : '', 'products') +
+      kpi('layers', n, 'SKU Produk', c.skus > n ? '+' + fmtNum(c.skus - n) + ' SKU kemasan' : '', 'products') +
+      kpi('grid', c.categories, 'Kategori', '', 'categories') +
+    '</div>' +
+    '<div class="mh-card"><div class="mc-h">' + donut + '<div><h3>Kelengkapan data</h3><div class="muted">Rata-rata barcode, foto &amp; berat dari ' + fmtNum(n) + ' SKU Produk aktif</div></div></div>' +
+      '<div class="dmeters">' +
+        meter('Barcode', hasBc, 'tanpa barcode', 'incomplete') +
+        meter('Foto produk', L.photo, 'tanpa foto', 'photos') +
+        meter('Berat satuan', L.weight, 'tanpa berat', 'noweight') +
+        meter('Kemasan BOX', L.box, 'tanpa BOX (opsional)', '') +
+      '</div></div>' +
     '<div class="mh-sec"><h3>Perlu tindakan</h3><div id="mhp">' + loadingBox() + '</div></div>' +
-    '<div class="mh-sec"><h3>Aktivitas terbaru</h3><ul class="act-list">' + (d.recent.length ? d.recent.slice(0, 5).map(function (a) { return '<li><span class="act-dot"></span><div class="grow"><b>' + esc(actionLabel(a.action)) + '</b><div class="muted">' + esc(String(a.actor || '').split('@')[0]) + ' · ' + fmtDate(a.createdAt) + '</div></div></li>'; }).join('') : '<li class="muted">Belum ada aktivitas.</li>') + '</ul>' +
-    (can('audit.read') ? '<button type="button" class="link-btn" data-go="activity">Lihat semua aktivitas ' + icon('arrowRight') + '</button>' : '') + '</div></div>';
-  $('#mhs', main).onclick = function () { App.go('scan'); };
-  bindHomeMenu(main);
+    '<div class="mh-card"><h3>SKU Produk per brand</h3>' + bars(d.byBrand) + '</div>' +
+    '<div class="mh-card"><h3>SKU Produk per kategori</h3>' + bars(d.byCategory) + '</div></div>';
   $$('[data-go]', main).forEach(function (b) { b.onclick = function () { App.go(b.getAttribute('data-go')); }; });
-  $$('[data-gs]', main).forEach(function (b) { b.onclick = function () { App.go('products', { completeness: 'incomplete' }); }; });
+  $$('[data-cm]', main).forEach(function (b) {
+    var k = b.getAttribute('data-cm');
+    b.onclick = function () { if (k === 'photos') App.go(can('photo.manage') ? 'photos' : 'products', { filter: 'none', completeness: 'nophoto' }); else App.go('products', { completeness: k }); };
+  });
   var pend = [];
-  if (c.drafts) pend.push(['edit', fmtNum(c.drafts) + ' SKU Parent masih draft', 'Selesaikan & verifikasi', function () { App.go('products', { status: 'DRAFT' }); }]);
-  if (c.withoutBarcode) pend.push(['barcode', fmtNum(c.withoutBarcode) + ' SKU Produk belum punya barcode', 'Scan GTIN dari kemasan', function () { App.go('products', { completeness: 'incomplete' }); }]);
-  var L = d.logistics || {};
-  if (c.variants && L.photo < c.variants) pend.push(['camera', fmtNum(c.variants - L.photo) + ' SKU Produk tanpa foto', can('photo.manage') ? 'Tugaskan ke Staf Foto' : 'Lengkapi foto', function () { App.go(can('photo.manage') ? 'photos' : 'products', { filter: 'none', completeness: 'nophoto' }); }]);
+  if (c.drafts) pend.push(['edit', fmtNum(c.drafts) + ' SKU Induk masih draft', 'Selesaikan & verifikasi', function () { App.go('products', { status: 'DRAFT' }); }]);
   api('quality.get', {}, { quiet: true, silent: true }).then(function (q) {
     q.sections.filter(function (s) { return s.count && s.severity === 'error'; }).forEach(function (s) { pend.unshift(['alertCircle', s.label + ' (' + fmtNum(s.count) + ')', 'Harus diperbaiki', function () { App.go('quality'); }]); });
   }).catch(function () {}).then(function () {

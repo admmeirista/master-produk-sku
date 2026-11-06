@@ -67,9 +67,13 @@ function pickProduct(title) {
 /* ───────── Dashboard ───────── */
 /* Istilah: SKU Parent = produk induk (mis. "Viva Milk Cleanser"); SKU Produk = varian yang dijual (mis. "… Lemon 100 ml"). */
 Pages.dashboard = function (main) {
-  main.innerHTML = pageHead('', 'Ringkasan', can('product.write') ? '<button class="btn pri hide-m" data-go="register">' + icon('plus') + 'Registrasi Produk</button>' : '') + '<div id="db-body">' + loadingBox() + '</div>';
+  main.innerHTML = pageHead('', 'Dashboard', can('product.write') ? '<button class="btn pri hide-m" data-go="register">' + icon('plus') + 'Registrasi Produk</button>' : '') + '<div id="db-body">' + loadingBox() + '</div>';
   $$('[data-go]', main).forEach(function (b) { b.onclick = function () { App.go(b.getAttribute('data-go')); }; });
-  api('dashboard.get', {}, { quiet: true }).then(function (d) {
+  // tampil seketika dari data terakhir di perangkat, lalu diperbarui di belakang layar
+  var last = null;
+  try { last = Store.get('rpm_dash'); } catch (e) { last = null; }
+  var render = function (d) {
+    if (App.page !== 'dashboard' || !main.isConnected) return;
     if (isPhone()) return mobileHome(main, d); // HP: beranda berorientasi tindakan (Scan dulu)
     var c = d.counts, L = d.logistics || {}, n = c.variants || 0;
     var pc = function (x) { return n ? Math.round((x || 0) / n * 100) : 0; };
@@ -85,11 +89,15 @@ Pages.dashboard = function (main) {
       var max = Math.max.apply(null, d.byBrand.map(function (b) { return b.n; }).concat([1]));
       return '<div class="dbrands">' + d.byBrand.map(function (b) { return '<div class="dbr"><div class="dbr-n"><b>' + esc(b.name) + '</b><span>' + fmtNum(b.parents || 0) + ' SKU Parent</span></div><div class="dbr-t"><i style="width:' + Math.max(3, Math.round(b.n / max * 100)) + '%"></i></div><b class="dbr-v">' + fmtNum(b.n) + '</b></div>'; }).join('') + '</div>';
     })() : '<div class="muted">Belum ada data.</div>';
+    var catRows = (d.byCategory || []).length ? (function () {
+      var max = Math.max.apply(null, d.byCategory.map(function (b) { return b.n; }).concat([1]));
+      return '<div class="dbrands">' + d.byCategory.map(function (b) { return '<div class="dbr"><div class="dbr-n"><b>' + esc(b.name) + '</b></div><div class="dbr-t"><i style="width:' + Math.max(3, Math.round(b.n / max * 100)) + '%"></i></div><b class="dbr-v">' + fmtNum(b.n) + '</b></div>'; }).join('') + '</div>';
+    })() : '<div class="muted">Belum ada data.</div>';
     var chRows = Object.keys(d.channels || {}).map(function (k) { var x = d.channels[k]; return '<tr><td><b>' + esc(STATUS_TXT[k] || k) + '</b></td><td class="num">' + fmtNum(x.unmapped || 0) + '</td><td class="num">' + fmtNum(x.mapped || 0) + '</td><td class="num">' + fmtNum((x.exported || 0) + (x.confirmed || 0)) + '</td><td class="num">' + fmtNum((x.error || 0) + (x.mismatch || 0)) + '</td></tr>'; }).join('');
 
     var P = function (title, act, body, cls) { return '<div class="panel ' + (cls || '') + '"><div class="panel-h"><h3>' + title + '</h3>' + (act || '') + '</div><div class="pbody">' + body + '</div></div>'; };
     var go2 = function (page, label) { return '<button class="btn sm ghost right" data-go2="' + page + '">' + label + ' ' + icon('arrowRight') + '</button>'; };
-    var TABS = [['quality', 'Kelengkapan & tindak lanjut', 'shield'], ['brands', 'SKU per brand & terbaru', 'layers'], ['activity', 'Aktivitas & integrasi', 'activity']];
+    var TABS = [['quality', 'Kelengkapan & tindak lanjut', 'shield'], ['brands', 'Brand, kategori & terbaru', 'layers'], ['activity', 'Import & integrasi', 'link']];
     var tabNow = Store.get('rpm_dtab') || 'quality';
     if (!TABS.some(function (t) { return t[0] === tabNow; })) tabNow = 'quality';
     var paneQuality =
@@ -103,12 +111,12 @@ Pages.dashboard = function (main) {
       P('Perlu ditindaklanjuti', go2('quality', 'Periksa semua'), '<div id="dq">' + loadingBox() + '</div>');
     var paneBrands =
       P('SKU Produk per brand', '<span class="right muted" style="font-size:12px">' + (d.byBrand.length >= 8 ? '8 brand teratas' : '') + '</span>', brandRows) +
+      P('SKU Produk per kategori', '<span class="right muted" style="font-size:12px">' + ((d.byCategory || []).length >= 8 ? '8 kategori teratas' : '') + '</span>', catRows) +
       P('SKU Parent terbaru', go2('products', 'Lihat semua'),
         d.recentProducts.length ? '<div class="tablewrap"><table class="t"><thead><tr><th>SKU Parent</th><th>Brand</th><th class="num">SKU Produk</th><th>Dibuat</th></tr></thead><tbody>' + d.recentProducts.map(function (p) {
           return '<tr class="click" data-id="' + esc(p.id) + '"><td><b>' + esc(p.brandName && String(p.name).toLowerCase().indexOf(String(p.brandName).toLowerCase()) !== 0 ? p.brandName + ' ' + p.name : p.name) + '</b><div class="sku" style="font-size:11.5px">' + esc(p.productNo) + '</div></td><td>' + esc(p.brandName || '') + '</td><td class="num">' + p.variants + '</td><td class="nowrap">' + fmtDate(p.createdAt) + '</td></tr>';
         }).join('') + '</tbody></table></div>' : emptyBox('Belum ada produk', 'Mulai dari Registrasi Produk.'));
     var paneActivity =
-      P('Aktivitas terbaru', can('audit.read') ? go2('audit', 'Semua') : '', '<ul class="feed">' + (d.recent.length ? d.recent.slice(0, 8).map(function (a) { return '<li><span class="dot"></span><div><b>' + esc(actionLabel(a.action)) + '</b><div class="muted">' + esc(String(a.actor || '').split('@')[0]) + ' · ' + fmtDate(a.createdAt) + '</div></div></li>'; }).join('') : '<li class="muted">Belum ada aktivitas.</li>') + '</ul>') +
       '<div class="dstack">' +
         P('Status import data', can('export.run') ? go2('io', 'Import') : '',
           (d.imports || []).length ? '<ul class="imp-feed">' + d.imports.map(function (b) { return '<li><span class="dt-i ' + (b.errors ? 'err' : 'ok') + '">' + icon(b.errors ? 'alert' : 'check') + '</span><div class="grow" style="min-width:0"><b>' + esc(b.file || b.type) + '</b><div class="muted">' + fmtNum(b.total) + ' baris · ' + fmtNum(b.created) + ' diproses · ' + fmtNum(b.skipped) + ' dilewati · <span class="' + (b.errors ? 'tx-err' : '') + '">' + fmtNum(b.errors) + ' ditolak</span></div><div class="muted">' + esc(b.by) + ' · ' + fmtDate(b.at) + '</div></div></li>'; }).join('') + '</ul>' : '<div class="dempty">' + icon('upload') + '<div><b>Belum ada import</b><span>Data master dapat dimasukkan melalui Import & Export.</span></div></div>') +
@@ -164,7 +172,13 @@ Pages.dashboard = function (main) {
         (info.length ? '<div class="dinfo">Catatan opsional: ' + info.map(function (s) { return esc(term(s.label)) + ' (' + fmtNum(s.count) + ')'; }).join(' · ') + '</div>' : '');
       $$('.dt', el).forEach(function (b) { b.onclick = function () { App.go('quality'); }; });
     }).catch(function () { var el = $('#dq', main); if (el) el.innerHTML = '<div class="muted">Gagal memuat.</div>'; });
-  }).catch(function (e) { $('#db-body', main).innerHTML = errBox(e.message); });
+  };
+  if (last) { try { render(JSON.parse(last)); } catch (e) { last = null; } }
+  api('dashboard.get', {}, { quiet: true, silent: !!last }).then(function (d) {
+    var s = JSON.stringify(d);
+    try { Store.set('rpm_dash', s); } catch (e) {}
+    if (s !== last) render(d);
+  }).catch(function (e) { if (!last) $('#db-body', main).innerHTML = errBox(e.message); });
 };
 
 /* ───────── Master Produk (direktori) ───────── */

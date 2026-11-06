@@ -104,7 +104,7 @@ const ROUTES = {
   'bundle.setStatus': { perm: 'product.write', write: true, fn: (u, p) => bundleSetStatus_(u, p) },
   'bundle.resolve': { perm: 'product.read', fn: (u, p) => bundleResolve_(p) },
 
-  'quality.get': { perm: 'product.read', fn: () => dataQuality_() },
+  'quality.get': { perm: 'product.read', fn: () => dataQualityCached_() },
   'attribute.list': { perm: 'product.read', fn: (u, p) => attributeValues_(p) },
   'attribute.save': { perm: 'master.write', write: true, fn: (u, p) => attributeValueSave_(u, p) },
   'attribute.delete': { perm: 'master.write', write: true, fn: (u, p) => attributeValueDelete_(u, p) },

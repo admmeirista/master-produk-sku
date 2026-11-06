@@ -1404,4 +1404,26 @@ tr.sk-row:hover td{background:#FCF9F4}
   body.mtopl .mtop{padding-left:14px}
   body:not(.staff):not(.mtopl) .ph h2.ph-dup,body:not(.staff):not(.mtopl) .sc-head h2{display:none}
 }
+/* ---- v7.1: Dashboard HP — kartu angka, donat kelengkapan, grafik brand & kategori ---- */
+.mk4{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:4px 0 12px}
+.mk{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;font:inherit;color:var(--fg);cursor:pointer;box-shadow:var(--shadow);-webkit-tap-highlight-color:transparent}
+.mk:active{background:var(--acc-soft)}
+.mk-i{width:32px;height:32px;border-radius:10px;background:var(--acc-soft);color:var(--acc-ink);display:flex;align-items:center;justify-content:center;margin-bottom:6px}
+.mk-i svg{width:17px;height:17px}
+.mk b{font-size:24px;font-weight:900;letter-spacing:-.02em;line-height:1.1}
+.mk-l{font-size:12.5px;font-weight:800;color:var(--muted)}
+.mk small{font-size:11px;color:var(--muted);font-weight:600}
+.mh-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-top:12px;box-shadow:var(--shadow)}
+.mh-card h3{font-size:14px;margin:0 0 10px}
+.mc-h{display:flex;align-items:center;gap:14px;margin-bottom:12px}
+.mc-h h3{margin:0 0 2px}.mc-h .muted{font-size:12px;line-height:1.4}
+.mdonut{width:76px;height:76px;flex:none}
+.mdonut circle{fill:none;stroke-width:9}
+.mdonut .tr{stroke:var(--line-2)}
+.mdonut .vl{stroke:var(--ok);stroke-linecap:round}
+.mdonut.mid .vl{stroke:#e0a92b}.mdonut.low .vl{stroke:var(--acc)}
+.mdonut text{font-size:17px;font-weight:900;fill:var(--fg)}
+#db-body.mh .dmeters{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px}
+.mh .dmeter{border:1px solid var(--line-2)!important;padding:8px 10px!important}
+.mh .dbr{grid-template-columns:minmax(0,110px) minmax(0,1fr) 40px;gap:10px}
 </style>

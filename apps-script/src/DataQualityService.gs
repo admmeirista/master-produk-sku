@@ -4,6 +4,16 @@
  * Tindakan lanjut: edit produk, nonaktifkan, atau controlled deprecation (variant.deprecate).
  */
 
+/** Hasil pemeriksaan kualitas dari cache per versi data (pemeriksaan berat — dijalankan ulang hanya setelah ada perubahan). */
+function dataQualityCached_() {
+  const key = 'dq1:' + dataVersion_();
+  const hit = cacheGetBig_(key);
+  if (hit) return hit;
+  const d = dataQuality_();
+  cachePutBig_(key, d);
+  return d;
+}
+
 function dataQuality_() {
   const P = db_('MASTER_PRODUCTS').rows();
   const V = db_('PRODUCT_VARIANTS').rows();

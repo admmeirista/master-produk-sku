@@ -98,7 +98,17 @@ function settingsSave_(user, input) {
 
 // ------------------------------------------------------------------ Dashboard
 
+/** Dashboard dari cache per versi data — dihitung ulang hanya setelah ada perubahan data. */
 function dashboard_() {
+  const key = 'dash2:' + dataVersion_();
+  const hit = cacheGetBig_(key);
+  if (hit) return hit;
+  const d = dashboardCompute_();
+  cachePutBig_(key, d);
+  return d;
+}
+
+function dashboardCompute_() {
   const P = db_('MASTER_PRODUCTS').rows();
   const pById = indexBy_(P, 'ProductID');
   const V = db_('PRODUCT_VARIANTS').rows();
@@ -107,12 +117,16 @@ function dashboard_() {
   P.forEach((p) => p.Status === STATUS.ACTIVE && (liveP[p.ProductID] = 1));
   const liveV = V.filter((v) => v.Status === STATUS.ACTIVE && liveP[v.ProductID]);
   const brands = indexBy_(db_('MASTER_BRANDS').rows(), 'BrandID');
+  const cats = indexBy_(db_('MASTER_CATEGORIES').rows(), 'CategoryID');
   const byBrand = {};
+  const byCat = {};
   const parentsByBrand = {};
   liveV.forEach((v) => {
     const p = pById[v.ProductID];
     const b = (brands[p.BrandID] || {}).BrandName || '-';
     byBrand[b] = (byBrand[b] || 0) + 1;
+    const k = (cats[p.CategoryID] || {}).CategoryName || 'Tanpa kategori';
+    byCat[k] = (byCat[k] || 0) + 1;
     (parentsByBrand[b] = parentsByBrand[b] || {})[p.ProductID] = 1;
   });
   // kelengkapan logistik per SKU Produk (satuan dasar & kemasan BOX)
@@ -157,15 +171,14 @@ function dashboard_() {
       .map((k) => ({ name: k, n: byBrand[k], parents: Object.keys(parentsByBrand[k]).length }))
       .sort((a, b) => b.n - a.n)
       .slice(0, 8),
+    byCategory: Object.keys(byCat)
+      .map((k) => ({ name: k, n: byCat[k] }))
+      .sort((a, b) => b.n - a.n)
+      .slice(0, 8),
     recentProducts: P.filter((p) => p.Status !== STATUS.DELETED)
       .sort((a, b) => String(b.CreatedAt).localeCompare(String(a.CreatedAt)))
       .slice(0, 6)
       .map((p) => ({ id: p.ProductID, name: p.ProductName, productNo: p.ProductCode, brandName: (brands[p.BrandID] || {}).BrandName, createdAt: p.CreatedAt, createdBy: p.CreatedBy, variants: V.filter((v) => v.ProductID === p.ProductID && v.Status !== STATUS.DELETED).length })),
-    recent: db_('AUDIT_LOGS')
-      .rows()
-      .slice(-10)
-      .reverse()
-      .map((a) => ({ action: a.Action, actor: a.Actor, createdAt: a.CreatedAt, entityType: a.EntityType, entityId: a.EntityID })),
   };
 }
 
