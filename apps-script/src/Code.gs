@@ -265,7 +265,7 @@ function autoSchema_() {
 }
 
 /** Naikkan bila ensureData_ / DATA_JOBS_ membawa migrasi data baru (memicu pembaruan otomatis sekali). */
-const DATA_MIGRATION_VERSION_ = 19;
+const DATA_MIGRATION_VERSION_ = 20;
 
 /**
  * Import data sekali jalan (mis. katalog pemasok) lewat jalur import produk biasa: tercatat di Riwayat import & audit
@@ -295,6 +295,7 @@ const DATA_JOBS_ = [
   { id: 'job_mega_foto', run: (user, deadline) => importPhotoList_(user, '', MEGA_PHOTOS_, MEGA_PHOTO_BASE_, deadline) },
   { id: 'job_shopee_multipack_2026', run: (user, deadline) => importShopeeMultipacks_(user, deadline) },
   { id: 'job_shopee_baru_2026', fileName: 'Listing Shopee stok > 0 (mass update 6 Nov 2026)', rows: () => SHOPEE_BARU_ROWS_, categories: ['Perawatan Mulut'] },
+  { id: 'job_shopee_baru2_2026', fileName: 'Listing Shopee tahap 2 — varian saudara (6 Nov 2026)', rows: () => SHOPEE_BARU2_ROWS_ },
 ];
 /** Mengembalikan false bila masih ada job yang belum selesai (batas waktu ±4 menit per eksekusi; dilanjutkan berikutnya). */
 function runDataJobs_() {
