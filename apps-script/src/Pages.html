@@ -173,11 +173,11 @@ Pages.dashboard = function (main) {
       $$('.dt', el).forEach(function (b) { b.onclick = function () { App.go('quality'); }; });
     }).catch(function () { var el = $('#dq', main); if (el) el.innerHTML = '<div class="muted">Gagal memuat.</div>'; });
   };
-  if (last) { try { render(JSON.parse(last)); } catch (e) { last = null; } }
+  if (last) { try { render(JSON.parse(last)); } catch (e) { last = null; try { Store.del('rpm_dash'); } catch (x) {} } }
   api('dashboard.get', {}, { quiet: true, silent: !!last }).then(function (d) {
     var s = JSON.stringify(d);
     try { Store.set('rpm_dash', s); } catch (e) {}
-    if (s !== last) render(d);
+    if (s !== last) { try { render(d); } catch (x) { console.error(x); var b = $('#db-body', main); if (b) b.innerHTML = errBox('Dashboard gagal ditampilkan: ' + x.message); } }
   }).catch(function (e) { if (!last) $('#db-body', main).innerHTML = errBox(e.message); });
 };
 

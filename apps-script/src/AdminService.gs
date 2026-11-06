@@ -100,7 +100,7 @@ function settingsSave_(user, input) {
 
 /** Dashboard dari cache per versi data — dihitung ulang hanya setelah ada perubahan data. */
 function dashboard_() {
-  const key = 'dash2:' + dataVersion_();
+  const key = 'dash3:' + dataVersion_();
   const hit = cacheGetBig_(key);
   if (hit) return hit;
   const d = dashboardCompute_();
@@ -179,6 +179,7 @@ function dashboardCompute_() {
       .sort((a, b) => String(b.CreatedAt).localeCompare(String(a.CreatedAt)))
       .slice(0, 6)
       .map((p) => ({ id: p.ProductID, name: p.ProductName, productNo: p.ProductCode, brandName: (brands[p.BrandID] || {}).BrandName, createdAt: p.CreatedAt, createdBy: p.CreatedBy, variants: V.filter((v) => v.ProductID === p.ProductID && v.Status !== STATUS.DELETED).length })),
+    recent: [], // aplikasi versi lama (masih tersimpan di HP) membaca kolom ini — aktivitas tidak lagi ditampilkan di dashboard
   };
 }
 
