@@ -114,7 +114,7 @@ const ROUTES = {
   'barcode.allocate': { perm: 'barcode.allocate', write: true, fn: (u, p) => allocateInternal_(u, p.count, p.requestKey, p.notes).map((b) => b.Code) },
   'barcode.validate': { perm: 'product.read', fn: (u, p) => barcodeValidate_(p) },
   'barcode.lookup': { perm: 'product.read', fn: (u, p) => barcodeLookupFast_(p.code) },
-  'barcode.index': { perm: 'product.read', fn: () => barcodeIndexLite_() },
+  'barcode.index': { perm: 'product.read', fn: (u, p) => barcodeIndexLite_(p && p.version) },
   'barcode.list': { perm: 'product.read', fn: (u, p) => barcodeList_(p) },
   'barcode.history': { perm: 'product.read', fn: (u, p) => barcodeHistory_(p.code) },
   'barcode.void': { perm: 'barcode.allocate', write: true, fn: (u, p) => barcodeVoid_(u, p.code, p.reason) },

@@ -186,10 +186,17 @@ Pages.products = function (main, arg) {
   $('.filters [data-cam]', main).onclick = function () {
     CamScan.open({ title: 'Cari SKU — scan barcode' }).then(function (code) {
       if (!code) return;
-      fq.value = code; f.search = code; f.page = 1; autoOpen = true; load();
+      fq.value = code; quick(code); f.search = code; f.page = 1; autoOpen = true; load();
     });
   };
-  fq.onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); f.search = fq.value; f.page = 1; autoOpen = true; load(); } };
+  // scan / ketik kode persis yang ada di indeks perangkat → detail SKU langsung terbuka (daftar tetap dimuat di belakang)
+  var quick = function (code) {
+    var hit = window.ScanIndex && ScanIndex.find(String(code).replace(/\s+/g, ''));
+    if (!hit || hit.length !== 1) return;
+    var c = ScanIndex.card(hit[0]);
+    skuDetail(c.productId, c.variantId, { img: c.imageUrl, sku: c.sku, name: c.skuName, gtin: c.gtin, internal: '', status: c.variantStatus, attrs: [] });
+  };
+  fq.onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); quick(fq.value); f.search = fq.value; f.page = 1; autoOpen = true; load(); } };
   if ($('#np', main)) $('#np', main).onclick = function () { App.go('register'); };
   if ($('#ex', main)) $('#ex', main).onclick = function () {
     var b = $('#ex', main);
@@ -272,13 +279,13 @@ var ProductCache = {
   m: {}, keys: [],
   get: function (k) { return this.m[k] || null; },
   put: function (k, v) { if (!this.m[k]) { this.keys.push(k); if (this.keys.length > 30) delete this.m[this.keys.shift()]; } this.m[k] = v; },
-  clear: function () { this.m = {}; this.keys = []; }
+  clear: function () { this.m = {}; this.keys = []; SkuDetailCache = {}; }
 };
 /** Baris ringkas Kode SKU Produk (dari indeks daftar). */
 function skuRowsHtml(r) {
   return '<table class="t dv-t"><thead><tr><th class="c-img"></th><th class="c-code">Kode SKU Produk</th><th>Nama Produk</th><th class="c-bc2">Barcode</th><th class="c-st">Status</th></tr></thead><tbody>' + (r.v || []).map(function (v) {
     var bc = bcCell(v.gtin, v.internal);
-    return '<tr' + (v.status !== 'ACTIVE' && v.status !== 'DRAFT' ? ' class="off"' : '') + '><td class="c-img">' + prodThumb(v.img, 'sm') + '</td><td class="sku nowrap c-code">' + esc(v.sku) + '</td><td><div class="dv-nm">' + esc(v.name) + '</div>' +
+    return '<tr class="sk-row' + (v.status !== 'ACTIVE' && v.status !== 'DRAFT' ? ' off' : '') + '" data-skp="' + esc(v.id) + '" title="Klik untuk lihat detail SKU"><td class="c-img">' + prodThumb(v.img, 'sm') + '</td><td class="sku nowrap c-code">' + esc(v.sku) + '</td><td><div class="dv-nm">' + esc(v.name) + '</div>' +
       (v.attrs.length ? '<div class="dv-at">' + v.attrs.map(function (a) { return '<span class="achip">' + esc(a[0]) + ' <b>' + esc(a[1]) + '</b></span>'; }).join('') + '</div>' : '') + '</td><td class="c-bc2 nowrap">' + bc + '</td><td class="c-st">' + badge(v.status) + '</td></tr>';
   }).join('') + '</tbody></table>';
 }
@@ -292,11 +299,94 @@ function renderSkuHits(box, list) {
       '<div class="sh-bc">' + bcCell(v.gtin, v.internal) + '</div><div class="muted sh-sub">' + esc(v.categoryName || '') + ' · induk ' + esc(v.productCode) + '</div>' +
       '<div class="row" style="margin-top:8px;gap:6px"><button class="btn sm" data-open>' + icon('eye') + 'Detail</button>' + (w ? '<button class="btn sm ghost" data-edit>' + icon('edit') + 'Edit</button>' : '') + '</div></div></div>';
   }).join('') + '</div>';
-  $$('.skuhit', box).forEach(function (el) {
+  $$('.skuhit', box).forEach(function (el, i) {
     var pid = el.getAttribute('data-pid');
-    $('[data-open]', el).onclick = function () { App.go('product', pid); };
+    var hv = list[i];
+    $('[data-open]', el).onclick = function () { skuDetail(pid, hv.id, hv); };
+    $('.pthumb', el).onclick = function () { skuDetail(pid, hv.id, hv); };
     if ($('[data-edit]', el)) $('[data-edit]', el).onclick = function () { App.go('register', { productId: pid }); };
     $$('[data-bc]', el).forEach(function (b) { b.onclick = function () { showBarcode(b.getAttribute('data-bc')); }; });
+  });
+}
+/**
+ * Pop-up detail SKU Produk (tanpa pindah halaman): foto besar, identitas, barcode, satuan & kemasan, dimensi/berat,
+ * SKU lama/kanal, dan SKU lain dalam produk yang sama. hint = data ringkas yang sudah ada (tampil seketika) —
+ * { img, sku, name, gtin, internal, status, attrs:[[nama, nilai]] }. opts.onClose dipanggil saat ditutup.
+ */
+var SkuDetailCache = {};
+function skuDetail(productId, variantId, hint, opts) {
+  opts = opts || {};
+  var m = modal('<div class="skd">' + (hint ? skdBody(null, hint) : loadingBox('Memuat detail SKU…')) + '</div>', { wide: true, onClose: opts.onClose });
+  var host = $('.skd', m), cur = variantId;
+  var paint = function (p) {
+    var v = p.variants.find(function (x) { return x.id === cur; }) || p.variants[0];
+    if (!v) { host.innerHTML = errBox('SKU tidak ditemukan'); return; }
+    cur = v.id;
+    host.innerHTML = skdBody(p, v);
+    $$('[data-bc]', host).forEach(function (b) { b.onclick = function () { showBarcode(b.getAttribute('data-bc')); }; });
+    $$('[data-copy]', host).forEach(function (b) { b.onclick = function () { copyText(b.getAttribute('data-copy')); }; });
+    $$('[data-close]', host).forEach(function (b) { b.onclick = m.close; });
+    $$('[data-skv]', host).forEach(function (b) { b.onclick = function () { cur = b.getAttribute('data-skv'); paint(p); host.scrollTop = 0; }; });
+    var on = function (sel, fn) { var x = $(sel, host); if (x) x.onclick = fn; };
+    on('[data-skopen]', function () { m.close(); App.go('product', p.id); });
+    on('[data-skedit]', function () { m.close(); App.go('register', { productId: p.id }); });
+    on('[data-skimg]', function () { window.open(v.imageUrl, '_blank', 'noopener'); });
+  };
+  if (hint) $$('[data-copy]', host).forEach(function (b) { b.onclick = function () { copyText(b.getAttribute('data-copy')); }; });
+  var hit = SkuDetailCache[productId];
+  if (hit) paint(hit);
+  api('product.get', { id: productId }, { quiet: true, silent: !!hit }).then(function (p) {
+    SkuDetailCache[productId] = p;
+    if (document.body.contains(host)) paint(p);
+  }).catch(function (e) { if (!hit && document.body.contains(host)) host.insertAdjacentHTML('beforeend', errBox(e.message)); });
+  return m;
+}
+/** Isi pop-up. p = detail produk (null saat baru data ringkas), v = SKU (detail) atau hint. */
+function skdBody(p, v) {
+  var full = !!p, img = full ? v.imageUrl : v.img, name = full ? v.skuName : v.name;
+  var gtin = v.gtin || '', internal = full ? v.internalBarcode : v.internal;
+  var attrs = full ? v.attributes.map(function (a) { return [a.name, a.value]; }) : v.attrs || [];
+  var row = function (k, val) { return '<div class="skd-r"><span>' + k + '</span><div>' + val + '</div></div>'; };
+  var unit = full ? v.baseUnit || p.baseUnit : '';
+  var packs = full ? v.conversions.filter(function (c) { return !c.isBaseUnit; }) : [];
+  var dims = full ? (v.dimensions || []).filter(function (d) { return d.lengthCm || d.widthCm || d.heightCm || d.grossWeightGrams; }) : [];
+  var others = full ? p.variants.filter(function (x) { return x.id !== v.id && x.status !== 'DELETED'; }) : [];
+  var w = can('product.write');
+  return '<div class="skd-grid"><div class="skd-ph">' + (img ? '<img src="' + esc(img) + '" alt="' + esc(name) + '" referrerpolicy="no-referrer" data-skimg title="Buka foto ukuran penuh" onerror="this.outerHTML=\'<span class=&quot;skd-noimg&quot;>Foto tidak dapat dimuat</span>\'">' : '<span class="skd-noimg">' + icon('image') + 'Belum ada foto</span>') + '</div>' +
+    '<div class="skd-info"><div class="skd-top">' + badge(v.status) + (full && p.status !== 'ACTIVE' ? ' ' + badge(p.status) : '') + '</div>' +
+    '<h3 class="skd-nm">' + esc(name) + '</h3>' +
+    '<button type="button" class="skd-sku" data-copy="' + esc(v.sku) + '" title="Salin Kode SKU Produk">' + esc(v.sku) + icon('copy') + '</button>' +
+    (attrs.length ? '<div class="skd-at">' + attrs.map(function (a) { return '<span class="attr-pill"><i>' + esc(a[0]) + '</i>' + esc(a[1]) + '</span>'; }).join('') + '</div>' : '') +
+    '<div class="skd-kv">' +
+      row('Barcode', bcCell(gtin, internal)) +
+      (full ? row('SKU Parent', '<span class="sku">' + esc(p.productCode) + '</span> ' + esc(p.displayName || p.name)) +
+        row('Brand', esc(p.brand.name || '—')) +
+        row('Kategori', esc(p.category.path || p.category.name || '—')) +
+        row('Satuan', '<b>' + esc(unit) + '</b> <span class="muted">satuan dasar</span>' + packs.map(function (c) {
+          return '<div>1 ' + esc(c.unitName) + ' = ' + c.factor + ' ' + esc(c.containsUnit) + (c.containsUnit !== unit ? ' <span class="muted">(' + c.baseUnitEquivalent + ' ' + esc(unit) + ')</span>' : '') + (c.sku ? ' <span class="sku">' + esc(c.sku) + '</span>' : '') + (c.gtin || c.internalBarcode ? ' ' + bcCell(c.gtin, c.internalBarcode) : '') + (c.status !== 'ACTIVE' ? ' ' + badge('INACTIVE') : '') + '</div>';
+        }).join('')) +
+        row('Dimensi & berat', dims.length ? dims.map(function (d) { return '<div><b>' + esc(d.unit) + '</b> ' + dimText(d) + '</div>'; }).join('') : '<span class="muted">Belum diisi</span>') +
+        (v.externalSkus.length ? row('SKU lama / kanal', v.externalSkus.map(function (x) { return '<div><span class="sku">' + esc(x.sku) + '</span> <span class="muted">' + esc(STATUS_TXT[x.system] || x.system) + '</span></div>'; }).join('')) : '') +
+        (v.batchTracking || v.expiryTracking ? row('Pelacakan', [v.batchTracking ? 'Batch' : '', v.expiryTracking ? 'Kedaluwarsa' + (v.shelfLifeMonths ? ' (' + v.shelfLifeMonths + ' bln)' : '') : ''].filter(Boolean).join(' · ')) : '') +
+        (v.nameOverride ? row('Nama', 'Diubah manual · ' + esc(v.nameOverrideReason || '')) : '') +
+        (v.replacedBy ? row('Catatan', 'Digantikan SKU lain') : '') +
+        (p.description ? row('Deskripsi', esc(p.description)) : '') +
+        (p.dataSource ? row('Sumber data', esc(p.dataSource)) : '') +
+        row('Diperbarui', fmtDate(p.updatedAt) + (p.updatedBy ? ' <span class="muted">oleh ' + esc(p.updatedBy) + '</span>' : ''))
+      : '<div class="skd-r"><span></span><div>' + loadingBox('Memuat keterangan lain…') + '</div></div>') +
+    '</div></div></div>' +
+    (others.length ? '<div class="skd-oth"><div class="muted">SKU lain di produk ini (' + others.length + ')</div><div class="skd-ol">' + others.map(function (x) {
+      return '<button type="button" class="skd-o' + (x.status !== 'ACTIVE' && x.status !== 'DRAFT' ? ' off' : '') + '" data-skv="' + esc(x.id) + '">' + prodThumb(x.imageUrl, 'sm') + '<span><b>' + esc(x.skuName) + '</b><small class="sku">' + esc(x.sku) + '</small></span></button>';
+    }).join('') + '</div></div>' : '') +
+    '<div class="row skd-act">' + (full ? '<button class="btn pri" data-skopen>' + icon('eye') + 'Buka halaman produk</button>' + (w ? '<button class="btn" data-skedit>' + icon('edit') + 'Edit</button>' : '') : '') + '<button class="btn ghost" data-close>Tutup</button></div>';
+}
+/** Klik baris / kartu SKU (data-skp = id SKU) → pop-up detail. r = baris daftar produk (punya r.id & r.v). */
+function bindSkuPop(root, r) {
+  if (!r) return;
+  $$('[data-skp]', root).forEach(function (el) {
+    var open = function () { var id = el.getAttribute('data-skp'); skuDetail(r.id, id, (r.v || []).find(function (x) { return x.id === id; })); };
+    el.onclick = open;
+    el.onkeydown = function (e) { if (e.key === 'Enter') open(); };
   });
 }
 /** Laci (expandable row) daftar SKU produk — langsung dari data daftar; detail lengkap ada di halaman produk. */
@@ -307,7 +397,8 @@ function toggleDrawer(tr, r) {
   var d = document.createElement('tr'); d.className = 'drawer';
   d.innerHTML = '<td colspan="7"><div class="drawer-in">' + (r && r.v ? skuRowsHtml(r) : loadingBox()) + '</div></td>';
   tr.parentNode.insertBefore(d, tr.nextSibling);
-  $$('[data-bc]', d).forEach(function (b) { b.onclick = function () { showBarcode(b.getAttribute('data-bc')); }; });
+  $$('[data-bc]', d).forEach(function (b) { b.onclick = function (e) { e.stopPropagation(); showBarcode(b.getAttribute('data-bc')); }; });
+  bindSkuPop(d, r);
   if (r && r.v) return;
   api('product.get', { id: r.id }, { quiet: true }).then(function (p) { $('.drawer-in', d).innerHTML = variantTable(p, true); }).catch(function (e) { $('.drawer-in', d).innerHTML = errBox(e.message); });
 }
@@ -316,8 +407,9 @@ function toggleSkuCards(card, r) {
   var sk = $('.pc-sk', card);
   if (sk.innerHTML) { sk.innerHTML = ''; return; }
   sk.innerHTML = (r.v || []).map(function (v) {
-    return '<div class="pc-v">' + prodThumb(v.img, 'sm') + '<div class="grow" style="min-width:0"><div><span class="sku">' + esc(v.sku) + '</span> ' + (v.status !== 'ACTIVE' ? badge(v.status) : '') + '</div><div>' + esc(v.name) + '</div><div class="muted">' + (v.gtin ? 'GTIN ' + esc(v.gtin) : v.internal ? 'Internal ' + esc(v.internal) : '<span style="color:var(--warn)">GTIN belum didata</span>') + '</div></div></div>';
+    return '<div class="pc-v" data-skp="' + esc(v.id) + '" role="button" tabindex="0">' + prodThumb(v.img, 'sm') + '<div class="grow" style="min-width:0"><div><span class="sku">' + esc(v.sku) + '</span> ' + (v.status !== 'ACTIVE' ? badge(v.status) : '') + '</div><div>' + esc(v.name) + '</div><div class="muted">' + (v.gtin ? 'GTIN ' + esc(v.gtin) : v.internal ? 'Internal ' + esc(v.internal) : '<span style="color:var(--warn)">GTIN belum didata</span>') + '</div></div></div>';
   }).join('');
+  bindSkuPop(sk, r);
 }
 /** Tabel SKU produk ringkas (dipakai drawer & detail). */
 function variantTable(p, compact) {

@@ -641,6 +641,8 @@ var App = {
     if (typeof isPhotoStaff === 'function' && isPhotoStaff()) return App.enterStaff(me);
     document.body.classList.remove('staff');
     setTimeout(Ref.warm, 0);
+    // indeks barcode disiapkan sejak awal → scan pertama langsung tampil
+    setTimeout(function () { if (window.ScanIndex && can('product.read')) ScanIndex.load(); }, 1200);
     PullRefresh.init();
     var u = me.user;
     var nav = function (n) { return can(n[3] || 'product.read') ? '<a class="nv" data-nav="' + n[0] + '" data-tip="' + esc(n[1]) + '" title="' + esc(n[1]) + '">' + icon(n[2]) + '<span class="grow">' + n[1] + '</span></a>' : ''; };

@@ -35,7 +35,7 @@ function barcodeIndex_() {
   db_('UNIT_CONVERSIONS')
     .rows()
     .forEach((c) => {
-      idx.C[c.ConversionID] = { variantId: c.VariantID, unitName: c.UnitName, baseUnitEquivalent: c.BaseUnitEquivalent, sku: c.SKU, gtin: c.GTIN, internalBarcode: c.InternalBarcode };
+      idx.C[c.ConversionID] = { variantId: c.VariantID, unitName: c.UnitName, baseUnitEquivalent: c.BaseUnitEquivalent, sku: c.SKU, gtin: c.GTIN, internalBarcode: c.InternalBarcode, status: c.Status };
       if (c.SKU) add(idx.csku, up(c.SKU), c.ConversionID);
     });
   db_('VARIANT_BARCODES')
@@ -112,15 +112,40 @@ function barcodeLookupFast_(raw) {
 
 /**
  * Indeks ringkas untuk perangkat (hasil scan instan tanpa menunggu jaringan): kode → SKU Produk aktif.
+ * Baris: [kode-kode, variantId, productId, nama SKU, kode SKU, barcode, foto, status, satuan kemasan, isi].
+ * Kode kemasan (BOX dst.) & barcode tambahan ikut diindeks. known = semua barcode yang tercatat (termasuk bundle,
+ * dicadangkan, pensiun) — perangkat hanya boleh menampilkan "belum terdaftar" sementara bila kode tidak ada di sini.
  * Hanya data tampilan; keputusan akhir (konflik, belum terdaftar) tetap dari server.
+ * clientVersion sama dengan versi data → { same: true } saja (tidak mengirim ulang indeks).
  */
-function barcodeIndexLite_() {
+function barcodeIndexLite_(clientVersion) {
+  const version = dataVersion_();
+  if (clientVersion && String(clientVersion) === String(version)) return { version, same: true };
   const X = barcodeIndex_();
   const out = [];
+  const st = (v) => (v.productStatus === 'ACTIVE' ? v.variantStatus : v.productStatus);
+  const covered = {};
   Object.keys(X.V).forEach((vid) => {
     const v = X.V[vid];
     const codes = [v.gtin, v.internalBarcode, v.sku].filter(Boolean);
-    if (codes.length) out.push([codes.join(' '), vid, v.productId, v.skuName, v.sku, v.gtin || v.internalBarcode || '', v.imageUrl || '', v.productStatus === 'ACTIVE' ? v.variantStatus : v.productStatus]);
+    codes.forEach((c) => (covered[c + '|' + vid] = 1));
+    if (codes.length) out.push([codes.join(' '), vid, v.productId, v.skuName, v.sku, v.gtin || v.internalBarcode || '', v.imageUrl || '', st(v)]);
   });
-  return { version: dataVersion_(), rows: out };
+  Object.keys(X.C).forEach((cid) => {
+    const c = X.C[cid];
+    const v = X.V[c.variantId];
+    if (!v || (c.status && c.status !== 'ACTIVE')) return;
+    const codes = [c.gtin, c.internalBarcode, c.sku].filter((k) => k && !covered[k + '|' + c.variantId]);
+    codes.forEach((k) => (covered[k + '|' + c.variantId] = 1));
+    if (codes.length) out.push([codes.join(' '), c.variantId, v.productId, v.skuName, c.sku || v.sku, c.gtin || c.internalBarcode || '', v.imageUrl || '', st(v), c.unitName, c.baseUnitEquivalent]);
+  });
+  // barcode tambahan aktif milik SKU Produk (selain GTIN/barcode internal utamanya)
+  Object.keys(X.rows).forEach((code) => {
+    const act = X.rows[code].filter((b) => b.s === 'ACTIVE');
+    if (act.length !== 1 || act[0].b || act[0].c || !act[0].v) return;
+    const v = X.V[act[0].v];
+    if (!v || covered[code + '|' + act[0].v]) return;
+    out.push([code, act[0].v, v.productId, v.skuName, v.sku, code, v.imageUrl || '', st(v)]);
+  });
+  return { version, rows: out, known: Object.keys(X.rows).join(' ') };
 }

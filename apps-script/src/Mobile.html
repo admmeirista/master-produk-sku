@@ -50,7 +50,8 @@ CamScan.mount = function (video, o) {
       if (now < coolUntil) return;
     }
     if (code === last) count++; else { last = code; count = 1; }
-    if (count < 2) return; // dua kali terbaca sama → kurangi salah baca
+    // EAN/UPC dengan check digit benar cukup sekali terbaca; kode lain dua kali sama → kurangi salah baca
+    if (count < 2 && !gtinOk(code)) return;
     count = 0;
     if (o.continuous) { lastHit = code; coolUntil = now + 900; } else paused = true;
     Beep.play();
@@ -85,8 +86,8 @@ CamScan.mount = function (video, o) {
           var det = new BarcodeDetector({ formats: CamScan.FORMATS.filter(function (f) { return sup.indexOf(f) >= 0; }) });
           var tick = function () {
             if (stopped) return;
-            if (paused || video.readyState < 2) { timer = setTimeout(tick, 200); return; }
-            det.detect(video).then(function (r) { if (r && r[0]) accept(r[0].rawValue); }).catch(function () {}).then(function () { if (!stopped) timer = setTimeout(tick, 120); });
+            if (paused || video.readyState < 2) { timer = setTimeout(tick, 150); return; }
+            det.detect(video).then(function (r) { if (r && r[0]) accept(r[0].rawValue); }).catch(function () {}).then(function () { if (!stopped) timer = setTimeout(tick, 60); });
           };
           tick();
         });
@@ -95,7 +96,7 @@ CamScan.mount = function (video, o) {
         if (stopped) return;
         var hints = new Map(), F = ZXing.BarcodeFormat;
         hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, CamScan.zxingFormats(F));
-        reader = new ZXing.BrowserMultiFormatReader(hints, 150);
+        reader = new ZXing.BrowserMultiFormatReader(hints, 80);
         reader.decodeFromStream(s, video, function (res) { if (res) accept(res.getText()); });
       });
     });
@@ -107,30 +108,68 @@ CamScan.mount = function (video, o) {
   return ctl;
 };
 
+/** Penyimpanan besar di perangkat (IndexedDB; localStorage dibatasi ±5 MB). Gagal → diam-diam (tetap di memori). */
+var IdbKV = {
+  p: null,
+  open: function () {
+    if (IdbKV.p) return IdbKV.p;
+    IdbKV.p = new Promise(function (res, rej) {
+      try { var r = indexedDB.open('rpm', 1); r.onupgradeneeded = function () { r.result.createObjectStore('kv'); }; r.onsuccess = function () { res(r.result); }; r.onerror = function () { rej(r.error); }; } catch (e) { rej(e); }
+    });
+    return IdbKV.p;
+  },
+  get: function (k) { return IdbKV.open().then(function (db) { return new Promise(function (res) { var q = db.transaction('kv').objectStore('kv').get(k); q.onsuccess = function () { res(q.result || null); }; q.onerror = function () { res(null); }; }); }).catch(function () { return null; }); },
+  set: function (k, v) { return IdbKV.open().then(function (db) { db.transaction('kv', 'readwrite').objectStore('kv').put(v, k); }).catch(function () {}); }
+};
+/** Cek digit GTIN (EAN-8, UPC-A, EAN-13, GTIN-14) di perangkat. */
+function gtinOk(c) {
+  if (!/^(\d{8}|\d{12,14})$/.test(c)) return false;
+  var d = c.split('').reverse().map(Number), sum = 0;
+  for (var i = 1; i < d.length; i++) sum += d[i] * (i % 2 ? 3 : 1);
+  return (10 - (sum % 10)) % 10 === d[0];
+}
+
 /**
- * Indeks barcode di perangkat: hasil scan SKU terdaftar tampil seketika (tanpa menunggu jaringan), lalu dipastikan
- * server di belakang layar. Disimpan per versi data; dimuat ulang saat halaman Scan dibuka (sekaligus memanaskan
- * indeks server agar scan pertama cepat). "Belum terdaftar" / konflik selalu menunggu jawaban server.
+ * Indeks barcode di perangkat: hasil scan SKU terdaftar (termasuk barcode kemasan/BOX) tampil seketika tanpa menunggu
+ * jaringan, lalu dipastikan server di belakang layar. Disimpan di IndexedDB per versi data dan dimuat sejak aplikasi
+ * dibuka; server hanya mengirim ulang indeks bila datanya berubah. Bila indeks baru saja disinkronkan dan kode tidak
+ * tercatat sama sekali, "belum terdaftar" tampil sementara sambil menunggu kepastian server.
  */
 var ScanIndex = {
-  map: null, version: '', pending: null,
+  map: null, known: null, version: '', pending: null, syncedAt: 0,
   key: function () { return 'rpm_bx_' + (App.me ? App.me.user.id : ''); },
   build: function (d) {
     var m = {};
     (d.rows || []).forEach(function (r) { r[0].split(' ').forEach(function (c) { var k = c.toUpperCase(); (m[k] = m[k] || []).push(r); }); });
-    ScanIndex.map = m; ScanIndex.version = d.version;
+    var kn = {};
+    String(d.known || '').split(' ').forEach(function (c) { if (c) kn[c] = 1; });
+    ScanIndex.map = m; ScanIndex.known = d.known !== undefined ? kn : null; ScanIndex.version = d.version;
   },
-  load: function () {
-    if (!ScanIndex.map) { try { var saved = JSON.parse(Store.get(ScanIndex.key()) || 'null'); if (saved) ScanIndex.build(saved); } catch (e) {} }
+  /** Indeks dari perangkat (instan) → cek versi ke server (ringan bila tidak berubah). */
+  load: function (force) {
     if (ScanIndex.pending) return ScanIndex.pending;
-    ScanIndex.pending = api('barcode.index', {}, { quiet: true, silent: true }).then(function (d) {
+    if (!force && ScanIndex.map && Date.now() - ScanIndex.syncedAt < 60000) return Promise.resolve(null);
+    var k = ScanIndex.key(), saved = null;
+    var local = ScanIndex.map ? Promise.resolve(null) : IdbKV.get(k).then(function (d) {
+      if (!d) { try { d = JSON.parse(Store.get(k) || 'null'); } catch (e) { d = null; } Store.del(k); } // pindahkan simpanan lama
+      if (d && !ScanIndex.map) { saved = d; ScanIndex.build(d); }
+    });
+    ScanIndex.pending = local.then(function () {
+      return api('barcode.index', { version: ScanIndex.map ? ScanIndex.version : '' }, { quiet: true, silent: true });
+    }).then(function (d) {
+      ScanIndex.syncedAt = Date.now();
+      if (d.same) return d;
       ScanIndex.build(d);
-      try { Store.set(ScanIndex.key(), JSON.stringify(d)); } catch (e) {} // terlalu besar untuk penyimpanan → tetap di memori
+      IdbKV.set(k, d);
       return d;
     }).catch(function () {}).then(function (x) { ScanIndex.pending = null; return x; });
     return ScanIndex.pending;
   },
-  find: function (code) { return ScanIndex.map ? ScanIndex.map[String(code).toUpperCase()] || null : null; }
+  find: function (code) { return ScanIndex.map ? ScanIndex.map[String(code).toUpperCase()] || null : null; },
+  /** true = kode pasti tidak tercatat menurut indeks yang baru disinkronkan (≤ 5 menit). */
+  surelyNew: function (code) { return !!(ScanIndex.known && Date.now() - ScanIndex.syncedAt < 300000 && !ScanIndex.known[code] && !ScanIndex.find(code)); },
+  /** Baris indeks → kartu hasil scan. */
+  card: function (r) { return { via: r[8] ? 'Barcode ' + r[8] : 'Data di perangkat', productId: r[2], variantId: r[1], skuName: r[3], sku: r[4], childSku: r[4], gtin: r[5], imageUrl: r[6], productStatus: 'ACTIVE', variantStatus: r[7], conversion: r[8] ? { unitName: r[8], baseUnitEquivalent: r[9], gtin: r[5] } : null }; }
 };
 
 /* ───────── Halaman Scan Barcode ───────── */
@@ -153,7 +192,7 @@ Pages.scan = function (main, arg) {
 
   var card = function (m) {
     var bc = m.conversion ? (m.conversion.gtin || m.conversion.internalBarcode) : (m.gtin || m.internalBarcode);
-    return '<div class="sc-sku">' + (m.imageUrl ? '<img class="ph-th" src="' + esc(m.imageUrl) + '" alt="" loading="lazy">' : '<span class="ph-th ph-none">' + icon('package') + '</span>') +
+    return '<div class="sc-sku" data-skp="' + esc(m.productId) + '|' + esc(m.variantId) + '" role="button" tabindex="0">' + (m.imageUrl ? '<img class="ph-th" src="' + esc(m.imageUrl) + '" alt="" loading="lazy">' : '<span class="ph-th ph-none">' + icon('package') + '</span>') +
       '<div class="grow" style="min-width:0"><b>' + esc(m.skuName) + '</b><div class="sc-codes"><span class="sku">' + esc(m.childSku || m.sku) + '</span>' + (bc ? '<span class="code">' + esc(bc) + '</span>' : '') + '</div>' +
       '<div class="sc-meta">' + badge(m.productStatus === 'ACTIVE' ? m.variantStatus : m.productStatus) + '<span class="muted">' + esc(m.via) + (m.conversion ? ' · ' + esc(m.conversion.unitName) + ' isi ' + esc(m.conversion.baseUnitEquivalent) : '') + '</span></div></div>' +
       '<button type="button" class="icon-btn" data-copy="' + esc(m.childSku || m.sku) + '" aria-label="Salin kode SKU" title="Salin kode SKU">' + icon('copy') + '</button></div>';
@@ -183,7 +222,10 @@ Pages.scan = function (main, arg) {
     res.innerHTML = '<div class="sc-code">' + icon('barcode') + '<span class="code">' + esc(code) + '</span>' + (verifying ? '<span class="sc-verify"><span class="spinner"></span>memastikan…</span>' : '') + '</div>' + html;
     var b;
     if ((b = $('#snx', res))) b.onclick = again;
-    if ((b = $('#sdt', res))) b.onclick = function () { App.go('product', r.matches[0].productId); };
+    // detail SKU dalam pop-up; kamera berhenti membaca selama pop-up terbuka
+    var pop = function (mt) { if (cam) cam.pause(); skuDetail(mt.productId, mt.variantId, { img: mt.imageUrl, sku: mt.childSku || mt.sku, name: mt.skuName, gtin: mt.gtin, internal: mt.internalBarcode, status: mt.variantStatus, attrs: [] }, { onClose: function () { if (cam) cam.resume(); } }); };
+    if ((b = $('#sdt', res))) b.onclick = function () { pop(r.matches[0]); };
+    $$('[data-skp]', res).forEach(function (el, i) { el.onclick = function (e) { if (e.target.closest('[data-copy]')) return; pop(r.matches[i]); }; });
     if ((b = $('#sbd', res))) b.onclick = function () { App.go('bundle', r.bundles[0].bundleId); };
     if ((b = $('#srg', res))) b.onclick = function () { App.go('register', { gtin: code }); };
     $$('[data-copy]', res).forEach(function (x) { x.onclick = function () { copyText(x.getAttribute('data-copy')); }; });
@@ -197,7 +239,12 @@ Pages.scan = function (main, arg) {
     if (seen[code]) return show(code, seen[code]);
     var local = ScanIndex.find(code);
     if (local) {
-      show(code, { kind: 'local', conflict: false, matches: local.map(function (r) { return { via: 'Data di perangkat', productId: r[2], variantId: r[1], skuName: r[3], sku: r[4], childSku: r[4], gtin: r[5], imageUrl: r[6], productStatus: 'ACTIVE', variantStatus: r[7] }; }), bundles: [] }, true);
+      show(code, { kind: 'local', conflict: false, matches: local.map(ScanIndex.card), bundles: [] }, true);
+    } else if (/^\d+$/.test(code) && ScanIndex.surelyNew(code)) {
+      // kode tidak tercatat di indeks yang baru disinkronkan → tampilkan hasilnya sekarang, server memastikan
+      local = true;
+      var valid = gtinOk(code), kind = valid ? (/^(2|02|04)/.test(code) ? 'internal' : 'gtin') : code.length >= 8 ? 'invalid_numeric' : 'text';
+      show(code, { kind: kind, matches: [], bundles: [], validation: valid ? { ok: true } : { ok: false, message: 'check digit salah' } }, true);
     }
     if (!local) res.innerHTML = '<div class="sc-code">' + icon('barcode') + '<span class="code">' + esc(code) + '</span></div>' + loadingBox('Mencari di master SKU…');
     var current = function () { return busyCode === code; }; // jawaban lama tidak menimpa scan berikutnya
@@ -214,7 +261,7 @@ Pages.scan = function (main, arg) {
   $('#sman', main).onsubmit = function (e) { e.preventDefault(); var c = this.c.value.replace(/\s+/g, '').trim(); if (!c) return; this.c.blur(); busyCode = ''; lookup(c); };
   var tb = $('#stc', main);
   tb.onclick = function () { torchOn = !torchOn; if (cam) cam.torch(torchOn); tb.classList.toggle('on', torchOn); tb.setAttribute('aria-pressed', torchOn ? 'true' : 'false'); };
-  ScanIndex.load(); // indeks perangkat + panaskan indeks server sebelum scan pertama
+  ScanIndex.load(true); // indeks perangkat + cek versi ke server (sekaligus memanaskan indeks server)
   var sn = $('#ssn', main);
   sn.onclick = function () { var on = !Beep.on(); Store.set('rpm_beep', on ? '1' : '0'); sn.innerHTML = icon(on ? 'volume' : 'volumeX'); sn.setAttribute('aria-pressed', on ? 'true' : 'false'); toast(on ? 'Bunyi bip aktif' : 'Bunyi bip dimatikan'); if (on) Beep.play(); };
   var camOpts = { continuous: true, onCode: lookup, onState: state, onTorch: function (has) { tb.classList.toggle('hidden', !has); } };
