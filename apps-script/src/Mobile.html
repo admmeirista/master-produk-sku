@@ -328,83 +328,104 @@ Pages.account = function (main) {
   $('#alo', main).onclick = function () { ask('Keluar dari aplikasi?', 'Keluar').then(function (y) { if (y) App.logout(); }); };
 };
 
-/* ───────── Dashboard versi HP: kartu angka + tab geser (Kelengkapan · Brand · Kategori · Perlu tindakan) ───────── */
+/* ───────── Dashboard versi HP: grafik sebagai sorotan utama ─────────
+ * 1) Grafik sebaran SKU Produk per Brand ⇄ Kategori (geser ke kanan / ketuk tab) + tabel berhalaman
+ * 2) Grafik kelengkapan data  3) Perlu tindakan (ringkas). Angka total hanya baris kecil di atas. */
+var MH_COLORS = ['#996A51', '#2563EB', '#1F9D55', '#D97706', '#7C3AED', '#DB2777'];
+var MH_OTHER = '#B8B0A8';
+var MH_ROWS = 6;
+function mhShareDonut(list, total, unit) {
+  var R = 52, C = 2 * Math.PI * R, off = 0, segs = '', top = list.slice(0, MH_COLORS.length);
+  var rest = total - top.reduce(function (s, b) { return s + b.n; }, 0);
+  var parts = top.map(function (b, i) { return [b.n, MH_COLORS[i]]; });
+  if (rest > 0) parts.push([rest, MH_OTHER]);
+  parts.forEach(function (p) {
+    var len = total ? C * p[0] / total : 0;
+    segs += '<circle cx="64" cy="64" r="' + R + '" stroke="' + p[1] + '" stroke-dasharray="' + Math.max(0, len - 1.5).toFixed(2) + ' ' + C.toFixed(2) + '" stroke-dashoffset="' + (-off).toFixed(2) + '" transform="rotate(-90 64 64)"/>';
+    off += len;
+  });
+  var legend = top.map(function (b, i) { return '<li><i style="background:' + MH_COLORS[i] + '"></i><span>' + esc(b.name) + '</span><b>' + (total ? Math.round(b.n / total * 100) : 0) + '%</b></li>'; }).join('') +
+    (rest > 0 ? '<li><i style="background:' + MH_OTHER + '"></i><span>Lainnya (' + fmtNum(list.length - top.length) + ')</span><b>' + Math.round(rest / total * 100) + '%</b></li>' : '');
+  return '<div class="mv-chart"><svg viewBox="0 0 128 128" class="mv-donut"><circle cx="64" cy="64" r="' + R + '" class="tr"/>' + segs +
+    '<text x="64" y="62" text-anchor="middle" class="t1">' + fmtNum(list.length) + '</text><text x="64" y="80" text-anchor="middle" class="t2">' + unit + '</text></svg><ul class="mv-leg">' + legend + '</ul></div>';
+}
 function mobileHome(main, d) {
-  var c = d.counts, L = d.logistics || {}, n = c.variants || 0, u = App.me.user;
-  var byBrand = d.byBrand || [], byCat = d.byCategory || [];
+  var c = d.counts, L = d.logistics || {}, n = c.variants || 0;
+  var V = { brand: d.byBrand || [], cat: d.byCategory || [] };
   var pc = function (x) { return n ? Math.round((x || 0) / n * 100) : 0; };
   var hasBc = (c.withGtin || 0) + (c.withInternal || 0);
   var score = Math.round((pc(hasBc) + pc(L.photo) + pc(L.weight)) / 3);
   var tone = function (p) { return p >= 90 ? 'ok' : p >= 50 ? 'mid' : 'low'; };
-  var kpi = function (ic, v, label, sub, go) { return '<button type="button" class="mk" data-go="' + go + '"><span class="mk-i">' + icon(ic) + '</span><b>' + fmtNum(v || 0) + '</b><span class="mk-l">' + label + '</span>' + (sub ? '<small>' + sub + '</small>' : '') + '</button>'; };
+  var stat = function (v, label, go) { return '<button type="button" data-go="' + go + '"><b>' + fmtNum(v || 0) + '</b>' + label + '</button>'; };
   var meter = function (label, have, missTxt, go) {
     var p = pc(have), miss = n - (have || 0);
     return '<button type="button" class="dmeter ' + tone(p) + '"' + (go ? ' data-cm="' + go + '"' : '') + '><div class="dm-h"><b>' + label + '</b><span class="dm-p">' + p + '%</span></div><div class="dm-t"><i style="width:' + p + '%"></i></div><div class="dm-s">' + (miss > 0 ? '<b class="tx-err">' + fmtNum(miss) + '</b> ' + missTxt : 'Semua lengkap') + '</div></button>';
   };
-  var bars = function (list, unit) {
-    if (!list.length) return '<div class="muted">Belum ada data.</div>';
-    var max = Math.max.apply(null, list.map(function (b) { return b.n; }).concat([1]));
-    return '<div class="dbrands">' + list.map(function (b, i) { return '<div class="dbr" data-q="' + esc(String(b.name).toLowerCase()) + '"><div class="dbr-n"><b>' + (i + 1) + '. ' + esc(b.name) + '</b>' + (b.parents ? '<span>' + fmtNum(b.parents) + ' SKU Induk</span>' : '') + '</div><div class="dbr-t"><i style="width:' + Math.max(3, Math.round(b.n / max * 100)) + '%"></i></div><b class="dbr-v">' + fmtNum(b.n) + '</b></div>'; }).join('') + '</div><div class="muted mt-none" hidden>Tidak ada ' + unit + ' yang cocok.</div>';
+  var pane = function (k, unit, ph) {
+    return '<section class="mv-p" data-mv="' + k + '">' + mhShareDonut(V[k], n, unit) +
+      '<div class="mv-find">' + icon('search') + '<input type="search" class="in" placeholder="' + ph + '" autocomplete="off"></div>' +
+      '<table class="mv-t"><thead><tr><th>#</th><th>' + (k === 'brand' ? 'Brand' : 'Kategori') + '</th><th class="num">SKU</th><th class="num">%</th></tr></thead><tbody></tbody></table>' +
+      '<div class="mv-pg"><span class="muted"></span><button type="button" class="btn sm" data-pg="-1" aria-label="Sebelumnya">' + icon('arrowLeft') + '</button><button type="button" class="btn sm" data-pg="1" aria-label="Berikutnya">' + icon('arrowRight') + '</button></div></section>';
   };
-  var finder = function (ph) { return '<div class="mt-find">' + icon('search') + '<input type="search" class="in" placeholder="' + ph + '" autocomplete="off"></div>'; };
   var R = 34, CIRC = 2 * Math.PI * R;
   var donut = '<svg viewBox="0 0 80 80" class="mdonut ' + tone(score) + '"><circle cx="40" cy="40" r="' + R + '" class="tr"/><circle cx="40" cy="40" r="' + R + '" class="vl" stroke-dasharray="' + (CIRC * score / 100).toFixed(1) + ' ' + CIRC.toFixed(1) + '" transform="rotate(-90 40 40)"/><text x="40" y="46" text-anchor="middle">' + score + '%</text></svg>';
-  var TABS = [['comp', 'Kelengkapan'], ['brand', 'Brand · ' + fmtNum(byBrand.length)], ['cat', 'Kategori · ' + fmtNum(byCat.length)], ['todo', 'Perlu tindakan']];
-  var cur = Store.get('rpm_mtab') || 'comp';
-  if (!TABS.some(function (t) { return t[0] === cur; })) cur = 'comp';
-  main.innerHTML = '<div id="db-body" class="mh"><div class="mh-hello"><div class="muted">Halo, ' + esc(String(u.fullName || '').split(' (')[0]) + '</div><h2>Dashboard</h2></div>' +
-    '<div class="mk4">' +
-      kpi('tag', c.brands, 'Brand', '', 'brands') +
-      kpi('package', c.products, 'SKU Induk', c.drafts ? fmtNum(c.drafts) + ' draft' : '', 'products') +
-      kpi('layers', n, 'SKU Produk', c.skus > n ? '+' + fmtNum(c.skus - n) + ' SKU kemasan' : '', 'products') +
-      kpi('grid', c.categories, 'Kategori', '', 'categories') +
-    '</div>' +
-    '<div class="mtb" role="tablist">' + TABS.map(function (t) { return '<button type="button" role="tab" data-mtb="' + t[0] + '"' + (t[0] === cur ? ' class="on"' : '') + '>' + t[1] + '<b class="mtb-n" hidden></b></button>'; }).join('') + '</div>' +
-    '<div class="mtp" id="mtp">' +
-      '<section class="mtp-p" data-mtp="comp"><div class="mc-h">' + donut + '<div><h3>Kelengkapan data</h3><div class="muted">Rata-rata barcode, foto &amp; berat dari ' + fmtNum(n) + ' SKU Produk aktif</div></div></div>' +
-        '<div class="dmeters">' +
-          meter('Barcode', hasBc, 'tanpa barcode', 'incomplete') +
-          meter('Foto produk', L.photo, 'tanpa foto', 'photos') +
-          meter('Berat satuan', L.weight, 'tanpa berat', 'noweight') +
-          meter('Kemasan BOX', L.box, 'tanpa BOX (opsional)', '') +
-          meter('Ukuran (P×L×T)', L.size, 'tanpa ukuran', '') +
-          meter('Kemasan lengkap', c.packagingComplete, 'belum lengkap', '') +
-        '</div></section>' +
-      '<section class="mtp-p" data-mtp="brand"><h3>SKU Produk per brand</h3>' + finder('Cari brand…') + bars(byBrand, 'brand') + '</section>' +
-      '<section class="mtp-p" data-mtp="cat"><h3>SKU Produk per kategori</h3>' + finder('Cari kategori…') + bars(byCat, 'kategori') + '</section>' +
-      '<section class="mtp-p" data-mtp="todo"><h3>Perlu tindakan</h3><div id="mhp">' + loadingBox() + '</div></section>' +
-    '</div></div>';
+  var cur = Store.get('rpm_mview') === 'cat' ? 'cat' : 'brand';
+  main.innerHTML = '<div id="db-body" class="mh">' +
+    '<div class="mh-top"><h2>Dashboard</h2><div class="mstat">' + stat(c.brands, 'brand', 'brands') + stat(c.products, 'SKU Induk', 'products') + stat(n, 'SKU Produk', 'products') + stat(c.categories, 'kategori', 'categories') + '</div></div>' +
+    '<div class="mh-card mv"><div class="mv-h"><h3>Sebaran SKU Produk</h3><div class="mv-tabs" role="tablist"><button type="button" data-mvt="brand">Brand</button><button type="button" data-mvt="cat">Kategori</button></div></div>' +
+      '<div class="mv-box" id="mvb">' + pane('brand', 'brand', 'Cari brand…') + pane('cat', 'kategori', 'Cari kategori…') + '</div>' +
+      '<div class="mv-dots"><i data-dot="brand"></i><i data-dot="cat"></i></div></div>' +
+    '<div class="mh-card"><div class="mc-h">' + donut + '<div><h3>Kelengkapan data</h3><div class="muted">Rata-rata barcode, foto &amp; berat dari ' + fmtNum(n) + ' SKU Produk aktif</div></div></div>' +
+      '<div class="dmeters">' +
+        meter('Barcode', hasBc, 'tanpa barcode', 'incomplete') +
+        meter('Foto produk', L.photo, 'tanpa foto', 'photos') +
+        meter('Berat satuan', L.weight, 'tanpa berat', 'noweight') +
+        meter('Kemasan BOX', L.box, 'tanpa BOX (opsional)', '') +
+      '</div></div>' +
+    '<div class="mh-card"><h3>Perlu tindakan</h3><div id="mhp">' + loadingBox() + '</div></div></div>';
   $$('[data-go]', main).forEach(function (b) { b.onclick = function () { App.go(b.getAttribute('data-go')); }; });
   $$('[data-cm]', main).forEach(function (b) {
     var k = b.getAttribute('data-cm');
     b.onclick = function () { if (k === 'photos') App.go(can('photo.manage') ? 'photos' : 'products', { filter: 'none', completeness: 'nophoto' }); else App.go('products', { completeness: k }); };
   });
-  // tab geser: tombol tab ↔ panel (scroll-snap); tinggi panel = sisa layar, isi panel menggulir sendiri
-  var box = $('#mtp', main), panes = $$('.mtp-p', main), btns = $$('[data-mtb]', main);
-  var idx = function (k) { for (var i = 0; i < TABS.length; i++) if (TABS[i][0] === k) return i; return 0; };
-  var mark = function (k) {
-    btns.forEach(function (b) { var on = b.getAttribute('data-mtb') === k; b.classList.toggle('on', on); b.setAttribute('aria-selected', on ? 'true' : 'false'); if (on && b.scrollIntoView) b.parentNode.scrollLeft = b.offsetLeft - 12; });
-    if (k !== cur) { cur = k; Store.set('rpm_mtab', k); }
+  // tabel berhalaman per tampilan (6 baris), bisa dicari
+  var state = { brand: { page: 0, q: '' }, cat: { page: 0, q: '' } };
+  var paint = function (k) {
+    var p = $('[data-mv="' + k + '"]', main), s = state[k];
+    var all = V[k].map(function (b, i) { return { b: b, i: i }; });
+    var rows = s.q ? all.filter(function (r) { return String(r.b.name).toLowerCase().indexOf(s.q) >= 0; }) : all;
+    var pages = Math.max(1, Math.ceil(rows.length / MH_ROWS));
+    s.page = Math.min(Math.max(0, s.page), pages - 1);
+    var slice = rows.slice(s.page * MH_ROWS, s.page * MH_ROWS + MH_ROWS);
+    $('tbody', p).innerHTML = slice.length ? slice.map(function (r) {
+      var col = r.i < MH_COLORS.length ? MH_COLORS[r.i] : MH_OTHER;
+      return '<tr><td class="mv-no"><i style="background:' + col + '"></i>' + (r.i + 1) + '</td><td class="mv-nm"><b>' + esc(r.b.name) + '</b>' + (r.b.parents ? '<small>' + fmtNum(r.b.parents) + ' SKU Induk</small>' : '') + '</td><td class="num"><b>' + fmtNum(r.b.n) + '</b></td><td class="num muted">' + (n ? (r.b.n / n * 100).toFixed(r.b.n / n >= 0.1 ? 0 : 1).replace('.', ',') : 0) + '</td></tr>';
+    }).join('') : '<tr><td colspan="4" class="muted" style="text-align:center;padding:14px">Tidak ada yang cocok.</td></tr>';
+    $('.mv-pg .muted', p).textContent = rows.length ? (s.page * MH_ROWS + 1) + '–' + (s.page * MH_ROWS + slice.length) + ' dari ' + fmtNum(rows.length) : '0 data';
+    $('[data-pg="-1"]', p).disabled = s.page <= 0;
+    $('[data-pg="1"]', p).disabled = s.page >= pages - 1;
   };
-  var fit = function () {
-    if (!box.isConnected) return;
-    var tb = $('#tabbar'), bottom = tb && tb.offsetHeight ? tb.offsetHeight : 0;
-    box.style.height = Math.max(320, window.innerHeight - box.getBoundingClientRect().top - bottom - 12) + 'px';
-  };
-  btns.forEach(function (b) { b.onclick = function () { var k = b.getAttribute('data-mtb'); box.scrollTo({ left: idx(k) * box.clientWidth, behavior: 'smooth' }); mark(k); }; });
-  var st = null;
-  box.addEventListener('scroll', function () { clearTimeout(st); st = setTimeout(function () { var i = Math.round(box.scrollLeft / Math.max(1, box.clientWidth)); mark(TABS[Math.min(TABS.length - 1, Math.max(0, i))][0]); }, 80); }, { passive: true });
-  setTimeout(function () { fit(); box.scrollLeft = idx(cur) * box.clientWidth; mark(cur); }, 0);
-  window.onresize = function () { if (App.page === 'dashboard' && box.isConnected) { fit(); box.scrollLeft = idx(cur) * box.clientWidth; } };
-  // cari brand / kategori
-  $$('.mt-find input', main).forEach(function (inp) {
-    var pane = inp.closest('.mtp-p');
-    inp.oninput = function () {
-      var q = inp.value.trim().toLowerCase(), shown = 0;
-      $$('.dbr', pane).forEach(function (r) { var ok = !q || r.getAttribute('data-q').indexOf(q) >= 0; r.hidden = !ok; if (ok) shown++; });
-      var none = $('.mt-none', pane); if (none) none.hidden = shown > 0;
-    };
+  ['brand', 'cat'].forEach(function (k) {
+    var p = $('[data-mv="' + k + '"]', main);
+    $$('[data-pg]', p).forEach(function (b) { b.onclick = function () { state[k].page += Number(b.getAttribute('data-pg')); paint(k); }; });
+    var inp = $('.mv-find input', p);
+    inp.oninput = function () { state[k].q = inp.value.trim().toLowerCase(); state[k].page = 0; paint(k); };
+    paint(k);
   });
+  // geser ke kanan / ketuk tab: Brand ⇄ Kategori
+  var box = $('#mvb', main);
+  var mark = function (k) {
+    $$('[data-mvt]', main).forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-mvt') === k); });
+    $$('[data-dot]', main).forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-dot') === k); });
+    if (k !== cur) { cur = k; Store.set('rpm_mview', k); }
+  };
+  var to = function (k, smooth) { box.scrollTo({ left: k === 'cat' ? box.clientWidth : 0, behavior: smooth ? 'smooth' : 'auto' }); mark(k); };
+  $$('[data-mvt]', main).forEach(function (b) { b.onclick = function () { to(b.getAttribute('data-mvt'), true); }; });
+  var st = null;
+  box.addEventListener('scroll', function () { clearTimeout(st); st = setTimeout(function () { mark(box.scrollLeft > box.clientWidth / 2 ? 'cat' : 'brand'); }, 80); }, { passive: true });
+  setTimeout(function () { to(cur, false); }, 0);
+  window.onresize = function () { if (App.page === 'dashboard' && box.isConnected) to(cur, false); };
+  // perlu tindakan: 3 teratas + tautan ke halaman kualitas
   var pend = [];
   if (c.drafts) pend.push(['edit', fmtNum(c.drafts) + ' SKU Induk masih draft', 'Selesaikan & verifikasi', function () { App.go('products', { status: 'DRAFT' }); }]);
   api('quality.get', {}, { quiet: true, silent: true }).then(function (q) {
@@ -414,10 +435,11 @@ function mobileHome(main, d) {
     });
   }).catch(function () {}).then(function () {
     var el = $('#mhp', main); if (!el) return;
-    el.innerHTML = pend.length ? '<div class="dtodo">' + pend.map(function (p, i) { return '<button type="button" class="dt warn" data-p="' + i + '"><span class="dt-i">' + icon(p[0]) + '</span><span class="dt-l"><b>' + esc(p[1]) + '</b><small>' + esc(p[2]) + '</small></span>' + icon('arrowRight') + '</button>'; }).join('') + '</div>'
+    el.innerHTML = pend.length ? '<div class="dtodo">' + pend.slice(0, 3).map(function (p, i) { return '<button type="button" class="dt warn" data-p="' + i + '"><span class="dt-i">' + icon(p[0]) + '</span><span class="dt-l"><b>' + esc(p[1]) + '</b><small>' + esc(p[2]) + '</small></span>' + icon('arrowRight') + '</button>'; }).join('') + '</div>' +
+      (pend.length > 3 ? '<button type="button" class="link-btn" id="mhq">Lihat semua (' + pend.length + ') ' + icon('arrowRight') + '</button>' : '')
       : '<div class="dempty ok">' + icon('check') + '<div><b>Semua beres</b><span>Tidak ada pekerjaan tertunda.</span></div></div>';
     $$('[data-p]', el).forEach(function (b) { b.onclick = pend[Number(b.getAttribute('data-p'))][3]; });
-    var badge = $('[data-mtb=todo] .mtb-n', main); if (badge && pend.length) { badge.textContent = pend.length; badge.hidden = false; }
+    var all = $('#mhq', el); if (all) all.onclick = function () { App.go('quality'); };
   });
 }
 </script>
