@@ -68,7 +68,7 @@ function shopeeList_(f) {
   f = f || {}; const catalog = shopeeCatalog_(), q = String(f.search || '').toLowerCase(), summary = { all: 0, unmapped: 0, suggested: 0, needs_review: 0, approved: 0, mismatch: 0, ignored: 0 }, stores = new Set();
   let all = db_('SHOPEE_LISTINGS').rows().filter((r) => { stores.add(r.StoreAccount); return !f.store || r.StoreAccount === f.store; });
   all.forEach((r) => { summary.all++; summary[shopeeStatus_(r, catalog)]++; });
-  all = all.filter((r) => (!f.status || (f.status === 'review' ? ['needs_review', 'mismatch'].includes(shopeeStatus_(r, catalog)) : shopeeStatus_(r, catalog) === f.status)) && (!f.kind || r.SaleType === f.kind) && (!f.withStock || Number(r.Stock) > 0) && (!q || [r.ListingName, r.VariationName, r.ExternalProductId, r.ExternalVariationId, r.ExternalSku, r.ExternalParentSku, r.ExternalGTIN, r.TargetSku, (catalog[r.TargetSku] || {}).name, (catalog[r.TargetSku] || {}).gtin].join(' ').toLowerCase().includes(q)));
+  all = all.filter((r) => (!f.status || (f.status === 'pending' ? !['approved', 'suggested'].includes(shopeeStatus_(r, catalog)) : f.status === 'review' ? ['needs_review', 'mismatch'].includes(shopeeStatus_(r, catalog)) : shopeeStatus_(r, catalog) === f.status)) && (!f.kind || r.SaleType === f.kind) && (!f.withStock || Number(r.Stock) > 0) && (!q || [r.ListingName, r.VariationName, r.ExternalProductId, r.ExternalVariationId, r.ExternalSku, r.ExternalParentSku, r.ExternalGTIN, r.TargetSku, (catalog[r.TargetSku] || {}).name, (catalog[r.TargetSku] || {}).gtin].join(' ').toLowerCase().includes(q)));
   const page = paginate_(all, f.page, Math.min(Math.max(Number(f.pageSize) || 30, 1), 100));
   page.rows = page.rows.map((r) => shopeeView_(r, catalog)); page.summary = summary; page.stores = Array.from(stores).sort();
   return page;
@@ -111,13 +111,38 @@ function shopeeImport_(user, p) {
       else db_('EXTERNAL_SKU_MAPPINGS').filter((m) => m.System === 'shopee' && m.IsActive && shopeeKey_(m.StoreAccount, m.ExternalProductId, m.ExternalVariationId) === entry.key).forEach((m) => db_('EXTERNAL_SKU_MAPPINGS').update(m, { ExternalSku: v.ExternalSku, ExternalParentSku: v.ExternalParentSku, ListingName: v.ListingName, UpdatedAt: now_() }));
       T.update(old, Object.assign(v, { Version: Number(old.Version || 1) + 1 })); rep.updated++;
     } else {
-      const sale = shopeeInferSale_(v.ListingName, v.VariationName), target = catalog[v.ExternalSku];
+      const sale = shopeeInferSale_(v.ListingName, v.VariationName), target = shopeeSuggest_(v, sale, catalog);
       // Hanya usulan; kesamaan kode saja tidak pernah menyetujui sebuah paket secara otomatis.
-      const suggested = target && target.active && sale.type === 'single' && target.kind === 'single';
+      const suggested = !!target;
       T.insert(Object.assign(v, { ListingID: uuid_(), Version: 1, SaleType: sale.type, SaleQuantity: sale.quantity, ExpectedComponents: suggested ? target.components.map((c) => ({ sku: c.sku, quantity: c.quantity })) : [], TargetSku: suggested ? target.sku : '', ReviewStatus: suggested ? 'suggested' : 'unmapped', ReviewNote: 'Snapshot impor Shopee; periksa nama, variasi, SKU, dan isi paket sebelum disetujui.' })); rep.created++;
     }
   });
-  audit_(user.email, 'shopee.import', 'shopee_listing', '', null, rep, { fileName: p.fileName, store }); return rep;
+  audit_(user.email, 'shopee.import', 'shopee_listing', '', null, rep, { fileName: p.fileName, store });
+  rep.rows = prepared.map((entry) => shopeeView_(T.rows().find((r) => shopeeKey_(r.StoreAccount, r.ExternalProductId, r.ExternalVariationId) === entry.key), catalog));
+  return rep;
+}
+
+/** Usulan baru hanya dari nama persis/GTIN unik dengan jenis dan jumlah yang sesuai. Tetap perlu persetujuan. */
+function shopeeSuggest_(v, sale, catalog) {
+  if (sale.type === 'unclear') return null;
+  const name = masterNameKey(v.ListingName + ' ' + (v.VariationName || ''));
+  const candidates = Object.keys(catalog).map((sku) => catalog[sku]).filter((t) => t.active && t.bundleType !== 'REQUEST_MIX' && t.kind === sale.type && t.components.reduce((n, c) => n + c.quantity, 0) === sale.quantity && (masterNameKey(t.name) === name || (sale.type === 'single' && v.ExternalGTIN && t.gtin === v.ExternalGTIN)));
+  // Kode lama yang kebetulan sama tidak cukup untuk mengalahkan nama/variasi yang berbeda.
+  return candidates.length === 1 ? candidates[0] : null;
+}
+
+/** Verifikasi ulang saat unduh; pasangan usulan/stale tidak pernah ikut menimpa template. */
+function shopeeExport_(p) {
+  if (!Array.isArray(p.rows) || !p.rows.length || p.rows.length > 200) throw new AppError('Kirim 1–200 baris untuk pemeriksaan unduhan.');
+  const catalog = shopeeCatalog_(), store = p.store || 'Meirista', index = {};
+  db_('SHOPEE_LISTINGS').rows().forEach((r) => { index[shopeeKey_(r.StoreAccount, r.ExternalProductId, r.ExternalVariationId)] = r; });
+  return p.rows.map((x) => {
+    const r = index[shopeeKey_(store, x.productId, x.variationId)];
+    const same = r && r.ListingName === cleanText(x.name) && (r.VariationName || '') === cleanText(x.variationName) && (r.ExternalSku || '') === String(x.sellerSku || '').trim() && (r.ExternalGTIN || '') === String(x.gtin || '').trim() && (r.ExternalParentSku || '') === String(x.parentSku || '').trim();
+    if (!same) return { productId: x.productId, variationId: x.variationId, eligible: false, reason: 'Data listing berbeda dari file. Unggah ulang dan periksa kembali.' };
+    const status = shopeeStatus_(r, catalog), t = catalog[r.TargetSku];
+    return { productId: x.productId, variationId: x.variationId, eligible: status === 'approved', reason: status === 'approved' ? '' : SHOPEE_REVIEW_STATES.includes(status) ? 'Belum disetujui' : 'Master berubah; periksa kembali', sku: status === 'approved' ? t.sku : '', parentSku: status === 'approved' ? t.parentSku : '', gtin: status === 'approved' ? t.gtin : '' };
+  });
 }
 function shopeeReview_(user, p) {
   const T = db_('SHOPEE_LISTINGS'), r = T.byId(p.id);

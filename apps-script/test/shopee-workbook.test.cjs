@@ -1,0 +1,31 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+const JSZip = require('jszip');
+const XLSX = require('xlsx');
+const { DOMParser, XMLSerializer } = require('@xmldom/xmldom');
+
+test('unduhan mempertahankan ZIP template, metadata, style, rumus, sheet lain dan digit GTIN', async () => {
+  const zip = new JSZip();
+  const ns='http://schemas.openxmlformats.org/spreadsheetml/2006/main';
+  zip.file('xl/workbook.xml',`<workbook xmlns="${ns}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Petunjuk" sheetId="1" r:id="r1"/><sheet name="Mass Update" sheetId="2" r:id="r2"/></sheets></workbook>`);
+  zip.file('xl/_rels/workbook.xml.rels','<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="r1" Target="worksheets/sheet1.xml"/><Relationship Id="r2" Target="/xl/worksheets/sheet2.xml"/></Relationships>');
+  const xml=`<worksheet xmlns="${ns}"><dimension ref="A1:O8"/><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>Petunjuk Shopee</t></is></c></row><row r="7" ht="30"><c r="A7" t="inlineStr"><is><t>001234567890123456789</t></is></c><c r="F7" s="3" t="s"><v>0</v></c><c r="G7"><f>100*2</f><v>200</v></c><c r="I7"><v>19</v></c></row><row r="8"><c r="F8" t="inlineStr"><is><t>Belum cocok</t></is></c></row></sheetData><mergeCells count="1"><mergeCell ref="A1:O1"/></mergeCells><dataValidations count="1"><dataValidation type="whole" sqref="I7:I8"><formula1>0</formula1></dataValidation></dataValidations></worksheet>`;
+  zip.file('xl/worksheets/sheet2.xml',xml);
+  zip.file('xl/worksheets/sheet1.xml','petunjuk asli');zip.file('xl/styles.xml','format asli');zip.file('xl/sharedStrings.xml','string asli');zip.file('docProps/custom.xml','metadata Shopee asli');
+  const buffer=await zip.generateAsync({type:'nodebuffer'});
+  const context={Pages:{},JSZip,XLSX,DOMParser,XMLSerializer};
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../src/ShopeeWorkflow.html'),'utf8').replace(/^<script>\s*/,'').replace(/<\/script>\s*$/,''),context);
+  const blob=await context.shopeePatchWorkbook({buffer,sheetName:'Mass Update'},[{row:7,col:4,value:'PRD000001'},{row:7,col:5,value:'PRD000001-001'},{row:7,col:7,value:'0012345678901'}]);
+  const result=await JSZip.loadAsync(await blob.arrayBuffer());
+  for(const name of Object.keys(zip.files).filter(n=>!zip.files[n].dir&&n!=='xl/worksheets/sheet2.xml'))assert.equal(await result.file(name).async('string'),await zip.file(name).async('string'),name);
+  const out=await result.file('xl/worksheets/sheet2.xml').async('string');
+  const doc=new DOMParser().parseFromString(out,'application/xml');
+  const cell=ref=>Array.from(doc.getElementsByTagNameNS(ns,'c')).find(c=>c.getAttribute('r')===ref);
+  assert.equal(cell('F7').getAttribute('s'),'3');assert.equal(cell('H7').textContent,'0012345678901');assert.equal(cell('A7').textContent,'001234567890123456789');
+  assert.equal(cell('G7').getElementsByTagNameNS(ns,'f')[0].textContent,'100*2');assert.equal(cell('I7').textContent,'19');assert.equal(cell('F8').textContent,'Belum cocok');
+  assert.equal(doc.getElementsByTagNameNS(ns,'mergeCell')[0].getAttribute('ref'),'A1:O1');assert.equal(doc.getElementsByTagNameNS(ns,'dataValidation')[0].getAttribute('sqref'),'I7:I8');
+  assert.deepEqual(Array.from(cell('F7').parentNode.getElementsByTagNameNS(ns,'c')).map(c=>c.getAttribute('r')),['A7','E7','F7','G7','H7','I7']);
+});

@@ -33,7 +33,7 @@ test('listing tanpa pasangan tetap tersimpan; import idempoten, identitas toko +
   assert.equal(list({store:'Meirista',withStock:true}).total,1);
   assert.equal(list({search:'1002'}).total,1);
   const paged=list({pageSize:1,page:2});assert.equal(paged.rows.length,1);assert.equal(paged.total,3);
-  assert.equal(list().summary.unmapped,3);
+  assert.equal(list().summary.unmapped,1);assert.equal(list().summary.suggested,2,'nama satuan persis memberi usulan tanpa menyetujui otomatis');
   const failed=call(A,'shopee.import',{rows:[source({productId:'222222222'}),source({productId:'not-an-id'})]});assert.equal(failed.ok,false);assert.equal(list().total,3,'tidak ada setengah batch tersimpan');
   assert.equal(call(V,'shopee.import',{rows:[source()]}).error.code,'FORBIDDEN');
   assert.equal(call(S,'shopee.list',{}).error.code,'FORBIDDEN');
@@ -63,6 +63,42 @@ test('master berubah setelah pratinjau / persetujuan: signature dan status memak
   assert.equal(call(A,'shopee.review',p).error.code,'CONFLICT');
   assert.equal(list({store:'Meirista',search:'1001'}).rows[0].status,'mismatch');
   assert.ok(list({status:'review'}).rows.some(x=>x.id===r.id));
+});
+
+test('unduhan hanya menerapkan persetujuan yang cocok dengan identitas file dan master terbaru',()=>{
+  const raw=source({productId:'654321987',variationId:'42',name:'Viva Air Mawar 100 ml',parentSku:'lama'});
+  const imported=imp([raw]);assert.equal(imported.rows.length,1);assert.equal(imported.rows[0].productId,raw.productId);
+  const exp=(rows)=>ok(call(A,'shopee.export',{store:'Meirista',rows}));
+  assert.equal(exp([raw])[0].eligible,false,'usulan belum boleh mengubah file');
+  ok(call(A,'shopee.review',approval(imported.rows[0],single)));
+  let result=exp([raw])[0];assert.equal(result.eligible,true);assert.equal(result.sku,single);assert.equal(result.parentSku,product.productCode);
+  assert.equal(exp([Object.assign({},raw,{variationName:'200 ml'})])[0].eligible,false);
+  assert.equal(exp([Object.assign({},raw,{sellerSku:'file-lain'})])[0].eligible,false);
+  assert.equal(exp([Object.assign({},raw,{parentSku:'parent-lain'})])[0].eligible,false);
+  G.ctx.withLock_(()=>{const v=G.ctx.db_('PRODUCT_VARIANTS').byId(product.variants[0].id);G.ctx.db_('PRODUCT_VARIANTS').update(v,{GTIN:'8991234567890'});});
+  assert.equal(exp([raw])[0].eligible,false,'master berubah membatalkan kelayakan unduh');
+  const current=list({search:raw.productId}).rows[0];ok(call(A,'shopee.review',approval(current,single)));
+  assert.equal(exp([raw])[0].gtin,'8991234567890');
+  const packRaw=source({productId:'876543210',variationId:'43',name:'[3 PCS] Air Mawar',gtin:'8991234567890'});
+  const pack=imp([packRaw]).rows[0];ok(call(A,'shopee.review',approval(pack,mp)));
+  result=exp([packRaw])[0];assert.equal(result.sku,mp);assert.equal(result.gtin,'','GTIN satuan tidak menjadi GTIN paket');
+  assert.equal(call(A,'shopee.export',{rows:[]}).ok,false);
+});
+
+test('rencana unduhan menjaga baris belum disetujui dan parent produk dengan campuran pasangan',()=>{
+  const context={Pages:{}};
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../src/ShopeeWorkflow.html'),'utf8').replace(/^<script>\s*/,'').replace(/<\/script>\s*$/,''),context);
+  const header=['Kode Produk','Nama Produk','Kode Variasi','Nama Variasi','SKU Induk','SKU','Harga','GTIN','Stok'];
+  const rows=[{productId:'123',variationId:'1',sourceRow:7},{productId:'123',variationId:'2',sourceRow:8},{productId:'456',variationId:'3',sourceRow:9}];
+  const file={rows,aoa:[['metadata'],header,['petunjuk']]};
+  const results=[{productId:'123',variationId:'1',eligible:true,sku:'MP000243',parentSku:'PRD000168',gtin:''},{productId:'123',variationId:'2',eligible:false},{productId:'456',variationId:'3',eligible:true,sku:'PRD000001-001',parentSku:'PRD000001',gtin:'0012345678901'}];
+  let plan=context.shopeeExportChanges(file,results);assert.equal(plan.eligible,2);assert.equal(plan.unchanged,1);
+  assert.ok(!plan.changes.some(c=>c.row===8));assert.ok(!plan.changes.some(c=>c.row===7&&c.col===4),'parent ditahan bila variasi lain belum disetujui');
+  assert.equal(plan.changes.find(c=>c.row===7&&c.col===7).value,'');assert.equal(plan.changes.find(c=>c.row===9&&c.col===7).value,'0012345678901');
+  assert.ok(plan.changes.every(c=>[4,5,7].includes(c.col)),'harga/stok/ID/nama tetap');
+  results[1]={productId:'123',variationId:'2',eligible:true,sku:'PRD000168-003',parentSku:'PRD000168',gtin:''};
+  plan=context.shopeeExportChanges(file,results);assert.equal(plan.changes.filter(c=>c.col===4).length,3);
+  results[1].parentSku='PRD000999';plan=context.shopeeExportChanges(file,results);assert.equal(plan.changes.filter(c=>c.col===4).length,1);
 });
 test('import perubahan harga mempertahankan persetujuan; perubahan identitas mencabut mapping; kode yang diperbarui mengikuti snapshot',()=>{
   let r=list({store:'Meirista',search:'1001'}).rows[0];ok(call(A,'shopee.review',approval(r,single)));

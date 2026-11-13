@@ -27,3 +27,14 @@ Tombol **Perbarui tarikan Shopee** membaca template Excel/CSV dan mengirim batch
 Untuk pratinjau developer dengan data nyata, jalankan `npm run dev` dengan `PREVIEW_MASTER_XLSX` menunjuk salinan database lokal. Hanya tabel katalog yang disalin ke emulator; akun produksi tidak dibaca atau ditiru.
 
 Pembaruan struktur berjalan otomatis setelah backend baru diterapkan. Frontend Apps Script dan GitHub Pages sama-sama menyertakan `Shopee.html` melalui `Index.html`.
+# Alur template mass edit Shopee
+
+SKU Mapping Shopee kini memakai tabel ringkas: produk, variasi, SKU asal, SKU sistem, status, dan tombol Periksa. Rincian GTIN dan komposisi paket tersedia di Periksa.
+
+1. Unggah template `.xlsx` asli Shopee (lembar produk ditemukan berdasarkan judul kolom, termasuk jika bukan lembar pertama).
+2. Periksa usulan dan setujui pasangan. Nama persis atau GTIN unik dapat menghasilkan usulan baru; persetujuan tetap memeriksa jenis dan komposisi satuan/MP/BD.
+3. Unduh hasil. Server memeriksa ulang identitas file, persetujuan, serta signature master. Hanya pasangan yang disetujui dan masih berlaku yang mengubah SKU dan GTIN. GTIN paket kosong di master menghasilkan GTIN kosong, tidak menyalin GTIN komponennya.
+
+SKU induk diisi dari parent master hanya jika seluruh variasi produk dalam file disetujui dan memiliki parent yang sama. Bila berbeda atau masih ada variasi belum disetujui, SKU induk asli dipertahankan. File mempertahankan seluruh baris dan kolom lain, harga, stok, ID, petunjuk, format, validasi Excel, dan lembar lain. Implementasi hanya menambal sel terpilih di XML ZIP asli. Baris belum disetujui tetap seperti asal, termasuk kode lama yang mungkin masih ada.
+
+File asli disimpan di memori tab browser selama sesi ini. Setelah refresh atau menutup tab, unggah kembali file yang sama untuk mengunduh; hasil pemeriksaan tetap tersimpan di database. File pengguna tidak dimasukkan ke repository publik.
