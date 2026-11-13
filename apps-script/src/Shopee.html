@@ -4,8 +4,20 @@ var SHOPEE_KIND = { single: 'Satuan', multipack: 'Paket produk sama (MP)', bundl
 function shopeeBadge(st) { return '<span class="badge b-' + ({ approved: 'confirmed', suggested: 'mapped', mismatch: 'error', needs_review: 'CHECK', ignored: 'INACTIVE', unmapped: 'unmapped' }[st] || 'CHECK') + '">' + esc(SHOPEE_STATUS[st] || st) + '</span>'; }
 function shopeeBom(cs) { return (cs || []).map(function (c) { return '<div><b>' + esc(c.quantity) + ' × <span class="sku">' + esc(c.sku) + '</span></b><small class="shopee-sub">' + esc(c.name || '') + (c.gtin ? ' · GTIN ' + esc(c.gtin) : '') + '</small></div>'; }).join(''); }
 
-function shopeeReviewDialog(id, done) {
-  api('shopee.get', { id: id }).then(function (r) {
+function shopeeReviewDialog(row, done) {
+  // Daftar sudah membawa detail SKU, GTIN, komposisi dan version/signature.
+  // Buka sinkron tanpa round trip; server tetap memvalidasi ulang saat menyimpan.
+  if (row && typeof row === 'object') return shopeeOpenReview(row, done);
+  var shell = modal('<h3>Periksa pasangan SKU Shopee</h3><div id="svLoading">' + loadingBox('Memuat detail produk…') + '</div><div class="row"><button class="btn" data-close>Tutup</button></div>');
+  var closed = false, close = shell.close;
+  shell.close = function () { closed = true; close(); };
+  api('shopee.get', { id: row }, { silent: true }).then(function (r) {
+    if (closed || !shell.isConnected) return;
+    shell.close(); shopeeOpenReview(r, done);
+  }).catch(function (e) { if (!closed && shell.isConnected) $('#svLoading', shell).innerHTML = errBox(e.message); });
+  return shell;
+}
+function shopeeOpenReview(r, done) {
     var w = can('mapping.write'), target = r.target, comps = (r.expectedComponents || []).map(function (c) { return { sku: c.sku, quantity: c.quantity }; }), targetSeq = 0;
     var m = modal('<h3>Periksa pasangan SKU Shopee</h3><div class="shopee-compare"><section><div class="eyebrow">SHOPEE</div><h4>' + esc(r.name) + '</h4><b>' + esc(r.variationName || 'Tanpa variasi') + '</b><p>ID ' + esc(r.productId) + ' / ' + esc(r.variationId || '—') + '</p><div>SKU: <span class="sku">' + esc(r.sellerSku || 'Belum diisi') + '</span></div><div>GTIN: <span class="code">' + esc(r.gtin || '—') + '</span></div><small class="shopee-sub">' + esc(r.source) + ' · baris ' + esc(r.sourceRow) + '</small></section><section><div class="eyebrow">MASTER SISTEM</div><div id="svTarget"></div></section></div>' +
       '<div class="fgrid"><div><label class="f">Jenis penjualan Shopee</label><select class="in w100" id="svType"' + (!w ? ' disabled' : '') + '>' + Object.keys(SHOPEE_KIND).map(function (k) { return '<option value="' + k + '"' + (k === r.saleType ? ' selected' : '') + '>' + esc(SHOPEE_KIND[k]) + '</option>'; }).join('') + '</select></div><div><label class="f">Total unit dalam satu pembelian</label><input class="in w100" id="svQty" type="number" min="1" step="1" value="' + esc(r.quantity) + '"' + (!w ? ' disabled' : '') + '></div></div>' +
@@ -25,7 +37,7 @@ function shopeeReviewDialog(id, done) {
       $$('[data-remove]', m).forEach(function (el) { el.onclick = function () { comps.splice(Number(el.getAttribute('data-remove')), 1); $('#svAck', m).checked = false; renderComponents(); }; });
     }
     renderTarget(); renderComponents();
-    if (!w) return;
+    if (!w) return m;
     skuCombo($('#svSku', m), ['variant', 'bundle'], function (it) {
       var seq = ++targetSeq; target = null; $('#svAck', m).checked = false; renderTarget();
       if (it) api('shopee.target', { sku: it.sku }, { silent: true }).then(function (t) { if (seq !== targetSeq) return; target = t; renderTarget(); }).catch(function (e) { $('#svError', m).innerHTML = feList(e); });
@@ -42,7 +54,7 @@ function shopeeReviewDialog(id, done) {
     $('#svApprove', m).onclick = function () { save('approve', this); };
     $('#svReview', m).onclick = function () { save('needs_review', this); };
     $('#svIgnore', m).onclick = function () { save('ignored', this); };
-  }).catch(function () {});
+    return m;
 }
 
 /** Mengambil hanya kolom tarikan Shopee, bukan instruksi atau formula dalam workbook. */
