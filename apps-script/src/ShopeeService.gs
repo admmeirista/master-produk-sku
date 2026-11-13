@@ -24,6 +24,8 @@ function shopeeCatalog_() {
     const p = P[v.ProductID]; if (!p || !v.SKU || v.Status === STATUS.DELETED || p.Status === STATUS.DELETED) return;
     const active = v.Status === STATUS.ACTIVE && p.Status === STATUS.ACTIVE;
     const t = { sku: v.SKU, kind: 'single', name: variantDisplayName_(v) || cleanText((B[p.BrandID] || {}).BrandName + ' ' + p.ProductName + ' ' + (v.IsDefault ? '' : v.VariantName)), parentSku: p.ProductCode, gtin: v.GTIN || '', internalBarcode: v.InternalBarcode || '', active, productId: p.ProductID, variantId: v.VariantID, bundleId: '', unit: v.BaseUnit || p.BaseUnit, components: [{ sku: v.SKU, quantity: 1, name: variantDisplayName_(v), gtin: v.GTIN || '' }] };
+    t.productName = p.ProductName || t.name;
+    t.variationName = v.IsDefault ? '' : v.VariantName || '';
     t.signature = shopeeSignature_([t.sku, t.name, t.gtin, t.active, t.components]); bySku[t.sku] = byId[v.VariantID] = t;
   });
   db_('BUNDLE_COMPONENTS').rows().filter((c) => c.Status === STATUS.ACTIVE).forEach((c) => { (comps[c.BundleID] = comps[c.BundleID] || []).push(c); });
@@ -32,6 +34,8 @@ function shopeeCatalog_() {
     const raw = comps[b.BundleID] || [], cs = raw.map((c) => ({ sku: (byId[c.VariantID] || {}).sku || '', quantity: Number(c.Quantity), name: (byId[c.VariantID] || {}).name || 'SKU komponen tidak ditemukan', gtin: (byId[c.VariantID] || {}).gtin || '' }));
     const parents = Array.from(new Set(raw.map((c) => (byId[c.VariantID] || {}).parentSku).filter(Boolean)));
     const t = { sku: b.BundleSKU, kind: b.BundleType === 'MULTIPACK' ? 'multipack' : 'bundle', name: b.BundleName, parentSku: parents.length === 1 ? parents[0] : '', gtin: bundleCodes[b.BundleID] || '', internalBarcode: '', active: b.Status === STATUS.ACTIVE && raw.length > 0 && raw.every((c) => byId[c.VariantID] && byId[c.VariantID].active), productId: '', variantId: '', bundleId: b.BundleID, unit: 'PAKET', bundleType: b.BundleType, components: cs };
+    t.productName = b.BundleName;
+    t.variationName = Array.from(new Set(raw.map((c) => (byId[c.VariantID] || {}).variationName).filter(Boolean))).join(' + ');
     t.signature = shopeeSignature_([t.sku, t.name, t.gtin, t.active, b.BundleType, cs]); bySku[t.sku] = t;
   });
   V._shopeeCatalog = bySku; return bySku;
@@ -64,10 +68,16 @@ function shopeeView_(r, catalog) {
   const t = catalog[r.TargetSku] || null, status = shopeeStatus_(r, catalog);
   return { id: r.ListingID, store: r.StoreAccount, productId: r.ExternalProductId, variationId: r.ExternalVariationId || '', name: r.ListingName, variationName: r.VariationName || '', parentSku: r.ExternalParentSku || '', sellerSku: r.ExternalSku || '', gtin: r.ExternalGTIN || '', price: r.Price || 0, stock: r.Stock || 0, saleType: r.SaleType || 'unclear', quantity: r.SaleQuantity || '', expectedComponents: r.ExpectedComponents || [], targetSku: r.TargetSku || '', target: t, status, note: r.ReviewNote || '', reviewer: r.ReviewedBy || '', reviewedAt: r.ReviewedAt || '', version: Number(r.Version) || 1, source: r.SourceFile || '', sourceRow: r.SourceRow || '', importedAt: r.ImportedAt || '', skuMatches: !!t && r.ExternalSku === t.sku, gtinMatches: !!t && !!t.gtin && r.ExternalGTIN === t.gtin, issues: r.TargetSku ? shopeeValidateTarget_(r, t).concat(status === 'mismatch' && r.ReviewStatus === 'approved' ? ['Master berubah setelah persetujuan; periksa kembali.'] : []) : [] };
 }
+function shopeeDisplayStatus_(r, catalog) {
+  if (shopeeStatus_(r, catalog) === 'approved') return 'approved';
+  return catalog[r.TargetSku] && catalog[r.TargetSku].active ? 'verify' : 'unavailable';
+}
 function shopeeList_(f) {
   f = f || {}; const catalog = shopeeCatalog_(), q = String(f.search || '').toLowerCase(), summary = { all: 0, unmapped: 0, suggested: 0, needs_review: 0, approved: 0, mismatch: 0, ignored: 0 }, stores = new Set();
   let all = db_('SHOPEE_LISTINGS').rows().filter((r) => { stores.add(r.StoreAccount); return !f.store || r.StoreAccount === f.store; });
-  all.forEach((r) => { summary.all++; summary[shopeeStatus_(r, catalog)]++; });
+  summary.verify = 0; summary.unavailable = 0;
+  all.forEach((r) => { summary.all++; summary[shopeeStatus_(r, catalog)]++; const st = shopeeDisplayStatus_(r, catalog); if (st !== 'approved') summary[st]++; });
+  if (['verify', 'unavailable'].includes(f.status)) { all = all.filter((r) => shopeeDisplayStatus_(r, catalog) === f.status); f = Object.assign({}, f, { status: '' }); }
   all = all.filter((r) => (!f.status || (f.status === 'pending' ? !['approved', 'suggested'].includes(shopeeStatus_(r, catalog)) : f.status === 'review' ? ['needs_review', 'mismatch'].includes(shopeeStatus_(r, catalog)) : shopeeStatus_(r, catalog) === f.status)) && (!f.kind || r.SaleType === f.kind) && (!f.withStock || Number(r.Stock) > 0) && (!q || [r.ListingName, r.VariationName, r.ExternalProductId, r.ExternalVariationId, r.ExternalSku, r.ExternalParentSku, r.ExternalGTIN, r.TargetSku, (catalog[r.TargetSku] || {}).name, (catalog[r.TargetSku] || {}).gtin].join(' ').toLowerCase().includes(q)));
   const page = paginate_(all, f.page, Math.min(Math.max(Number(f.pageSize) || 30, 1), 100));
   page.rows = page.rows.map((r) => shopeeView_(r, catalog)); page.summary = summary; page.stores = Array.from(stores).sort();
@@ -152,15 +162,13 @@ function shopeeReview_(user, p) {
   if (!['approve', 'needs_review', 'ignored'].includes(action)) throw new AppError('Tindakan pemeriksaan tidak dikenal.');
   const patch = { ReviewNote: note, ReviewedBy: user.email, ReviewedAt: now_(), UpdatedAt: now_(), Version: Number(r.Version || 1) + 1 };
   if (action === 'approve') {
-    if (p.acknowledged !== true || note.length < 3) throw new AppError('Konfirmasi pemeriksaan dan catatan wajib diisi.');
     const target = shopeeTarget_(p.sku);
     if (p.targetSignature !== target.signature) throw new AppError('Master berubah sejak pratinjau. Pilih ulang SKU dan periksa GTIN/komposisi terbaru.', [], 'CONFLICT');
     Object.assign(patch, { SaleType: p.saleType, SaleQuantity: Number(p.quantity), ExpectedComponents: shopeeComponents_(p.components), TargetSku: target.sku });
     const errors = shopeeValidateTarget_(Object.assign({}, r, patch), target);
     if (errors.length) throw new AppError(errors.join(' '), [], 'VALIDATION_FAILED');
     Object.assign(patch, { ReviewStatus: 'approved', ReviewedTargetSignature: target.signature });
-    shopeeDisableMapping_(r);
-    createMapping_(user, { system: 'shopee', sku: target.sku, storeAccount: r.StoreAccount, externalProductId: r.ExternalProductId, externalVariationId: r.ExternalVariationId, externalParentSku: r.ExternalParentSku || '', externalSku: r.ExternalSku || '', listingName: r.ListingName, notes: note });
+    shopeeUpsertMapping_(user, r, target, note);
   } else {
     if (note.length < 3) throw new AppError('Alasan pemeriksaan wajib diisi.');
     Object.assign(patch, { ReviewStatus: action, ReviewedTargetSignature: '' }); shopeeDisableMapping_(r);
@@ -168,6 +176,16 @@ function shopeeReview_(user, p) {
   const before = { targetSku: r.TargetSku, status: r.ReviewStatus };
   T.update(r, patch); audit_(user.email, 'shopee.' + action, 'shopee_listing', r.ListingID, before, { targetSku: r.TargetSku, status: r.ReviewStatus }, { note });
   return shopeeView_(r, shopeeCatalog_());
+}
+/** Target sudah divalidasi pada transaksi yang sama; hindari membangun sellables seluruh katalog sekali lagi. */
+function shopeeUpsertMapping_(user, r, target, note) {
+  const M = db_('EXTERNAL_SKU_MAPPINGS'), key = shopeeKey_(r.StoreAccount, r.ExternalProductId, r.ExternalVariationId);
+  const matches = M.filter((m) => m.System === 'shopee' && m.IsActive && shopeeKey_(m.StoreAccount, m.ExternalProductId, m.ExternalVariationId) === key);
+  const old = matches[0], before = old ? { sku: old.InternalSku, active: old.IsActive } : null;
+  matches.slice(1).forEach((m) => M.update(m, { IsActive: false, UpdatedAt: now_() }));
+  const values = { System: 'shopee', StoreAccount: r.StoreAccount, ExternalProductId: r.ExternalProductId, ExternalVariationId: r.ExternalVariationId || '', ExternalParentSku: r.ExternalParentSku || '', ExternalSku: r.ExternalSku || '', ListingName: r.ListingName, ProductID: target.productId || '', VariantID: target.variantId || '', ConversionID: '', BundleID: target.bundleId || '', InternalSku: target.sku, MappingStatus: 'mapped', IsActive: true, Notes: note, UpdatedAt: now_() };
+  const saved = old ? M.update(old, values) : M.insert(Object.assign(values, { MappingID: uuid_(), CreatedBy: user.email, CreatedAt: now_() }));
+  audit_(user.email, 'mapping.' + (old ? 'update' : 'create'), 'mapping', old ? old.MappingID : saved.MappingID, before, { sku: target.sku, system: 'shopee' }, {});
 }
 /** Snapshot audit 12 November: tidak menimpa listing yang sudah ada atau menyetujui atas nama pengguna. */
 function shopeeSeed_(user, rows) {

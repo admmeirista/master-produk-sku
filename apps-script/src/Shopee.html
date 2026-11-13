@@ -1,7 +1,9 @@
 <script>
-var SHOPEE_STATUS = { unmapped: 'Belum dipetakan', suggested: 'Usulan cocok', needs_review: 'Perlu verifikasi', approved: 'Disetujui', mismatch: 'Master berubah / tidak sesuai', ignored: 'Diabaikan' };
+var SHOPEE_STATUS = { unmapped: 'Tidak tersedia', suggested: 'Perlu diverifikasi', needs_review: 'Perlu diverifikasi', approved: 'Disetujui', mismatch: 'Perlu diverifikasi', ignored: 'Tidak tersedia', verify: 'Perlu diverifikasi', unavailable: 'Tidak tersedia' };
 var SHOPEE_KIND = { single: 'Satuan', multipack: 'Paket produk sama (MP)', bundle: 'Paket kombinasi (BD)', unclear: 'Isi belum pasti' };
-function shopeeBadge(st) { return '<span class="badge b-' + ({ approved: 'confirmed', suggested: 'mapped', mismatch: 'error', needs_review: 'CHECK', ignored: 'INACTIVE', unmapped: 'unmapped' }[st] || 'CHECK') + '">' + esc(SHOPEE_STATUS[st] || st) + '</span>'; }
+function shopeeDisplayStatus(r) { return r.status === 'approved' ? 'approved' : r.target && r.target.active ? 'verify' : 'unavailable'; }
+function shopeeBadge(st) { return '<span class="badge shopee-status-' + st + '">' + esc(SHOPEE_STATUS[st] || st) + '</span>'; }
+function shopeeFields(items) { return '<dl class="shopee-fields">' + items.map(function (x) { return '<div><dt>' + esc(x[0]) + '</dt><dd>' + esc(x[1] || '—') + '</dd></div>'; }).join('') + '</dl>'; }
 function shopeeBom(cs) { return (cs || []).map(function (c) { return '<div><b>' + esc(c.quantity) + ' × <span class="sku">' + esc(c.sku) + '</span></b><small class="shopee-sub">' + esc(c.name || '') + (c.gtin ? ' · GTIN ' + esc(c.gtin) : '') + '</small></div>'; }).join(''); }
 
 function shopeeReviewDialog(row, done) {
@@ -19,41 +21,42 @@ function shopeeReviewDialog(row, done) {
 }
 function shopeeOpenReview(r, done) {
     var w = can('mapping.write'), target = r.target, comps = (r.expectedComponents || []).map(function (c) { return { sku: c.sku, quantity: c.quantity }; }), targetSeq = 0;
-    var m = modal('<h3>Periksa pasangan SKU Shopee</h3><div class="shopee-compare"><section><div class="eyebrow">SHOPEE</div><h4>' + esc(r.name) + '</h4><b>' + esc(r.variationName || 'Tanpa variasi') + '</b><p>ID ' + esc(r.productId) + ' / ' + esc(r.variationId || '—') + '</p><div>SKU: <span class="sku">' + esc(r.sellerSku || 'Belum diisi') + '</span></div><div>GTIN: <span class="code">' + esc(r.gtin || '—') + '</span></div><small class="shopee-sub">' + esc(r.source) + ' · baris ' + esc(r.sourceRow) + '</small></section><section><div class="eyebrow">MASTER SISTEM</div><div id="svTarget"></div></section></div>' +
+    var m = modal('<h3>Periksa pasangan SKU Shopee</h3><div class="shopee-compare"><section><div class="eyebrow">SHOPEE</div>' + shopeeFields([['Nama Produk', r.name], ['Variasi', r.variationName], ['Kode Produk', r.productId], ['Kode Variasi', r.variationId], ['SKU Induk', r.parentSku], ['SKU', r.sellerSku], ['GTIN', r.gtin]]) + '</section><section><div class="eyebrow">MASTER SISTEM</div><div id="svTarget"></div></section></div>' +
       '<div class="fgrid"><div><label class="f">Jenis penjualan Shopee</label><select class="in w100" id="svType"' + (!w ? ' disabled' : '') + '>' + Object.keys(SHOPEE_KIND).map(function (k) { return '<option value="' + k + '"' + (k === r.saleType ? ' selected' : '') + '>' + esc(SHOPEE_KIND[k]) + '</option>'; }).join('') + '</select></div><div><label class="f">Total unit dalam satu pembelian</label><input class="in w100" id="svQty" type="number" min="1" step="1" value="' + esc(r.quantity) + '"' + (!w ? ' disabled' : '') + '></div></div>' +
       (w ? '<label class="f">Pilih SKU barang / MP / BD yang sesuai</label><div id="svSku"></div>' : '') + '<div class="sect">Komposisi yang dijual di Shopee</div><div id="svComponents"></div>' +
       (w ? '<div class="row" style="margin-top:8px"><button class="btn sm" id="svAdd">Tambah komponen</button><button class="btn sm" id="svCopy">Gunakan isi master yang sudah diperiksa</button></div>' : '') +
-      '<label class="f">Catatan pemeriksaan</label><textarea class="in w100" id="svNote" rows="3"' + (!w ? ' readonly' : '') + '>' + esc(r.note) + '</textarea>' +
-      (w ? '<label class="chk" style="margin-top:12px"><input type="checkbox" id="svAck"> Saya sudah memeriksa nama, variasi, jumlah, dan seluruh isi paket.</label>' : '') + '<div id="svError"></div><div class="row" style="margin-top:16px">' +
-      (w ? '<button class="btn pri" id="svApprove">Setujui pasangan SKU</button><button class="btn" id="svReview">Perlu verifikasi</button><button class="btn ghost" id="svIgnore">Abaikan listing</button>' : '') + '<button class="btn" data-close>Tutup</button></div>', { wide: true });
+      '<label class="f">Catatan pemeriksaan (opsional untuk persetujuan)</label><textarea class="in w100" id="svNote" rows="3"' + (!w ? ' readonly' : '') + '>' + esc(r.note) + '</textarea>' +
+      '<div id="svError"></div><div class="row shopee-review-actions" style="margin-top:16px">' +
+      (w ? '<button class="btn pri" id="svApprove">Setujui pasangan SKU</button><button class="btn" id="svReview">Perlu diverifikasi</button>' : '') + '<button class="btn" data-close>Tutup</button></div>', { wide: true });
     function renderTarget() {
-      $('#svTarget', m).innerHTML = target ? '<b class="sku">' + esc(target.sku) + '</b><h4>' + esc(target.name) + '</h4><div>Parent: <span class="sku">' + esc(target.parentSku || '—') + '</span></div><div>GTIN: <span class="code">' + esc(target.gtin || 'Tidak ada GTIN paket/barang di master') + '</span></div><div class="shopee-bom">' + shopeeBom(target.components) + '</div>' + (!target.active ? '<div class="err-box">SKU atau komponen master tidak aktif.</div>' : '') : '<div class="muted">Pilih pasangan dari master SKU.</div>';
+      $('#svTarget', m).innerHTML = shopeeFields([['Nama Produk', target && (target.productName || target.name)], ['Variasi', target && target.variationName], ['SKU Parent', target && target.parentSku], ['SKU', target && target.sku], ['GTIN', target && target.gtin]]) + (target && target.kind !== 'single' ? '<div class="shopee-bom">' + shopeeBom(target.components) + '</div>' : '') + (!target ? '<div class="shopee-unavailable">SKU tidak tersedia. Cari pasangan master yang sesuai.</div>' : !target.active ? '<div class="err-box">SKU atau komponen master tidak aktif.</div>' : '');
     }
     function renderComponents() {
       $('#svComponents', m).innerHTML = comps.length ? comps.map(function (c, i) { return '<div class="row shopee-component"><div id="svc' + i + '" class="grow">' + (!w ? '<span class="sku">' + esc(c.sku) + '</span>' : '') + '</div><input class="in" style="width:90px" type="number" min="1" step="1" data-qty="' + i + '" value="' + esc(c.quantity) + '" aria-label="Jumlah komponen"' + (!w ? ' disabled' : '') + '>' + (w ? '<button class="btn sm ghost" data-remove="' + i + '" aria-label="Hapus komponen">' + icon('trash') + '</button>' : '') + '</div>'; }).join('') : '<div class="muted">Tentukan isi penjualan sebelum menyetujui. Paket berbeda barang membutuhkan BD dengan komposisi tetap.</div>';
       if (!w) return;
-      comps.forEach(function (c, i) { skuCombo($('#svc' + i, m), ['variant'], function (it) { c.sku = it ? it.sku : ''; $('#svAck', m).checked = false; }, 'Cari SKU barang komponen…', c.sku ? { sku: c.sku, displayName: c.sku } : null); });
-      $$('[data-qty]', m).forEach(function (el) { el.oninput = function () { comps[Number(el.getAttribute('data-qty'))].quantity = Number(el.value); $('#svAck', m).checked = false; }; });
-      $$('[data-remove]', m).forEach(function (el) { el.onclick = function () { comps.splice(Number(el.getAttribute('data-remove')), 1); $('#svAck', m).checked = false; renderComponents(); }; });
+      comps.forEach(function (c, i) { skuCombo($('#svc' + i, m), ['variant'], function (it) { c.sku = it ? it.sku : ''; }, 'Cari SKU barang komponen…', c.sku ? { sku: c.sku, displayName: c.sku } : null); });
+      $$('[data-qty]', m).forEach(function (el) { el.oninput = function () { comps[Number(el.getAttribute('data-qty'))].quantity = Number(el.value); }; });
+      $$('[data-remove]', m).forEach(function (el) { el.onclick = function () { comps.splice(Number(el.getAttribute('data-remove')), 1); renderComponents(); }; });
     }
     renderTarget(); renderComponents();
     if (!w) return m;
     skuCombo($('#svSku', m), ['variant', 'bundle'], function (it) {
-      var seq = ++targetSeq; target = null; $('#svAck', m).checked = false; renderTarget();
+      var seq = ++targetSeq; target = null; renderTarget();
       if (it) api('shopee.target', { sku: it.sku }, { silent: true }).then(function (t) { if (seq !== targetSeq) return; target = t; renderTarget(); }).catch(function (e) { $('#svError', m).innerHTML = feList(e); });
     }, 'Cari SKU, nama atau GTIN…', target ? { sku: target.sku, displayName: target.name } : null);
-    $('#svAdd', m).onclick = function () { comps.push({ sku: '', quantity: 1 }); $('#svAck', m).checked = false; renderComponents(); };
-    $('#svCopy', m).onclick = function () { if (!target) return toast('Pilih SKU master dahulu.', 'warn'); comps = target.components.map(function (c) { return { sku: c.sku, quantity: c.quantity }; }); $('#svAck', m).checked = false; renderComponents(); };
-    ['svType', 'svQty'].forEach(function (key) { $('#' + key, m).onchange = function () { $('#svAck', m).checked = false; }; });
+    $('#svAdd', m).onclick = function () { comps.push({ sku: '', quantity: 1 }); renderComponents(); };
+    $('#svCopy', m).onclick = function () { if (!target) return toast('Pilih SKU master dahulu.', 'warn'); comps = target.components.map(function (c) { return { sku: c.sku, quantity: c.quantity }; }); renderComponents(); };
+    var saving = false;
     function save(action, btn) {
+      if (saving) return;
       if (action === 'approve' && !target) return toast('Pilih pasangan master.', 'err');
-      var p = { id: r.id, version: r.version, action: action, note: $('#svNote', m).value, sku: target && target.sku, targetSignature: target && target.signature, saleType: $('#svType', m).value, quantity: Number($('#svQty', m).value), components: comps, acknowledged: $('#svAck', m).checked, requestKey: uid() };
-      $('#svError', m).innerHTML = '';
-      busy(btn, api('shopee.review', p, { silent: true })).then(function (updated) { m.close(); toast(action === 'approve' ? 'Pasangan SKU disetujui. Data Shopee tidak diubah langsung.' : 'Status pemeriksaan disimpan.', 'ok'); done(updated); }).catch(function (e) { $('#svError', m).innerHTML = feList(e); });
+      var p = { id: r.id, version: r.version, action: action, note: $('#svNote', m).value, sku: target && target.sku, targetSignature: target && target.signature, saleType: $('#svType', m).value, quantity: Number($('#svQty', m).value), components: comps, requestKey: uid() };
+      $('#svError', m).innerHTML = ''; saving = true;
+      ['svApprove', 'svReview'].forEach(function (key) { $('#' + key, m).disabled = true; });
+      busy(btn, api('shopee.review', p, { silent: true })).then(function (updated) { m.close(); toast(action === 'approve' ? 'Pasangan SKU disetujui. Data Shopee tidak diubah langsung.' : 'Status pemeriksaan disimpan.', 'ok'); done(updated); }).catch(function (e) { saving = false; ['svApprove', 'svReview'].forEach(function (key) { $('#' + key, m).disabled = false; }); $('#svError', m).innerHTML = feList(e); });
     }
     $('#svApprove', m).onclick = function () { save('approve', this); };
     $('#svReview', m).onclick = function () { save('needs_review', this); };
-    $('#svIgnore', m).onclick = function () { save('ignored', this); };
     return m;
 }
 

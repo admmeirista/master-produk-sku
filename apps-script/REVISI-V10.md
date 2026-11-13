@@ -4,9 +4,9 @@ Integrasi kini menyediakan satu halaman **SKU Mapping Shopee**. Tab TikTok, Toko
 
 ## Daftar dan pemeriksaan
 
-- Tabel menampilkan nama produk dan variasi Shopee, ID produk/variasi, SKU induk, SKU, GTIN, harga/stok snapshot, pasangan SKU/GTIN master, jenis penjualan, BOM, status, dan catatan.
-- Pencarian, pagination, filter toko, jenis penjualan, status, dan stok tersedia. GTIN paket tidak diambil dari GTIN komponen.
-- Pemeriksa memilih SKU barang / MP / BD, menentukan jenis, total unit dan komponen, lalu mengakui pemeriksaan sebelum menyetujui. Paket kombinasi harus memakai BD dengan BOM yang sesuai; request mix tanpa komposisi tetap tidak dapat disetujui lewat alur ini.
+- Tabel ringkas menampilkan produk/variasi, SKU Shopee, SKU sistem, dan status. Kolom/card Shopee berwarna orange (#ee4d2d), master mengikuti warna mocha sistem. Detail menampilkan label terpisah dan urutan nama, variasi, identitas produk, SKU, dan GTIN.
+- Pencarian, pagination, dan tiga filter status tersedia: Perlu diverifikasi (orange, ada target aktif namun belum disetujui), Disetujui (hijau), Tidak tersedia (merah, belum memiliki target aktif). GTIN paket tidak diambil dari GTIN komponen.
+- Pemeriksa memilih SKU barang / MP / BD, menentukan jenis, total unit dan komponen, lalu langsung menyetujui tanpa ceklis. Catatan opsional untuk persetujuan. Paket kombinasi harus memakai BD dengan BOM yang sesuai; request mix tanpa komposisi tetap tidak dapat disetujui lewat alur ini.
 - Persetujuan mencatat pengguna/waktu dan membuat mapping Shopee ke identitas master. Ini bukan perubahan otomatis di Shopee. Kolom SKU induk listing tidak dipakai untuk menentukan isi pesanan.
 - Perubahan nama/variasi/SKU pada tarikan berikutnya memicu pemeriksaan ulang dan menonaktifkan mapping lama. Perubahan master sejak pratinjau ditolak saat simpan; perubahan setelah persetujuan ditandai tidak sesuai.
 
@@ -18,7 +18,7 @@ Migrasi sekali jalan membawa 5.007 baris tarikan 12 November 2026: 660 usulan da
 
 Snapshot awal `DataShopeeReview.gs` merupakan bootstrap lokal untuk deployment Apps Script dan tidak diikutkan ke repository publik. Sesudah migrasi, data tersimpan pada `SHOPEE_LISTINGS`; pembaruan berikutnya memakai unggahan tarikan oleh pengguna melalui halaman web.
 
-Tombol **Perbarui tarikan Shopee** membaca template Excel/CSV dan mengirim batch maksimal 150 baris dari browser. Server menerima maksimal 200 baris per transaksi dan melakukan upsert. Impor ulang tidak menggandakan listing; harga dan stok hanya snapshot, bukan sinkronisasi stok live.
+Tombol **Unggah template** membaca template .xlsx asli dan mengirim batch maksimal 150 baris dari browser. Server menerima maksimal 200 baris per transaksi dan melakukan upsert. Impor ulang tidak menggandakan listing; harga dan stok hanya snapshot, bukan sinkronisasi stok live.
 
 ## Pengujian
 
@@ -38,3 +38,5 @@ SKU Mapping Shopee kini memakai tabel ringkas: produk, variasi, SKU asal, SKU si
 SKU induk diisi dari parent master hanya jika seluruh variasi produk dalam file disetujui dan memiliki parent yang sama. Bila berbeda atau masih ada variasi belum disetujui, SKU induk asli dipertahankan. File mempertahankan seluruh baris dan kolom lain, harga, stok, ID, petunjuk, format, validasi Excel, dan lembar lain. Implementasi hanya menambal sel terpilih di XML ZIP asli. Baris belum disetujui tetap seperti asal, termasuk kode lama yang mungkin masih ada.
 
 File asli disimpan di memori tab browser selama sesi ini. Setelah refresh atau menutup tab, unggah kembali file yang sama untuk mengunduh; hasil pemeriksaan tetap tersimpan di database. File pengguna tidak dimasukkan ke repository publik.
+
+Popup dapat ditutup memakai Esc. Detail dibuka dari snapshot tabel tanpa permintaan tambahan. Sesudah persetujuan tersimpan, baris/status diperbarui dari respons server tanpa memuat ulang daftar. Backend memakai target yang sudah divalidasi untuk memperbarui mapping pada transaksi yang sama tanpa membangun ulang seluruh katalog sellables. Konflik versi, signature master, validasi komposisi, lock, dan rollback tetap berlaku.

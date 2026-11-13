@@ -41,11 +41,28 @@ test('listing tanpa pasangan tetap tersimpan; import idempoten, identitas toko +
 test('persetujuan memakai SKU variasi, bukan SKU induk; viewer tidak dapat menyetujui',()=>{
   const r=list({store:'Meirista',search:'1001'}).rows[0];
   assert.equal(call(V,'shopee.review',approval(r,single)).error.code,'FORBIDDEN');
-  assert.equal(call(A,'shopee.review',approval(r,single,{acknowledged:false})).ok,false);
-  const saved=ok(call(A,'shopee.review',approval(r,single)));
+  const saved=ok(call(A,'shopee.review',approval(r,single,{acknowledged:undefined,note:''})));
   assert.equal(saved.status,'approved');assert.equal(saved.targetSku,single);assert.equal(saved.sellerSku,'SKU/00001');
   const mappings=ok(call(A,'mapping.list',{system:'shopee'})).rows;assert.equal(mappings.length,1);assert.equal(mappings[0].internalSku,single);assert.equal(mappings[0].externalSku,'SKU/00001');
   assert.equal(call(A,'shopee.review',approval(r,single)).error.code,'CONFLICT');
+});
+
+test('persetujuan ulang memperbarui mapping yang sama dan tidak membangun ulang seluruh sellables',()=>{
+  const r=list({store:'Meirista',search:'1001'}).rows[0], payload=approval(r,single,{acknowledged:undefined,note:''});
+  const before=G.ctx.db_('EXTERNAL_SKU_MAPPINGS').rows().length;
+  const original=G.ctx.sellables_;G.ctx.sellables_=()=>{throw new Error('Tidak boleh membangun ulang katalog sellables');};
+  try { const saved=ok(call(A,'shopee.review',payload));assert.equal(saved.status,'approved'); }
+  finally {G.ctx.sellables_=original;}
+  assert.equal(G.ctx.db_('EXTERNAL_SKU_MAPPINGS').rows().length,before);
+});
+
+test('tiga status tampilan dan filter sesuai ketersediaan target; master memuat nama produk dan variasi',()=>{
+  const all=list(),verify=list({status:'verify'}),unavailable=list({status:'unavailable'}),approved=list({status:'approved'});
+  assert.equal(all.summary.verify,verify.total);assert.equal(all.summary.unavailable,unavailable.total);
+  assert.equal(verify.total+unavailable.total+approved.total,all.total);
+  assert.ok(verify.rows.every(r=>r.target&&r.target.active&&r.status!=='approved'));
+  assert.ok(unavailable.rows.every(r=>!r.target||!r.target.active));
+  const t=ok(call(A,'shopee.target',{sku:single}));assert.ok(t.productName);assert.equal(t.variationName,'100 ml');
 });
 test('paket 3 pcs wajib MP dengan komponen/kuantitas tepat; paket campuran wajib BD; GTIN satuan tidak disalin ke paket',()=>{
   let r=list({store:'Meirista',search:'1002'}).rows[0];

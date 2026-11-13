@@ -328,7 +328,13 @@ function modal(html, opts) {
   bg.innerHTML = '<div class="modal ' + (opts.wide ? 'wide' : '') + '">' + html + '</div>';
   document.body.appendChild(bg);
   var m = bg.firstChild;
-  m.close = function () { bg.remove(); if (opts.onClose) opts.onClose(); };
+  var closed = false;
+  function onEscape(e) {
+    if (e.key !== 'Escape' || document.querySelectorAll('.modal-bg')[document.querySelectorAll('.modal-bg').length - 1] !== bg) return;
+    e.preventDefault(); e.stopImmediatePropagation(); m.close();
+  }
+  document.addEventListener('keydown', onEscape);
+  m.close = function () { if (closed) return; closed = true; document.removeEventListener('keydown', onEscape); bg.remove(); if (opts.onClose) opts.onClose(); };
   bg.addEventListener('mousedown', function (e) { if (e.target === bg && !opts.sticky) m.close(); });
   $$('[data-close]', m).forEach(function (b) { b.onclick = m.close; });
   return m;

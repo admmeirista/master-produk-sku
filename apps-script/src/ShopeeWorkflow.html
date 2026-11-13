@@ -4,29 +4,41 @@ var SHOPEE_WORKFILE = null;
 Pages.mapping = function (main, arg) {
   var f = { search: arg && arg.search || '', status: '', page: 1, pageSize: 30 }, sequence = 0, w = can('mapping.write');
   main.innerHTML = pageHead('Integrasi', 'SKU Mapping Shopee', (w ? '<button class="btn" id="slImport">' + icon('upload') + 'Unggah template</button>' : '') + '<button class="btn pri" id="slDownload">' + icon('download') + 'Unduh hasil</button>', 'Unggah template mass edit Shopee, periksa pasangan SKU, lalu unduh file untuk diunggah kembali ke Shopee.') +
-    '<div class="shopee-workflow"><span><b>1</b> Unggah template</span><span><b>2</b> Periksa SKU</span><span><b>3</b> Unduh hasil</span></div><div id="slFile" class="hint"></div><div id="slSummary" class="shopee-totals"></div><div class="toolbar shopee-filters"><div class="search">' + icon('search') + '<input class="in" id="slSearch" placeholder="Cari produk, variasi atau SKU" value="' + esc(f.search) + '"></div><select class="in" id="slStatus" aria-label="Status pemeriksaan"><option value="">Semua status</option><option value="suggested">Usulan cocok</option><option value="approved">Disetujui</option><option value="review">Perlu diperiksa</option></select></div><div id="slRows"></div>';
-  function load() {
+    '<div class="shopee-workflow"><span><b>1</b> Unggah template</span><span><b>2</b> Periksa SKU</span><span><b>3</b> Unduh hasil</span></div><div id="slFile" class="hint"></div><div id="slSummary" class="shopee-totals"></div><div class="toolbar shopee-filters"><div class="search">' + icon('search') + '<input class="in" id="slSearch" placeholder="Cari produk, variasi atau SKU" value="' + esc(f.search) + '"></div><select class="in" id="slStatus" aria-label="Status pemeriksaan"><option value="">Semua status</option><option value="verify">Perlu diverifikasi</option><option value="approved">Disetujui</option><option value="unavailable">Tidak tersedia</option></select></div><div id="slRows"></div>';
+  function load(cached) {
     var mine = ++sequence, box = $('#slRows', main), wf = SHOPEE_WORKFILE;
     if (!box) return;
     $('#slDownload', main).disabled = !wf || wf.busy;
     $('#slFile', main).textContent = wf ? 'File aktif: ' + wf.name + ' · ' + fmtNum(wf.rows.length) + ' variasi. Simpan hasil sebelum menutup atau memuat ulang halaman.' : 'Daftar tersimpan ditampilkan di bawah. Unggah template .xlsx untuk mulai dan mengunduh hasil dalam format yang sama.';
     box.innerHTML = loadingBox('Memuat produk…');
     var request;
-    if (wf) {
-      var rows = wf.views, summary = { all: rows.length, approved: 0, suggested: 0 };
-      rows.forEach(function (r) { if (r.status === 'approved') summary.approved++; if (r.status === 'suggested') summary.suggested++; });
+    if (cached) request = Promise.resolve(cached);
+    else if (wf) {
+      var rows = wf.views, summary = { all: rows.length, approved: 0, verify: 0, unavailable: 0 };
+      rows.forEach(function (r) { summary[shopeeDisplayStatus(r)]++; });
       var q = f.search.toLowerCase();
-      var filtered = rows.filter(function (r) { return (!f.status || (f.status === 'review' ? ['approved', 'suggested'].indexOf(r.status) < 0 : r.status === f.status)) && (!q || [r.name, r.variationName, r.sellerSku, r.targetSku, r.gtin].join(' ').toLowerCase().indexOf(q) >= 0); });
+      var filtered = rows.filter(function (r) { return (!f.status || shopeeDisplayStatus(r) === f.status) && (!q || [r.name, r.variationName, r.sellerSku, r.targetSku, r.gtin].join(' ').toLowerCase().indexOf(q) >= 0); });
       request = Promise.resolve({ rows: filtered.slice((f.page - 1) * f.pageSize, f.page * f.pageSize), total: filtered.length, page: f.page, pageSize: f.pageSize, pages: Math.ceil(filtered.length / f.pageSize), summary: summary });
-    } else request = api('shopee.list', Object.assign({}, f, { status: f.status === 'review' ? 'pending' : f.status }), { silent: true }).then(function (d) { return d; });
+    } else request = api('shopee.list', f, { silent: true }).then(function (d) { return d; });
     request.then(function (d) {
       if (mine !== sequence || !$('#slRows', main)) return;
       var s = d.summary;
-      $('#slSummary', main).innerHTML = '<b>' + fmtNum(s.all) + '</b> variasi <span>·</span> <b>' + fmtNum(s.suggested) + '</b> usulan cocok <span>·</span> <b>' + fmtNum(s.approved) + '</b> disetujui <span>·</span> <b>' + fmtNum(s.all - s.suggested - s.approved) + '</b> perlu diperiksa';
+      $('#slSummary', main).innerHTML = '<b>' + fmtNum(s.all) + '</b> variasi <span>·</span> <b>' + fmtNum(s.verify) + '</b> perlu diverifikasi <span>·</span> <b>' + fmtNum(s.approved) + '</b> disetujui <span>·</span> <b>' + fmtNum(s.unavailable) + '</b> tidak tersedia';
       box.innerHTML = d.rows.length ? '<div class="tablewrap shopee-simple"><table class="t"><thead><tr><th>Produk Shopee</th><th>Variasi</th><th>SKU Shopee</th><th>SKU sistem</th><th>Status</th><th></th></tr></thead><tbody>' + d.rows.map(function (r) {
-        return '<tr><td><b>' + esc(r.name) + '</b></td><td>' + esc(r.variationName || '—') + '</td><td class="sku">' + esc(r.sellerSku || '—') + '</td><td>' + (r.target ? '<b class="sku">' + esc(r.target.sku) + '</b><small class="shopee-sub">' + esc(r.target.name) + '</small>' : '<span class="muted">Belum cocok</span>') + '</td><td>' + shopeeBadge(r.status) + '</td><td><button class="btn sm" data-review="' + esc(r.id) + '">' + (w ? 'Periksa' : 'Lihat') + '</button></td></tr>';
+        return '<tr><td><b>' + esc(r.name) + '</b></td><td>' + esc(r.variationName || '—') + '</td><td class="sku">' + esc(r.sellerSku || '—') + '</td><td>' + (r.target ? '<b class="sku">' + esc(r.target.sku) + '</b><small class="shopee-sub">' + esc(r.target.name) + '</small>' : '<span class="muted">Tidak tersedia</span>') + '</td><td>' + shopeeBadge(shopeeDisplayStatus(r)) + '</td><td><button class="btn sm" data-review="' + esc(r.id) + '">' + (w ? 'Periksa' : 'Lihat') + '</button></td></tr>';
       }).join('') + '</tbody></table></div>' + pager(d, function (p) { f.page = p; load(); }) : emptyBox('Tidak ada produk', 'Unggah template atau ubah pencarian.', 'upload');
-      $$('[data-review]', box).forEach(function (b) { b.onclick = function () { var id = b.getAttribute('data-review'); shopeeReviewDialog(d.rows.find(function (r) { return r.id === id; }), function (updated) { if (SHOPEE_WORKFILE && updated) SHOPEE_WORKFILE.views = SHOPEE_WORKFILE.views.map(function (r) { return r.id === updated.id ? updated : r; }); load(); }); }; });
+      $$('[data-review]', box).forEach(function (b) { b.onclick = function () {
+        var id = b.getAttribute('data-review'), before = d.rows.find(function (r) { return r.id === id; });
+        shopeeReviewDialog(before, function (updated) {
+          if (!updated) return;
+          if (SHOPEE_WORKFILE) { SHOPEE_WORKFILE.views = SHOPEE_WORKFILE.views.map(function (r) { return r.id === updated.id ? updated : r; }); load(); return; }
+          var oldStatus = shopeeDisplayStatus(before), newStatus = shopeeDisplayStatus(updated);
+          d.summary[oldStatus]--; d.summary[newStatus]++;
+          d.rows = d.rows.map(function (r) { return r.id === updated.id ? updated : r; });
+          if (f.status && newStatus !== f.status) { d.rows = d.rows.filter(function (r) { return r.id !== updated.id; }); d.total--; }
+          load(d);
+        });
+      }; });
     }).catch(function (e) { if (mine === sequence) box.innerHTML = errBox(e.message); });
   }
   $('#slSearch', main).oninput = debounce(function (e) { f.search = e.target.value; f.page = 1; load(); }, 250);
