@@ -61,6 +61,18 @@ save({ brandId: B('Hanasui'), categoryId: C('Lipstick'), name: 'Hanasui Matte Li
   must(call(entry, 'mapping.create', { system: 'shopee', storeAccount: 'Meirista Official', sku: pf.variants[0].sku, externalProductId: '43465728785', externalVariationId: '351267547392', externalParentSku: 'EDP-OCEAN', externalSku: 'EDP-OB50' }), 'mapping');
   save({ brandId: B('Pixy'), categoryId: C('Powder Refill'), name: 'Pixy Two Way Cake Refill', baseUnit: 'PCS', hasVariants: false, saveAsDraft: true, variants: [{ barcode: { mode: 'internal' }, conversions: [] }] });
 }
+// Snapshot master lokal opsional untuk memeriksa halaman Shopee; tidak pernah menyalin akun produksi.
+if (process.env.PREVIEW_MASTER_XLSX) {
+  const XLSX = require('xlsx');
+  const master = XLSX.readFile(process.env.PREVIEW_MASTER_XLSX);
+  for (const name of ['MASTER_BRANDS', 'MASTER_CATEGORIES', 'MASTER_PRODUCTS', 'PRODUCT_VARIANTS', 'VARIANT_ATTRIBUTES', 'VARIANT_BARCODES', 'UNIT_CONVERSIONS', 'PRODUCT_DIMENSIONS', 'BUNDLE_MASTERS', 'BUNDLE_COMPONENTS']) {
+    if (!master.Sheets[name]) continue;
+    ctx.ss_().getSheetByName(name).data = XLSX.utils.sheet_to_json(master.Sheets[name], { header: 1, defval: '' });
+  }
+  ctx.resetDbCache_(); ctx.bumpDataVersion_();
+  ctx.withLock_(() => ctx.shopeeSeed_({ email: 'admin@toko.local' }));
+  console.log('Pratinjau Shopee: snapshot lokal, akun development, tanpa akses tulis ke database produksi.');
+}
 // ----- HTML seperti HtmlService (include + scriptlet)
 function page() {
   let html = fs.readFileSync(path.join(SRC, 'Index.html'), 'utf8');

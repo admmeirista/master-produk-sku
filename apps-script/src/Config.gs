@@ -58,6 +58,7 @@ const SCHEMA = {
   MASTER_SUPPLIERS: ['SupplierID', 'SupplierCode', 'SupplierName', 'NameKey', 'ContactName', 'Phone', 'Email', 'Notes', 'Status', 'CreatedBy', 'CreatedAt', 'UpdatedBy', 'UpdatedAt'],
   SUPPLIER_PRODUCT_MAPPING: ['SupplierMapID', 'SupplierID', 'SupplierProductCode', 'SupplierCodeKey', 'SupplierProductName', 'VariantID', 'ProductID', 'PurchaseUnit', 'ConversionFactor', 'MinimumOrderQuantity', 'SpecMismatch', 'SpecNote', 'Status', 'CreatedBy', 'CreatedAt', 'UpdatedBy', 'UpdatedAt'],
   EXTERNAL_SKU_MAPPINGS: ['MappingID', 'System', 'ExternalSku', 'ProductID', 'VariantID', 'ConversionID', 'InternalSku', 'ExternalProductId', 'ExternalVariationId', 'ListingName', 'MappingStatus', 'IsActive', 'LastExportedAt', 'LastConfirmedAt', 'LastError', 'Notes', 'CreatedBy', 'CreatedAt', 'UpdatedAt', 'StoreAccount', 'ExternalParentSku', 'BundleID'],
+  SHOPEE_LISTINGS: ['ListingID', 'StoreAccount', 'ExternalProductId', 'ExternalVariationId', 'ListingName', 'VariationName', 'ExternalParentSku', 'ExternalSku', 'ExternalGTIN', 'Price', 'Stock', 'SaleType', 'SaleQuantity', 'ExpectedComponents', 'TargetSku', 'ReviewStatus', 'ReviewNote', 'ReviewedBy', 'ReviewedAt', 'ReviewedTargetSignature', 'Version', 'SourceFile', 'SourceRow', 'ImportedAt', 'UpdatedAt'],
   PRODUCT_LIFECYCLE_HISTORY: ['HistoryID', 'EntityType', 'EntityID', 'ProductID', 'FromStatus', 'ToStatus', 'Reason', 'ChangedBy', 'ChangedAt'],
 };
 
@@ -87,6 +88,7 @@ const TAB_DESCRIPTION = {
   MASTER_SUPPLIERS: 'Master supplier (data lama v4 — modul tidak lagi ditampilkan, data dipertahankan)',
   SUPPLIER_PRODUCT_MAPPING: 'Kode produk supplier → Child SKU (data lama v4 — tidak dipakai untuk membentuk SKU)',
   EXTERNAL_SKU_MAPPINGS: 'CHANNEL SKU MAPPING & LEGACY SKU: Shopee, TikTok Shop, Tokopedia, BeeCloud, SKU lama',
+  SHOPEE_LISTINGS: 'Daftar produk dan variasi Shopee, snapshot SKU/GTIN/harga/stok, usulan master dan riwayat pemeriksaan komposisi. Identitas listing = toko + ID produk + ID variasi.',
   PRODUCT_LIFECYCLE_HISTORY: 'Histori perubahan status lifecycle Parent / Child SKU / bundle',
 };
 
@@ -96,6 +98,8 @@ const LEGACY_TABS = ['Brands', 'Categories', 'Products', 'Variants', 'SKUs', 'Co
 const NUMBER_COLS = { LengthCm: 1, WidthCm: 1, HeightCm: 1, GrossWeightGrams: 1, ProductNo: 1, ConversionFactor: 1, BaseUnitEquivalent: 1, SortOrder: 1, Version: 1, Part: 1, failed_logins: 1, TotalRows: 1, CreatedRows: 1, SkippedRows: 1, ErrorRows: 1, ShelfLifeMonths: 1, OldFactor: 1, NewFactor: 1, OldEquivalent: 1, NewEquivalent: 1, Quantity: 1, PickQuantity: 1, MinimumOrderQuantity: 1, RowNumber: 1 };
 const BOOL_COLS = { HasVariants: 1, IsDefault: 1, IsBaseUnit: 1, IsTradeItem: 1, VerifiedOfficial: 1, IsActive: 1, is_active: 1, BatchTracking: 1, ExpiryTracking: 1, Selectable: 1, SpecMismatch: 1 };
 const JSON_COLS = { VariantAttributes: 1, BeforeJson: 1, AfterJson: 1, MetaJson: 1, ReportJson: 1, ResultJson: 1 };
+Object.assign(NUMBER_COLS, { Price: 1, Stock: 1, SaleQuantity: 1, SourceRow: 1 });
+JSON_COLS.ExpectedComponents = 1;
 
 const ROLES = ['admin', 'data_entry', 'photo_staff', 'viewer'];
 const ROLE_LABEL = { admin: 'Admin', data_entry: 'Admin Data', photo_staff: 'Staf Foto', viewer: 'Viewer' };
@@ -119,7 +123,7 @@ const DEFAULT_SETTINGS = {
   pack_units: ['BOX'],
   // urutan = urutan kata pada nama SKU otomatis (warna/aroma dulu, ukuran/isi di belakang); jenis lain lewat pilihan "Lainnya…"
   attribute_types: ['Warna', 'Aroma', 'Variant', 'Ukuran', 'Berat Isi', 'Volume'],
-  channels: ['shopee', 'tiktok', 'tokopedia', 'beecloud', 'lainnya'],
+  channels: ['shopee'],
   gtin_lookup_enabled: true,
   // foto dari Staf Foto perlu disetujui Admin dulu (false = langsung dianggap selesai)
   photo_review_required: false,

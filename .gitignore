@@ -2,3 +2,4 @@ node_modules/
 .clasp.json
 *.log
 .claude/
+apps-script/src/DataShopeeReview.gs

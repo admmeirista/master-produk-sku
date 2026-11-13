@@ -125,6 +125,11 @@ const ROUTES = {
   'mapping.create': { perm: 'mapping.write', write: true, fn: (u, p) => createMapping_(u, p) },
   'mapping.action': { perm: 'mapping.write', write: true, fn: (u, p) => mappingAction_(u, p.id, p.action, p.note) },
   'mapping.summary': { perm: 'product.read', fn: () => mappingSummary_() },
+  'shopee.list': { perm: 'product.read', fn: (u, p) => shopeeList_(p) },
+  'shopee.get': { perm: 'product.read', fn: (u, p) => shopeeGet_(p.id) },
+  'shopee.target': { perm: 'product.read', fn: (u, p) => shopeeTarget_(p.sku) },
+  'shopee.import': { perm: 'mapping.write', write: true, fn: (u, p) => shopeeImport_(u, p) },
+  'shopee.review': { perm: 'mapping.write', write: true, fn: (u, p) => shopeeReview_(u, p) },
   'sku.search': { perm: 'product.read', fn: (u, p) => skuSearch_(p.q, p.kinds) },
 
   'export.data': { perm: 'export.run', write: true, fn: (u, p) => exportData_(u, p) },
@@ -196,7 +201,7 @@ function meInfo_(user) {
     user,
     permissions: ROLE_PERMISSIONS[user.role] || [],
     appName: APP_NAME,
-    config: { photoUpload: PropertiesService.getScriptProperties().getProperty('drive_ok') === '1', childSeqMax: CHILD_SEQ_MAX, maxCombinations: MAX_COMBINATIONS, maxVariants: MAX_VARIANTS, channels: s.channels, channelLabel: CHANNEL_LABEL, lifecycle: LIFECYCLE, statusLabel: STATUS_LABEL, gtinLookup: !!s.gtin_lookup_enabled, baseUnits: s.base_units, packUnits: s.pack_units, attributeTypes: s.attribute_types, codeLength: s.master_code_length, roles: ROLES.map((r) => ({ id: r, label: ROLE_LABEL[r] })) },
+    config: { photoUpload: PropertiesService.getScriptProperties().getProperty('drive_ok') === '1', childSeqMax: CHILD_SEQ_MAX, maxCombinations: MAX_COMBINATIONS, maxVariants: MAX_VARIANTS, channels: ['shopee'], channelLabel: { shopee: 'Shopee' }, lifecycle: LIFECYCLE, statusLabel: STATUS_LABEL, gtinLookup: !!s.gtin_lookup_enabled, baseUnits: s.base_units, packUnits: s.pack_units, attributeTypes: s.attribute_types, codeLength: s.master_code_length, roles: ROLES.map((r) => ({ id: r, label: ROLE_LABEL[r] })) },
   };
 }
 
@@ -265,7 +270,7 @@ function autoSchema_() {
 }
 
 /** Naikkan bila ensureData_ / DATA_JOBS_ membawa migrasi data baru (memicu pembaruan otomatis sekali). */
-const DATA_MIGRATION_VERSION_ = 20;
+const DATA_MIGRATION_VERSION_ = 21;
 
 /**
  * Import data sekali jalan (mis. katalog pemasok) lewat jalur import produk biasa: tercatat di Riwayat import & audit
@@ -296,6 +301,7 @@ const DATA_JOBS_ = [
   { id: 'job_shopee_multipack_2026', run: (user, deadline) => importShopeeMultipacks_(user, deadline) },
   { id: 'job_shopee_baru_2026', fileName: 'Listing Shopee stok > 0 (mass update 6 Nov 2026)', rows: () => SHOPEE_BARU_ROWS_, categories: ['Perawatan Mulut'] },
   { id: 'job_shopee_baru2_2026', fileName: 'Listing Shopee tahap 2 — varian saudara (6 Nov 2026)', rows: () => SHOPEE_BARU2_ROWS_ },
+  { id: 'job_shopee_review_20261112', run: (user) => shopeeSeed_(user) },
 ];
 /** Mengembalikan false bila masih ada job yang belum selesai (batas waktu ±4 menit per eksekusi; dilanjutkan berikutnya). */
 function runDataJobs_() {

@@ -131,6 +131,9 @@ class Table_ {
     if (!this._dirty.size) return;
     const dirty = Array.from(this._dirty);
     const appended = dirty.filter((r) => r._r > this._origLast).sort((a, b) => a._r - b._r);
+    // Tabel listing baru dapat langsung menerima ribuan baris. Range Sheets tidak boleh melampaui grid.
+    const maxRows = this.sheet.getMaxRows();
+    if (this._last > maxRows) this.sheet.insertRowsAfter(maxRows, this._last - maxRows);
     dirty
       .filter((r) => r._r <= this._origLast)
       .sort((a, b) => a._r - b._r)

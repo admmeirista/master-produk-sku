@@ -1,4 +1,6 @@
-# Master Produk & SKU — Google Apps Script (v6)
+# Master Produk & SKU — Google Apps Script (v10)
+
+Integrasi **SKU Mapping Shopee** kini menampilkan listing/variasi Shopee dan pasangan master SKU/GTIN/BOM berdampingan, termasuk listing yang belum dipetakan. Pencarian, filter, pembaruan tarikan dan persetujuan tersedia langsung di web. Panduan perubahan: [REVISI-V10.md](REVISI-V10.md).
 
 Web App Apps Script dengan **Google Sheets sebagai database**, berbahasa Indonesia, tampilan mengikuti **FMS**
 (font Nunito, sidebar gelap, toast, modal). Kodifikasi SKU independen dari brand/kategori/GTIN:

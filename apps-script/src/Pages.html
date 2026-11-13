@@ -94,7 +94,7 @@ Pages.dashboard = function (main) {
       var max = Math.max.apply(null, topC.map(function (b) { return b.n; }).concat([1]));
       return '<div class="dbrands">' + topC.map(function (b) { return '<div class="dbr"><div class="dbr-n"><b>' + esc(b.name) + '</b></div><div class="dbr-t"><i style="width:' + Math.max(3, Math.round(b.n / max * 100)) + '%"></i></div><b class="dbr-v">' + fmtNum(b.n) + '</b></div>'; }).join('') + '</div>';
     })() : '<div class="muted">Belum ada data.</div>';
-    var chRows = Object.keys(d.channels || {}).map(function (k) { var x = d.channels[k]; return '<tr><td><b>' + esc(STATUS_TXT[k] || k) + '</b></td><td class="num">' + fmtNum(x.unmapped || 0) + '</td><td class="num">' + fmtNum(x.mapped || 0) + '</td><td class="num">' + fmtNum((x.exported || 0) + (x.confirmed || 0)) + '</td><td class="num">' + fmtNum((x.error || 0) + (x.mismatch || 0)) + '</td></tr>'; }).join('');
+    var chRows = Object.keys(d.channels || {}).filter(function (k) { return k === 'shopee'; }).map(function (k) { var x = d.channels[k]; return '<tr><td><b>' + esc(STATUS_TXT[k] || k) + '</b></td><td class="num">' + fmtNum(x.unmapped || 0) + '</td><td class="num">' + fmtNum(x.mapped || 0) + '</td><td class="num">' + fmtNum((x.exported || 0) + (x.confirmed || 0)) + '</td><td class="num">' + fmtNum((x.error || 0) + (x.mismatch || 0)) + '</td></tr>'; }).join('');
 
     var P = function (title, act, body, cls) { return '<div class="panel ' + (cls || '') + '"><div class="panel-h"><h3>' + title + '</h3>' + (act || '') + '</div><div class="pbody">' + body + '</div></div>'; };
     var go2 = function (page, label) { return '<button class="btn sm ghost right" data-go2="' + page + '">' + label + ' ' + icon('arrowRight') + '</button>'; };
@@ -538,7 +538,7 @@ Pages.product = function (main, id, tab) {
   api('product.get', { id: id }).then(function (p) {
     var w = can('product.write'), ph = isPhone();
     var act = w && ph ? (p.status !== 'ARCHIVED' ? '<button class="btn pri" id="ed">' + icon('edit') + 'Edit</button>' : '') + '<button class="btn" id="more" aria-label="Tindakan lain">' + icon('more') + (p.status === 'ARCHIVED' ? 'Tindakan' : '') + '</button>' : w ? (p.status !== 'ARCHIVED' ? '<button class="btn pri" id="ed">' + icon('edit') + 'Edit</button>' : '') + '<button class="btn" id="dp">' + icon('copy') + 'Duplikat</button><button class="btn" id="st">' + icon('power') + 'Ubah status</button><button class="btn danger" id="dl">' + icon('trash') + 'Hapus</button>' : '';
-    var tabs = [['variants', 'Kode SKU Produk', p.variants.length], ['packs', 'Kemasan & Logistik'], ['channels', 'Kanal'], ['bundles', 'Bundle'], ['history', 'Riwayat']];
+    var tabs = [['variants', 'Kode SKU Produk', p.variants.length], ['packs', 'Kemasan & Logistik'], ['channels', 'Shopee'], ['bundles', 'Bundle'], ['history', 'Riwayat']];
     main.innerHTML = '<button class="back" id="bk">' + icon('arrowLeft') + 'Master Produk</button>' +
       '<div class="dt-head">' + (p.imageUrl ? '<img class="thumb" src="' + esc(p.imageUrl) + '" alt="" onerror="this.remove()">' : '') + '<div class="grow"><div class="eyebrow">Kode Produk Induk ' + esc(p.productCode) + (p.legacyCode ? ' · kode lama ' + esc(p.legacyCode) : '') + '</div><h2>' + esc(p.displayName || p.name) + '</h2><div class="dt-meta">' + badge(p.status) +
       esc(p.brand.name) + ' · ' + esc(p.category.path ? p.category.path.split(' > ').join(' › ') : p.category.name) + ' · satuan dasar default <b>' + esc(p.baseUnit) + '</b>' + (p.packagingComplete ? '' : ' · <span class="badge b-NONE">Data kemasan belum lengkap</span>') + '</div>' +
@@ -601,8 +601,8 @@ Pages.product = function (main, id, tab) {
       }).join('');
       $$('[data-bc]', tb).forEach(function (b) { b.onclick = function () { showBarcode(b.getAttribute('data-bc')); }; });
     } else if (tab === 'channels') {
-      api('mapping.list', { productId: p.id, pageSize: 200 }).then(function (d) {
-        tb.innerHTML = (can('mapping.write') ? '<div class="toolbar"><button class="btn pri" id="nc">' + icon('plus') + 'Tambah mapping kanal</button><span class="muted">Satu SKU produk boleh dipasarkan di banyak listing.</span></div>' : '') +
+      api('mapping.list', { system: 'shopee', productId: p.id, pageSize: 200 }).then(function (d) {
+        tb.innerHTML = (can('mapping.write') ? '<div class="toolbar"><button class="btn pri" id="nc">' + icon('plus') + 'Periksa mapping Shopee</button><span class="muted">Periksa listing dan variasi di halaman SKU Mapping Shopee.</span></div>' : '') +
           (d.rows.length ? '<div class="tablewrap"><table class="t"><thead><tr><th>Kanal</th><th>Toko</th><th>ID produk / variasi</th><th>Seller SKU</th><th>SKU internal</th><th>Status</th></tr></thead><tbody>' + d.rows.map(function (r) { return '<tr><td><b>' + esc(r.channelLabel) + '</b></td><td>' + esc(r.storeAccount || '—') + '</td><td class="code">' + esc(r.externalProductId || '—') + (r.externalVariationId ? ' / ' + esc(r.externalVariationId) : '') + '</td><td class="sku">' + esc(r.externalSku || r.externalParentSku || '—') + '</td><td class="sku">' + esc(r.internalSku) + '</td><td>' + badge(r.system === 'legacy' ? 'legacy' : r.status) + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<div class="tablewrap">' + emptyBox('Belum ada mapping kanal', '', 'link') + '</div>');
         if ($('#nc', tb)) $('#nc', tb).onclick = function () { var v = p.variants[0]; channelMapForm(p.variants.length === 1 ? { sku: { sku: v.sku, displayName: p.name, kind: 'variant' } } : {}, reload); };
       }).catch(function (e) { tb.innerHTML = errBox(e.message); });
@@ -943,7 +943,7 @@ function barcodeHistory(code) {
 /* ───────── Import & Export ───────── */
 Pages.io = function (main, arg) {
   var tab = arg && arg.tab || (can('import.run') ? 'import' : 'export');
-  main.innerHTML = pageHead('Sistem', 'Import & Export', '', 'Migrasi data lama, import listing kanal, serta ekspor master untuk BeeCloud, purchasing, receiving, fulfillment, dan stock opname. Import Master Brand/Kategori ada di halaman masing-masing (Upload Excel).') +
+  main.innerHTML = pageHead('Sistem', 'Import & Export', '', 'Import data produk serta ekspor master untuk operasional. Pemeriksaan listing Shopee tersedia di SKU Mapping Shopee. Import Master Brand/Kategori ada di halaman masing-masing (Upload Excel).') +
     '<div class="dtabs">' + (can('import.run') ? '<a data-t="import" class="' + (tab === 'import' ? 'on' : '') + '">Import</a>' : '') + '<a data-t="export" class="' + (tab === 'export' ? 'on' : '') + '">Ekspor</a></div><div id="iob"></div>';
   $$('[data-t]', main).forEach(function (a) { a.onclick = function () { App.go('io', { tab: a.getAttribute('data-t') }); }; });
   (tab === 'import' ? Pages.import : Pages.export)($('#iob', main));
@@ -958,7 +958,6 @@ Pages.export = function (main) {
     item('master', 'Master SKU lengkap', 'SKU produk, kemasan ber-SKU, dan bundle — barcode, satuan, brand, kategori, stockable, SKU lama.') +
     item('conversions', 'Satuan & konversi', 'Seluruh kemasan per SKU produk dengan tanggal berlaku.') +
     item('bundles', 'Bundle & BOM', 'Multipack, mixed bundle, request mix beserta komponen & mode stok.') +
-    item('beecloud', 'Import BeeCloud', 'Format kolom <b>belum diverifikasi</b> terhadap template import resmi BeeCloud.', '<label class="chk"><input type="checkbox" id="bu"> Hanya SKU yang belum terkonfirmasi di BeeCloud</label>' + (can('mapping.write') ? '<label class="chk"><input type="checkbox" id="bm"> Tandai "Diekspor" di mapping (≠ tersinkron)</label>' : '')) +
     item('mappings', 'Mapping kanal', 'Daftar mapping per kanal beserta status.', '<select class="in" id="xs">' + CHANNELS.map(function (c) { return '<option value="' + c[0] + '">' + c[1] + '</option>'; }).join('') + '</select>') + '</div><div id="xr"></div>';
   $$('[data-x]', main).forEach(function (b) {
     b.onclick = function () {
@@ -981,10 +980,9 @@ Pages.import = function (main) {
     ['reference', 'Referensi Brand & Kategori', 'Sheet "Referensi Kode". Kode lama dipakai bila belum ada; kode yang sudah ada tidak diubah.', /referensi/i],
     ['internal_barcodes', 'Barcode Internal Terpakai', 'Sheet "Generator Barcode Internal". Kode Terpakai dicadangkan.', /generator/i],
     ['master', 'Master Produk lama', 'Sheet "Master Produk". 1 barcode = 1 SKU produk; Isi > 1 → multipack virtual; SKU lama tercatat.', /master produk/i],
-    ['channel_listing', 'Listing marketplace', 'Ekspor Seller Center (mis. "Data Performa Produk"): ID produk, ID variasi, SKU induk, Seller SKU → mapping terkonfirmasi.', /performa|listing|shopee|tiktok|tokopedia/i]
   ];
   var st = { type: 'products', wb: null, file: '', sheet: '', rows: null, preview: null };
-  main.innerHTML = (main.id === 'main' ? pageHead('Sistem', 'Import Data') : '') + '<div class="hint" style="margin-bottom:12px">Urutan migrasi: Referensi → Barcode Internal → Master Produk → Listing marketplace. Selalu <b>Pratinjau</b> (dry-run) dulu — tidak ada yang tersimpan sebelum Anda menekan Import. Import ulang tidak menggandakan data.</div>' +
+  main.innerHTML = (main.id === 'main' ? pageHead('Sistem', 'Import Data') : '') + '<div class="hint" style="margin-bottom:12px">Urutan migrasi: Referensi → Barcode Internal → Master Produk. Perbarui tarikan Shopee melalui halaman SKU Mapping Shopee. Selalu <b>Pratinjau</b> (dry-run) dulu — tidak ada yang tersimpan sebelum Anda menekan Import. Import ulang tidak menggandakan data.</div>' +
     '<div class="imp-grid" id="ty">' + TYPES.map(function (t, i) { return '<div class="imp-card' + (i ? '' : ' on') + '" data-t="' + t[0] + '"><b>' + (i + 1) + '. ' + t[1] + '</b><span>' + t[2] + '</span></div>'; }).join('') + '</div>' +
     '<div class="card" style="margin-top:14px"><div class="row"><label class="btn">' + icon('upload') + 'Pilih file Excel / CSV<input type="file" id="fi" accept=".xlsx,.xls,.csv" class="hidden"></label><span id="fn" class="muted">Belum ada file</span><select class="in hidden" id="sh" style="width:auto"></select>' +
     '<span id="chx" class="row hidden"><select class="in" id="chs" style="width:auto">' + CHANNELS.filter(function (c) { return isMarketplace(c[0]); }).map(function (c) { return '<option value="' + c[0] + '">' + c[1] + '</option>'; }).join('') + '</select><input class="in" id="sto" placeholder="Toko/akun (mis. Meirista Official)" style="width:220px"></span>' +

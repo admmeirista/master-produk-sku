@@ -511,7 +511,7 @@ function downloadTable(d, format) {
 var NAV = [
   ['', [['dashboard', 'Dashboard', 'grid']]],
   ['MANAJEMEN PRODUK', [['products', 'Master Produk', 'package'], ['register', 'Registrasi Produk', 'plus', 'product.write'], ['bundles', 'Kemasan & Bundling', 'boxes']]],
-  ['INTEGRASI', [['mapping', 'Channel SKU Mapping', 'link'], ['io', 'Import & Export', 'upload', 'export.run']]],
+  ['INTEGRASI', [['mapping', 'SKU Mapping Shopee', 'link'], ['io', 'Import & Export', 'upload', 'export.run']]],
   ['SISTEM', [['users', 'Pengguna & Hak Akses', 'users', 'user.manage'], ['settings', 'Pengaturan', 'sliders'], ['audit', 'Audit Log', 'activity', 'audit.read']]]
 ];
 /** Halaman yang tidak punya menu sendiri → menu induknya (untuk menu aktif & breadcrumb). */
@@ -610,7 +610,7 @@ var App = {
     $app().innerHTML = '<div class="auth"><section class="auth-art"><div class="art-top">' + brand() + '</div>' +
       '<div class="art-mid"><div class="eyebrow eb">SKU Management System</div>' +
       '<h1>Scan, daftar,<br>SKU <em>pasti.</em></h1>' +
-      '<p class="lead">Registrasi produk kosmetik yang rapi — dari brand hingga kemasan karton — siap dipakai BeeCloud dan Shopee.</p>' +
+      '<p class="lead">Registrasi produk kosmetik yang rapi — dari brand hingga kemasan karton — siap dipakai di Shopee dan operasional toko.</p>' +
       '<ol class="flow">' + flow.map(function (f, i) { return '<li><div class="node">' + icon(f[0]) + '</div><div><div class="k">Tahap ' + (i + 1) + '</div><div class="v">' + f[1] + '</div><div class="d">' + f[2] + '</div></div></li>'; }).join('') + '</ol></div>' +
       '<div class="foot"><span>© ' + new Date().getFullYear() + ' Meirista</span><span class="sep"></span>' + icon('lock') + '<span>Akses individual · tercatat di audit trail</span></div></section>' +
       '<section class="auth-form"><div class="box"><div class="auth-logo">' + brandLogo() + '</div>' + formHtml + '</div><div class="auth-tag">' + APP_NAME.toUpperCase() + '</div></section></div>';
