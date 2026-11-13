@@ -4,7 +4,7 @@
   "version": "2.0.0",
   "description": "Master Produk & SKU toko kosmetik — Google Apps Script + Google Sheets",
   "scripts": {
-    "test": "node --test \"apps-script/test/*.test.cjs\"",
+    "test": "node apps-script/tools/run-tests.cjs",
     "dev": "node apps-script/dev/server.cjs"
   },
   "engines": {
