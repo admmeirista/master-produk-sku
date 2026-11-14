@@ -530,25 +530,26 @@ function downloadTable(d, format) {
 /* Menu disusun per fungsi bisnis. Brand, Kategori, Barcode & Kualitas data ada di dalam Master Produk (tab / alat). */
 var NAV = [
   ['', [['dashboard', 'Dashboard', 'grid']]],
-  ['MANAJEMEN PRODUK', [['products', 'Master Produk', 'package'], ['register', 'Registrasi Produk', 'plus', 'product.write'], ['bundles', 'Kemasan & Bundling', 'boxes']]],
-  ['INTEGRASI', [['mapping', 'SKU Mapping Shopee', 'link'], ['io', 'Import & Export', 'upload', 'export.run']]],
-  ['SISTEM', [['users', 'Pengguna & Hak Akses', 'users', 'user.manage'], ['settings', 'Pengaturan', 'sliders'], ['audit', 'Audit Log', 'activity', 'audit.read']]]
+  ['KATALOG', [['products', 'Produk', 'package'], ['bundles', 'Paket Penjualan', 'boxes']]],
+  ['KANAL PENJUALAN', [['mapping', 'Shopee', 'link']]],
+  ['DATA', [['io', 'Import & Export', 'upload', 'export.run']]],
+  ['ADMINISTRASI', [['users', 'Pengguna & Hak Akses', 'users', 'user.manage'], ['settings', 'Pengaturan', 'sliders'], ['audit', 'Audit Log', 'activity', 'audit.read']]]
 ];
 /** Halaman yang tidak punya menu sendiri → menu induknya (untuk menu aktif & breadcrumb). */
-var NAV_PARENT = { product: 'products', brands: 'products', categories: 'products', barcodes: 'products', quality: 'products', photos: 'products', photoShoot: 'photoList', bundle: 'bundles' };
-var MP = ['MANAJEMEN PRODUK', 'Master Produk'];
+var NAV_PARENT = { register: 'products', product: 'products', brands: 'products', categories: 'products', barcodes: 'products', quality: 'products', photos: 'products', photoShoot: 'photoList', bundle: 'bundles' };
+var MP = ['KATALOG', 'Produk'];
 /** Tab di dalam Master Produk (pindah tab = ganti halaman, bukan tambah riwayat). */
 /** Halaman utama HP: navigasi bawah tampil, tanpa tombol kembali. */
 var TOP_PAGES = ['dashboard', 'products', 'scan', 'activity', 'account'];
 var MTAB_GROUP = ['products', 'brands', 'categories', 'photos', 'quality', 'barcodes'];
-var M_TITLE = { dashboard: 'Dashboard', scan: 'Scan Barcode', activity: 'Aktivitas', account: 'Menu', profile: 'Profil', product: 'Detail Produk', brands: 'Brand', categories: 'Kategori', barcodes: 'Barcode', quality: 'Kualitas Data', photos: 'Foto Produk', bundle: 'Kemasan & Bundling' };
+var M_TITLE = { dashboard: 'Dashboard', scan: 'Scan Barcode', activity: 'Aktivitas', account: 'Menu', profile: 'Profil', register: 'Tambah produk', product: 'Detail Produk', brands: 'Brand', categories: 'Kategori', barcodes: 'Barcode', quality: 'Kualitas Data', photos: 'Foto Produk', bundle: 'Paket Penjualan' };
 /** Judul halaman di bilah atas HP. */
 function pageTitle(p) {
   if (M_TITLE[p]) return M_TITLE[p];
   for (var i = 0; i < NAV.length; i++) for (var j = 0; j < NAV[i][1].length; j++) if (NAV[i][1][j][0] === p) return NAV[i][1][j][1];
   return '';
 }
-var CRUMB_EXTRA = { scan: ['MANAJEMEN PRODUK', 'Scan Barcode'], activity: ['AKUN', 'Aktivitas'], account: ['AKUN', 'Akun'], product: MP, brands: MP, categories: MP, barcodes: MP, quality: MP, photos: MP, profile: ['AKUN', 'Profil'], bundle: ['MANAJEMEN PRODUK', 'Kemasan & Bundling'] };
+var CRUMB_EXTRA = { scan: ['MANAJEMEN PRODUK', 'Scan Barcode'], activity: ['AKUN', 'Aktivitas'], account: ['AKUN', 'Akun'], register: MP, product: MP, brands: MP, categories: MP, barcodes: MP, quality: MP, photos: MP, profile: ['AKUN', 'Profil'], bundle: ['KATALOG', 'Paket Penjualan'] };
 /**
  * Filter di HP (pola FMS): kolom cari tetap tampil, filter lain dilipat di balik tombol "Filter" (jumlah filter aktif),
  * dengan Reset & Terapkan. Di desktop tidak berubah. Dipasang otomatis untuk setiap .filters di halaman.
@@ -622,7 +623,7 @@ var App = {
     }).catch(function (e) { if (e.code !== 'UNAUTHENTICATED' && !cached) App.showLogin(e.message); });
   },
   remember: function (me) { App.me = me; Store.set('rpm_me', JSON.stringify(me)); },
-  forget: function () { if(typeof SHOPEE_SELECTED!=='undefined')SHOPEE_SELECTED=Object.create(null);if(typeof SHOPEE_WORKFILE!=='undefined')SHOPEE_WORKFILE=null;FastReadCache.clear(); App.token = null; App.me = null; Store.del('rpm_token'); Store.del('rpm_me'); Ref.data = {}; },
+  forget: function () { if(typeof SHOPEE_BATCH_ID!=='undefined')SHOPEE_BATCH_ID=''; if(typeof SHOPEE_SELECTED!=='undefined')SHOPEE_SELECTED=Object.create(null);if(typeof SHOPEE_WORKFILE!=='undefined')SHOPEE_WORKFILE=null;FastReadCache.clear(); App.token = null; App.me = null; Store.del('rpm_token'); Store.del('rpm_me'); Ref.data = {}; },
 
   authShell: function (formHtml) {
     var flow = [['camera', 'Scan barcode', 'Kamera HP langsung mengenali SKU'], ['plus', 'Registrasi SKU', 'Barcode terisi otomatis, tanpa ketik ulang'],
@@ -630,7 +631,7 @@ var App = {
     $app().innerHTML = '<div class="auth"><section class="auth-art"><div class="art-top">' + brand() + '</div>' +
       '<div class="art-mid"><div class="eyebrow eb">SKU Management System</div>' +
       '<h1>Scan, daftar,<br>SKU <em>pasti.</em></h1>' +
-      '<p class="lead">Registrasi produk kosmetik yang rapi — dari brand hingga kemasan karton — siap dipakai di Shopee dan operasional toko.</p>' +
+      '<p class="lead">Kelola produk kosmetik dengan rapi — dari brand hingga kemasan karton — siap dipakai di Shopee dan operasional toko.</p>' +
       '<ol class="flow">' + flow.map(function (f, i) { return '<li><div class="node">' + icon(f[0]) + '</div><div><div class="k">Tahap ' + (i + 1) + '</div><div class="v">' + f[1] + '</div><div class="d">' + f[2] + '</div></div></li>'; }).join('') + '</ol></div>' +
       '<div class="foot"><span>© ' + new Date().getFullYear() + ' Meirista</span><span class="sep"></span>' + icon('lock') + '<span>Akses individual · tercatat di audit trail</span></div></section>' +
       '<section class="auth-form"><div class="box"><div class="auth-logo">' + brandLogo() + '</div>' + formHtml + '</div><div class="auth-tag">' + APP_NAME.toUpperCase() + '</div></section></div>';

@@ -1,5 +1,5 @@
 <script>
-/* ═════════════ Registrasi Produk v5 — satu alur, tiga tahap ═════════════
+/* ═════════════ Tambah produk v5 — satu alur, tiga tahap ═════════════
  * 1 Identifikasi Produk → 2 Varian & Barcode → 3 Kemasan & Logistik (opsional) → Simpan.
  * User tidak mengisi kode apa pun: Parent SKU (BRAND-KATEGORI-0001), SKU produk (PARENT_SKU-BARCODE), barcode internal,
  * dan Nama Produk SKU dibentuk otomatis (pratinjau di browser; nilai final ditetapkan server saat disimpan, di dalam lock).
@@ -228,7 +228,7 @@ var Wiz = {
     var s = Wiz.st, main = Wiz.main;
     var steps = ['Identifikasi Produk', 'Varian & Barcode', 'Kemasan & Logistik'];
     var bad = [0, 0, 0, 0]; Object.keys(s.errors).forEach(function (p) { bad[Wiz.stepOf(p)]++; });
-    main.innerHTML = pageHead(s.productId ? 'Edit produk · ' + s.productCode : 'Master data', s.productId ? (s.brand ? s.brand.name + ' ' : '') + s.name : 'Registrasi Produk',
+    main.innerHTML = pageHead(s.productId ? 'Edit produk · ' + s.productCode : 'Master data', s.productId ? (s.brand ? s.brand.name + ' ' : '') + s.name : 'Tambah produk',
       s.productId ? '<button class="btn" id="wz-cancel">' + icon('x') + 'Batal</button>' : (Wiz.restored ? '<button class="btn ghost" id="wz-reset">' + icon('refresh') + 'Mulai dari awal</button>' : ''),
       s.productId ? (s.skuFrozen ? 'SKU terkunci' : 'Draft') : '') +
       (s.note ? '<div class="info-box" style="margin:-8px 0 14px">' + icon('copy') + '<span>' + esc(s.note) + '</span></div>' : '') +
@@ -974,7 +974,7 @@ var Wiz = {
     Wiz.main.innerHTML = '<div class="success"><div class="ring">' + icon('check') + '</div><div class="eyebrow">Kode Produk Induk ' + esc(d.productCode) + ' · ' + esc(STATUS_TXT[d.status] || d.status) + '</div><h2>' + (edited ? 'Perubahan tersimpan' : draft ? 'Draft tersimpan' : 'Produk tersimpan') + '</h2>' +
       '<p class="muted">' + esc(d.displayName || d.name) + ' · ' + d.variants.length + ' Kode SKU Produk. ' + (edited ? '' : draft ? 'Draft — aktifkan dari halaman detail bila sudah lengkap.' : '') + (incomplete ? ' <span class="badge b-NONE">Data kemasan belum lengkap: ' + incomplete + '</span>' : '') + '</p>' +
       '<div class="tbl-x" style="text-align:left;margin:16px 0"><table class="t"><thead><tr><th>Kode SKU Produk</th><th>Nama Produk</th><th>Barcode</th><th>Data kemasan</th></tr></thead><tbody>' + rows.slice(0, 60).map(function (r) { return '<tr><td class="sku">' + esc(r[0]) + '</td><td>' + esc(r[1]) + '</td><td class="code">' + esc(r[2]) + ' <span class="muted">' + esc(r[3]) + '</span></td><td>' + (r[4] === null ? '' : r[4] ? badge('GTIN', 'Lengkap') : badge('NONE', 'Belum lengkap')) + '</td></tr>'; }).join('') + '</tbody></table></div>' +
-      '<div class="row" style="justify-content:center"><button class="btn pri" id="s2">' + icon('plus') + 'Registrasi produk lain</button><button class="btn" id="s1">' + icon('package') + 'Lihat produk</button>' + (incomplete ? '<button class="btn" id="s4">' + icon('boxes') + 'Lengkapi kemasan</button>' : '') + '</div></div>';
+      '<div class="row" style="justify-content:center"><button class="btn pri" id="s2">' + icon('plus') + 'Tambah produk lain</button><button class="btn" id="s1">' + icon('package') + 'Lihat produk</button>' + (incomplete ? '<button class="btn" id="s4">' + icon('boxes') + 'Lengkapi kemasan</button>' : '') + '</div></div>';
     toast(edited ? 'Perubahan produk tersimpan' : 'Produk ' + (d.displayName || d.name) + ' tersimpan', 'ok');
     $('#s1', Wiz.main).onclick = function () { App.go('product', d.id); };
     $('#s2', Wiz.main).onclick = function () { App.go('register', {}, { force: true }); };

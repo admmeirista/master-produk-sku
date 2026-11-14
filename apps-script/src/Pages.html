@@ -35,11 +35,11 @@ function renderScan(res, r) {
   } else if (r.kind === 'gtin') {
     res.innerHTML = '<div class="hit new"><span class="ico">' + icon('alert') + '</span><div><div class="nm">Unknown Barcode — GTIN <span class="code">' + esc(r.code) + '</span> belum terdaftar</div><div class="meta"><span class="badge b-GTIN">GTIN valid · ' + esc(r.validation.symbology) + '</span>' +
       (r.retired.length ? '<span class="badge b-ERR">Pernah dipakai: ' + esc(r.retired[0].owner ? r.retired[0].owner.label : '') + ' — tidak boleh dipakai barang lain</span>' : '') + '</div></div>' +
-      (can('product.write') && !r.retired.length ? '<div class="acts"><button class="btn sm pri" data-new="gtin">' + icon('plus') + 'Registrasi produk baru</button><button class="btn sm" data-new="variant">' + icon('layers') + 'Tambah sebagai varian produk lain</button></div>' : '') + '</div>';
+      (can('product.write') && !r.retired.length ? '<div class="acts"><button class="btn sm pri" data-new="gtin">' + icon('plus') + 'Tambah produk baru</button><button class="btn sm" data-new="variant">' + icon('layers') + 'Tambah sebagai varian produk lain</button></div>' : '') + '</div>';
   } else {
     var why = r.kind === 'internal' ? 'Kode berprefix 2xx = barcode internal toko' + (r.reserved ? ' (dicadangkan, belum dipakai barang)' : ', belum terdaftar') : r.kind === 'text' ? 'Tidak cocok dengan Kode SKU Produk, Kode Produk Induk, atau nama produk mana pun' : 'Bukan GTIN valid: ' + (r.validation.message || 'format/check digit salah');
     res.innerHTML = '<div class="hit bad"><span class="ico">' + icon('alert') + '</span><div><div class="nm">Unknown Barcode — ' + esc(r.code) + ' tidak ditemukan</div><div class="meta"><span>' + esc(why) + '.</span></div></div>' +
-      (can('product.write') ? '<div class="acts"><button class="btn sm" data-new="manual">' + icon('plus') + 'Registrasi produk</button></div>' : '') + '</div>';
+      (can('product.write') ? '<div class="acts"><button class="btn sm" data-new="manual">' + icon('plus') + 'Tambah produk</button></div>' : '') + '</div>';
   }
   $$('[data-open]', res).forEach(function (b) { b.onclick = function () { App.go('product', b.getAttribute('data-open')); }; });
   $$('[data-bundle]', res).forEach(function (b) { b.onclick = function () { bundleEditor(b.getAttribute('data-bundle')); }; });
@@ -67,7 +67,7 @@ function pickProduct(title) {
 /* ───────── Dashboard ───────── */
 /* Istilah: SKU Parent = produk induk (mis. "Viva Milk Cleanser"); SKU Produk = varian yang dijual (mis. "… Lemon 100 ml"). */
 Pages.dashboard = function (main) {
-  main.innerHTML = pageHead('', 'Dashboard', can('product.write') ? '<button class="btn pri hide-m" data-go="register">' + icon('plus') + 'Registrasi Produk</button>' : '') + '<div id="db-body">' + loadingBox() + '</div>';
+  main.innerHTML = pageHead('', 'Dashboard', can('product.write') ? '<button class="btn pri hide-m" data-go="register">' + icon('plus') + 'Tambah produk</button>' : '') + '<div id="db-body">' + loadingBox() + '</div>';
   $$('[data-go]', main).forEach(function (b) { b.onclick = function () { App.go(b.getAttribute('data-go')); }; });
   // tampil seketika dari data terakhir di perangkat, lalu diperbarui di belakang layar
   var last = null;
@@ -116,7 +116,7 @@ Pages.dashboard = function (main) {
       P('SKU Parent terbaru', go2('products', 'Lihat semua'),
         d.recentProducts.length ? '<div class="tablewrap"><table class="t"><thead><tr><th>SKU Parent</th><th>Brand</th><th class="num">SKU Produk</th><th>Dibuat</th></tr></thead><tbody>' + d.recentProducts.map(function (p) {
           return '<tr class="click" data-id="' + esc(p.id) + '"><td><b>' + esc(p.brandName && String(p.name).toLowerCase().indexOf(String(p.brandName).toLowerCase()) !== 0 ? p.brandName + ' ' + p.name : p.name) + '</b><div class="sku" style="font-size:11.5px">' + esc(p.productNo) + '</div></td><td>' + esc(p.brandName || '') + '</td><td class="num">' + p.variants + '</td><td class="nowrap">' + fmtDate(p.createdAt) + '</td></tr>';
-        }).join('') + '</tbody></table></div>' : emptyBox('Belum ada produk', 'Mulai dari Registrasi Produk.'));
+        }).join('') + '</tbody></table></div>' : emptyBox('Belum ada produk', 'Mulai dari Tambah produk.'));
     var paneActivity =
       '<div class="dstack">' +
         P('Status import data', can('export.run') ? go2('io', 'Import') : '',
@@ -187,7 +187,7 @@ Pages.products = function (main, arg) {
   arg = arg || {};
   var autoOpen = false;
   var f = { search: '', brandId: '', categoryId: '', status: 'ACTIVE', completeness: '', page: 1, sort: 'updatedAt', dir: 'desc' };
-  main.innerHTML = pageHead('Master data', 'Master Produk', (can('export.run') ? '<button class="btn" id="ex">' + icon('download') + 'Ekspor</button>' : '') + (can('product.write') ? '<button class="btn pri hide-m" id="np">' + icon('plus') + 'Registrasi Produk</button>' : '')) +
+  main.innerHTML = pageHead('Katalog', 'Produk', (can('export.run') ? '<button class="btn" id="ex">' + icon('download') + 'Ekspor</button>' : '') + (can('product.write') ? '<button class="btn pri" id="np">' + icon('plus') + 'Tambah produk</button>' : '')) +
     '<div class="filters"><div class="search has-cam">' + icon('search') + '<input class="in" id="fq" placeholder="Cari / scan GTIN, Kode SKU, Kode Produk, nama…" spellcheck="false">' + camBtn('Scan barcode pakai kamera HP') + '</div><div id="fb" style="width:190px"></div><div id="fc" style="width:190px"></div>' +
     '<select class="in" id="fs"><option value="ACTIVE">Aktif</option><option value="DRAFT">Draft</option><option value="INACTIVE">Nonaktif</option><option value="DISCONTINUED">Discontinued</option><option value="ARCHIVED">Diarsipkan</option><option value="all">Semua status</option></select>' +
     '<select class="in" id="fk" title="Kelengkapan data"><option value="">Semua kelengkapan</option><option value="enrich">Perlu dilengkapi</option><option value="incomplete">Tanpa GTIN / barcode</option><option value="nophoto">Tanpa foto</option><option value="noweight">Tanpa berat</option><option value="complete">Data lengkap</option></select></div><div id="pl"></div>';
@@ -602,7 +602,7 @@ Pages.product = function (main, id, tab) {
       $$('[data-bc]', tb).forEach(function (b) { b.onclick = function () { showBarcode(b.getAttribute('data-bc')); }; });
     } else if (tab === 'channels') {
       api('mapping.list', { system: 'shopee', productId: p.id, pageSize: 200 }).then(function (d) {
-        tb.innerHTML = (can('mapping.write') ? '<div class="toolbar"><button class="btn pri" id="nc">' + icon('plus') + 'Periksa mapping Shopee</button><span class="muted">Periksa listing dan variasi di halaman SKU Mapping Shopee.</span></div>' : '') +
+        tb.innerHTML = (can('mapping.write') ? '<div class="toolbar"><button class="btn pri" id="nc">' + icon('plus') + 'Periksa mapping Shopee</button><span class="muted">Periksa listing dan variasi di halaman Pemetaan SKU Shopee.</span></div>' : '') +
           (d.rows.length ? '<div class="tablewrap"><table class="t"><thead><tr><th>Kanal</th><th>Toko</th><th>ID produk / variasi</th><th>Seller SKU</th><th>SKU internal</th><th>Status</th></tr></thead><tbody>' + d.rows.map(function (r) { return '<tr><td><b>' + esc(r.channelLabel) + '</b></td><td>' + esc(r.storeAccount || '—') + '</td><td class="code">' + esc(r.externalProductId || '—') + (r.externalVariationId ? ' / ' + esc(r.externalVariationId) : '') + '</td><td class="sku">' + esc(r.externalSku || r.externalParentSku || '—') + '</td><td class="sku">' + esc(r.internalSku) + '</td><td>' + badge(r.system === 'legacy' ? 'legacy' : r.status) + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<div class="tablewrap">' + emptyBox('Belum ada mapping kanal', '', 'link') + '</div>');
         if ($('#nc', tb)) $('#nc', tb).onclick = function () { var v = p.variants[0]; channelMapForm(p.variants.length === 1 ? { sku: { sku: v.sku, displayName: p.name, kind: 'variant' } } : {}, reload); };
       }).catch(function (e) { tb.innerHTML = errBox(e.message); });
@@ -943,7 +943,7 @@ function barcodeHistory(code) {
 /* ───────── Import & Export ───────── */
 Pages.io = function (main, arg) {
   var tab = arg && arg.tab || (can('import.run') || can('mapping.write') ? 'import' : 'export');
-  main.innerHTML = pageHead('Sistem', 'Import & Export', '', 'Import data produk serta ekspor master untuk operasional. Pemeriksaan listing Shopee tersedia di SKU Mapping Shopee. Import Master Brand/Kategori ada di halaman masing-masing (Upload Excel).') +
+  main.innerHTML = pageHead('Sistem', 'Import & Export', '', 'Import data produk serta ekspor master untuk operasional. Pemeriksaan listing Shopee tersedia di Pemetaan SKU Shopee. Import Master Brand/Kategori ada di halaman masing-masing (Upload Excel).') +
     '<div class="dtabs">' + (can('import.run') || can('mapping.write') ? '<a data-t="import" class="' + (tab === 'import' ? 'on' : '') + '">Import</a>' : '') + '<a data-t="export" class="' + (tab === 'export' ? 'on' : '') + '">Ekspor</a></div><div id="iob"></div>';
   $$('[data-t]', main).forEach(function (a) { a.onclick = function () { App.go('io', { tab: a.getAttribute('data-t') }); }; });
   (tab === 'import' ? Pages.import : Pages.export)($('#iob', main));

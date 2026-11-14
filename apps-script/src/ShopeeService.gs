@@ -76,7 +76,9 @@ function shopeeList_(f) {
   const cacheKey = 'sl5:' + dataVersion_() + ':' + shopeeSignature_(f || {});
   const cached = cacheGetBig_(cacheKey); if (cached) return cached;
   f = f || {}; const catalog = shopeeCatalog_(), q = String(f.search || '').toLowerCase(), summary = { all: 0, unmapped: 0, suggested: 0, needs_review: 0, approved: 0, mismatch: 0, ignored: 0 }, stores = new Set();
-  let all = db_('SHOPEE_LISTINGS').rows().filter((r) => { stores.add(r.StoreAccount); return !f.store || r.StoreAccount === f.store; });
+  let batchKeys=null,batchStore='';
+  if(f.batchId){const batch=shopeeBatchRecord_(f.batchId);batchStore=batch.StoreAccount;batchKeys=new Set(shopeeBatchManifest_(batch).rows.map(r=>shopeeKey_(batchStore,r.productId,r.variationId)));}
+  let all = db_('SHOPEE_LISTINGS').rows().filter((r) => { stores.add(r.StoreAccount); return (!f.store || r.StoreAccount === f.store)&&(!batchKeys||batchKeys.has(shopeeKey_(r.StoreAccount,r.ExternalProductId,r.ExternalVariationId))); });
   summary.verify = 0; summary.unavailable = 0;
   all.forEach((r) => { summary.all++; summary[shopeeStatus_(r, catalog)]++; const st = shopeeDisplayStatus_(r, catalog); if (st !== 'approved') summary[st]++; });
   if (['verify', 'unavailable'].includes(f.status)) { all = all.filter((r) => shopeeDisplayStatus_(r, catalog) === f.status); f = Object.assign({}, f, { status: '' }); }
@@ -101,6 +103,8 @@ function shopeeDisableMapping_(r) {
 }
 /** Upsert dibatasi 200 baris per transaksi; identitas tidak pernah memakai nomor baris Excel. */
 function shopeeImport_(user, p) {
+  let batch;
+  if(p.batchId){batch=shopeeBatchRecord_(p.batchId);const offset=Number(batch.ImportedRows)||0;if(p.offset!==offset)throw new AppError('Progres batch berubah. Buka ulang batch untuk melanjutkan.');if(batch.Status==='ready')return {rows:[],batch:shopeeBatchView_(batch)};p=Object.assign({},p,{store:batch.StoreAccount,fileName:batch.FileName,rows:shopeeBatchManifest_(batch).rows.slice(offset,offset+150)});}
   const store = cleanText(p.store || 'Meirista');
   if (!store || store.length > 60 || !Array.isArray(p.rows) || !p.rows.length || p.rows.length > 200) throw new AppError('Toko wajib diisi dan kirim 1–200 baris per batch.');
   const T = db_('SHOPEE_LISTINGS'), index = {}, seen = {}, prepared = [], catalog = shopeeCatalog_();
@@ -131,6 +135,7 @@ function shopeeImport_(user, p) {
   });
   audit_(user.email, 'shopee.import', 'shopee_listing', '', null, rep, { fileName: p.fileName, store });
   rep.rows = prepared.map((entry) => shopeeView_(T.rows().find((r) => shopeeKey_(r.StoreAccount, r.ExternalProductId, r.ExternalVariationId) === entry.key), catalog));
+  if(batch){const imported=Number(batch.ImportedRows)+prepared.length;db_('SHOPEE_BATCHES').update(batch,{ImportedRows:imported,Status:imported>=Number(batch.TotalRows)?'ready':'importing'});rep.batch=shopeeBatchView_(batch);}
   return rep;
 }
 

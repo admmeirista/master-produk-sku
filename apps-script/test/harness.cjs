@@ -115,7 +115,7 @@ function createGas({ ownerEmail = 'owner@toko.local' } = {}) {
   const props = new Map();
   const drive = [];
   const folders = new Map();
-  const folderOf = (id) => ({ getId: () => id, createFolder: (n) => (folders.set(id + '/' + n, 1), folderOf(id + '/' + n)), getFoldersByName: (n) => { const ok = folders.has(id + '/' + n); let done = false; return { hasNext: () => ok && !done, next: () => ((done = true), folderOf(id + '/' + n)) }; }, createFile: (blob) => { const f = { id: 'file-' + (drive.length + 1), blob, sharing: null, folder: id }; drive.push(f); return { getId: () => f.id, setSharing: (a, p) => (f.sharing = a + ':' + p), setDescription: (d) => (f.description = d) }; } });
+  const folderOf = (id) => ({ setSharing: (a,p) => { folders.set(id+':sharing',a+':'+p); }, getId: () => id, createFolder: (n) => (folders.set(id + '/' + n, 1), folderOf(id + '/' + n)), getFoldersByName: (n) => { const ok = folders.has(id + '/' + n); let done = false; return { hasNext: () => ok && !done, next: () => ((done = true), folderOf(id + '/' + n)) }; }, createFile: (blob) => { const f = { id: 'file-' + (drive.length + 1), blob, sharing: null, folder: id }; drive.push(f); return { getId: () => f.id, setSharing: (a, p) => (f.sharing = a + ':' + p), setDescription: (d) => (f.description = d) }; } });
   const state = { lockBusy: false, fetch: null, fetchLog: [] }; // simulasi user lain sedang memegang lock
   const toSigned = (buf) => [...buf].map((b) => (b > 127 ? b - 256 : b));
   const ctx = {
@@ -124,9 +124,9 @@ function createGas({ ownerEmail = 'owner@toko.local' } = {}) {
     LockService: { getScriptLock: () => ({ tryLock: () => !state.lockBusy, waitLock() {}, releaseLock() {} }) },
     // DriveApp tiruan: folder & file di memori (unggah foto)
     DriveApp: {
-      Access: { ANYONE_WITH_LINK: 'ANYONE_WITH_LINK' }, Permission: { VIEW: 'VIEW' },
+      Access: { ANYONE_WITH_LINK: 'ANYONE_WITH_LINK', PRIVATE:'PRIVATE' }, Permission: { VIEW: 'VIEW', NONE:'NONE' },
       _files: drive,
-      getFileById: () => ({ getParents: () => ({ hasNext: () => false }) }),
+      getFileById: (id) => { const f=drive.find(f=>f.id===id);return {getParents:()=>({hasNext:()=>false}),getBlob:()=>({getDataAsString:()=>String(f.blob.bytes),getBytes:()=>typeof f.blob.bytes==='string'?[...Buffer.from(f.blob.bytes)]:f.blob.bytes}),setTrashed:v=>{f.trashed=v;}}; },
       getRootFolder: () => folderOf('root'),
       getFolderById: (id) => folderOf(id),
     },

@@ -1,14 +1,14 @@
 <script>
-// Workbook asli hanya disimpan di memori tab ini, sehingga format template tetap utuh.
+// Workbook aktif berasal dari template privat batch; dapat dimuat ulang setelah refresh.
 var SHOPEE_WORKFILE = null;
 Pages.mapping = function (main, arg) {
-  var f = { search: arg && arg.search || '', status: arg && arg.status || '', page: 1, pageSize: 30 }, sequence = 0, w = can('mapping.write');
-  main.innerHTML = pageHead('Integrasi', 'SKU Mapping Shopee', can('export.run') ? '<button class="btn pri" id="slExportSelected" disabled>'+icon('download')+'Ekspor terpilih (0)</button><button class="btn" id="slClearSelection" disabled>Bersihkan pilihan</button>' : '', 'Periksa pasangan SKU Shopee dan pilih variasi yang sudah disetujui untuk ekspor mass update.') +
-    '<div id="slSummary" class="shopee-status-cards"></div><div class="toolbar shopee-filters"><div class="search">'+icon('search')+'<input class="in" id="slSearch" placeholder="Cari produk, variasi atau SKU" value="'+esc(f.search)+'"></div><select class="in" id="slStatus" aria-label="Status pemeriksaan"><option value="">Semua status</option><option value="verify">Perlu diverifikasi</option><option value="approved">Disetujui</option><option value="unavailable">Tidak tersedia</option></select></div><div id="slSelectionInfo" class="hint"></div><div id="slRows"></div>';
+  var f = { search: arg && arg.search || '', status: arg && arg.status || '', page: 1, pageSize: 30, batchId: arg&&Object.prototype.hasOwnProperty.call(arg,'batchId')?arg.batchId:Store.get(shopeeBatchPreference())||'' }, sequence = 0, w = can('mapping.write');
+  main.innerHTML = pageHead('Kanal Penjualan', 'Pemetaan SKU Shopee', can('export.run') ? '<button class="btn pri" id="slExportSelected" disabled>'+icon('download')+'Ekspor terpilih (0)</button><button class="btn" id="slClearSelection" disabled>Bersihkan pilihan</button>' : '', 'Periksa pasangan SKU Shopee dan pilih variasi yang sudah disetujui untuk ekspor mass update.') +
+    '<div class="row" style="margin-bottom:12px"><label for="slBatch">Unggahan</label><select class="in" id="slBatch"><option value="">Semua unggahan</option></select><button class="btn sm" id="slOpenBatch" disabled>Buka template / lanjutkan impor</button></div><div id="slSummary" class="shopee-status-cards"></div><div class="toolbar shopee-filters"><div class="search">'+icon('search')+'<input class="in" id="slSearch" placeholder="Cari produk, variasi atau SKU" value="'+esc(f.search)+'"></div><select class="in" id="slStatus" aria-label="Status pemeriksaan"><option value="">Semua status</option><option value="verify">Perlu diverifikasi</option><option value="approved">Disetujui</option><option value="unavailable">Tidak tersedia</option></select></div><div id="slSelectionInfo" class="hint"></div><div id="slRows"></div>';
   $('#slStatus',main).value=f.status;
   function selectionInfo(){var count=Object.keys(SHOPEE_SELECTED).length,button=$('#slExportSelected',main);if(button){button.disabled=!count;button.innerHTML=icon('download')+'Ekspor terpilih ('+count+')';}var clear=$('#slClearSelection',main);if(clear)clear.disabled=!count;var info=$('#slSelectionInfo',main);if(info)info.textContent=count?count+' variasi dipilih. Pilihan tetap tersimpan saat berpindah halaman atau filter.':'Centang variasi berstatus Disetujui untuk ekspor. Unggah template tersedia di Import & Export.';}
 
-  function load(cached) {
+  function load(cached,openId) {
     var mine = ++sequence, box = $('#slRows', main);
     if (!box) return;
     box.innerHTML=loadingBox('Memuat produk…');
@@ -28,7 +28,11 @@ Pages.mapping = function (main, arg) {
       selectionInfo();
       $$('[data-review]', box).forEach(function (b) { b.onclick = function () {
         var id = b.getAttribute('data-review'), before = d.rows.find(function (r) { return r.id === id; });
-        shopeeReviewDialog(before, function (updated) {
+        openReview(before);
+      }; });
+      function openReview(before){
+        var following=d.rows.slice(d.rows.findIndex(function(r){return r.id===before.id;})+1).filter(function(r){return r.status!=='approved';});
+        shopeeReviewDialog(before, function (updated,advance) {
           if (!updated) return;
           if(updated.status!=='approved')delete SHOPEE_SELECTED[updated.id];
           var oldStatus = shopeeDisplayStatus(before), newStatus = shopeeDisplayStatus(updated);
@@ -37,8 +41,23 @@ Pages.mapping = function (main, arg) {
           if (f.status && newStatus !== f.status) { d.rows = d.rows.filter(function (r) { return r.id !== updated.id; }); d.total--; }
           FastReadCache.put(FastReadCache.key('shopee.list',f),JSON.parse(JSON.stringify(d)));
           load(d);
+          if(advance){
+            if(following.length)openReview(following[0]);
+            else {
+              var nextFilter=Object.assign({},f,{page:f.status&&newStatus!==f.status?f.page:f.page+1});
+              function findNext(){return api('shopee.list',nextFilter,{silent:true}).then(function(next){
+                if(!main.isConnected)return;
+                var row=next.rows.find(function(r){return r.status!=='approved';});
+                if(row){f.page=nextFilter.page;load(next,row.id);}
+                else if(next.rows.length&&nextFilter.page*nextFilter.pageSize<next.total){nextFilter.page++;return findNext();}
+                else toast('Pemeriksaan pada daftar ini selesai.','ok');
+              });}
+              findNext().catch(function(e){toast(e.message,'err');});
+            }
+          }
         });
-      }; });
+      }
+      if(openId){var nextRow=d.rows.find(function(r){return r.id===openId;});openId=null;if(nextRow)openReview(nextRow);}
     }
     if(request)request.then(render).catch(function(e){if(mine===sequence)box.innerHTML=errBox(e.message);});
     else fastRead('shopee.list',f,render).catch(function(e){if(mine===sequence&&$('#slRows',main))box.innerHTML=errBox(e.message);});
@@ -47,6 +66,9 @@ Pages.mapping = function (main, arg) {
   $('#slStatus', main).onchange = function (e) { f.status = e.target.value; f.page = 1; load(); };
   if($('#slExportSelected',main))$('#slExportSelected',main).onclick=function(){shopeeSelectedDownloadDialog(selectionInfo);};
   if($('#slClearSelection',main))$('#slClearSelection',main).onclick=function(){SHOPEE_SELECTED=Object.create(null);load();};
+  api('shopee.batchList',{}, {silent:true}).then(function(batches){if(!$('#slBatch',main))return;var saved=arg&&Object.prototype.hasOwnProperty.call(arg,'batchId')?arg.batchId:Store.get(shopeeBatchPreference());var previousBatch=f.batchId;f.batchId=batches.some(function(b){return b.id===saved;})?saved:'';$('#slBatch',main).innerHTML='<option value="">Semua unggahan</option>'+batches.map(function(b){return '<option value="'+esc(b.id)+'">'+esc(b.store+' · '+b.name)+' · '+b.imported+'/'+b.total+'</option>';}).join('');$('#slBatch',main).value=f.batchId;shopeeBatchRemember(f.batchId);$('#slOpenBatch',main).disabled=!f.batchId;if(previousBatch!==f.batchId)load();}).catch(function(e){if($('#slRows',main))$('#slRows',main).innerHTML=errBox(e.message);});
+  $('#slBatch',main).onchange=function(){f.batchId=this.value;shopeeBatchRemember(f.batchId);SHOPEE_WORKFILE=null;SHOPEE_SELECTED=Object.create(null);f.page=1;$('#slOpenBatch',main).disabled=!f.batchId;load();};
+  $('#slOpenBatch',main).onclick=function(){if(f.batchId)shopeeResumeBatch(f.batchId,function(){load();});};
   load();
 };
 
@@ -70,11 +92,9 @@ function shopeeImportDialog(done) {
     if (running || !fileState) return; var store = $('#siStore', m).value.trim(); if (!store) return toast('Isi toko/akun.', 'err');
     running = true; fileState.store = store; fileState.views = []; var offset = 0;
     ['siGo', 'siFile', 'siStore', 'siCancel'].forEach(function (k) { $('#' + k, m).disabled = true; });
-    function next() {
-      if (offset >= fileState.rows.length) { SHOPEE_WORKFILE = fileState; m.close(); toast('Template siap diperiksa. Setujui pasangan SKU sebelum mengunduh hasil.', 'ok'); done(); return; }
-      $('#siInfo', m).textContent = 'Mencocokkan ' + Math.min(offset, fileState.rows.length) + ' / ' + fileState.rows.length + ' variasi…';
-      api('shopee.import', { store: store, fileName: fileState.name, rows: fileState.rows.slice(offset, offset + 150), requestKey: uid() }, { silent: true }).then(function (r) { fileState.views = fileState.views.concat(r.rows); offset += 150; next(); }).catch(function (e) { running = false; ['siGo', 'siFile', 'siStore', 'siCancel'].forEach(function (k) { $('#' + k, m).disabled = false; }); $('#siError', m).innerHTML = errBox(e.message + ' Unggah ulang file yang sama untuk melanjutkan; listing tidak digandakan.'); });
-    } next();
+    $('#siInfo',m).textContent='Menyimpan template asli secara privat…';
+    if(fileState.buffer.byteLength>10*1024*1024){running=false;$('#siError',m).innerHTML=errBox('Template maksimal 10 MB.');['siGo','siFile','siStore','siCancel'].forEach(function(k){$('#'+k,m).disabled=false;});return;}
+    api('shopee.batchCreate',{store:store,fileName:fileState.name,base64:shopeeTemplateBase64(fileState.buffer),rows:fileState.rows,requestKey:uid()},{silent:true}).then(function(batch){m.close();shopeeResumeBatch(batch.id,done);}).catch(function(e){running=false;['siGo','siFile','siStore','siCancel'].forEach(function(k){$('#'+k,m).disabled=false;});$('#siError',m).innerHTML=errBox(e.message);});
   };
 }
 

@@ -1,6 +1,6 @@
 const test=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs'),path=require('node:path');
 const {createGas}=require('./harness.cjs');
-function browser(){const c={Pages:{},esc:v=>String(v??''),fmtNum:v=>String(v)};for(const name of ['Shopee','ShopeeWorkflow','ShopeeSelection'])vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../src/'+name+'.html'),'utf8').replace(/^<script>\s*/,'').replace(/<\/script>\s*$/,''),c);return c;}
+function browser(){const c={Pages:{},esc:v=>String(v??''),fmtNum:v=>String(v)};for(const name of ['Shopee','ShopeeWorkflow','ShopeeSelection','ShopeeBatch'])vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../src/'+name+'.html'),'utf8').replace(/^<script>\s*/,'').replace(/<\/script>\s*$/,''),c);return c;}
 test('kartu jumlah dan persentase status: total nol tidak menghasilkan NaN; pencarian tetap memakai denominator total',()=>{
  const c=browser();let html=c.shopeeStatusCards({all:10,verify:3,approved:6,unavailable:1},'approved');
  assert.match(html,/30% dari total/);assert.match(html,/60% dari total/);assert.match(html,/10% dari total/);assert.match(html,/shopee-stat-approved on/);

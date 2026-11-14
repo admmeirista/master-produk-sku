@@ -310,9 +310,10 @@ Pages.activity = function (main) {
 
 /* ───────── Menu (HP): semua menu per kelompok + profil + keluar ───────── */
 var MENU_GROUPS = [
-  ['Manajemen Produk', [['register', 'Registrasi Produk', 'plus', 'product.write'], ['brands', 'Brand', 'tag'], ['categories', 'Kategori', 'layers'], ['bundles', 'Kemasan & Bundling', 'boxes'], ['photos', 'Foto Produk', 'image', 'photo.manage'], ['quality', 'Kualitas Data', 'shield'], ['barcodes', 'Barcode', 'barcode']]],
-  ['Integrasi', [['mapping', 'Channel SKU Mapping', 'link'], ['io', 'Import & Export', 'upload', 'export.run']]],
-  ['Sistem', [['users', 'Pengguna & Hak Akses', 'users', 'user.manage'], ['settings', 'Pengaturan', 'sliders'], ['audit', 'Audit Log', 'activity', 'audit.read']]]
+  ['Katalog', [['products','Produk','package'],['bundles','Paket Penjualan','boxes']]],
+  ['Kanal Penjualan', [['mapping','Shopee','link']]],
+  ['Data', [['io','Import & Export','upload','export.run']]],
+  ['Administrasi', [['users','Pengguna & Hak Akses','users','user.manage'],['settings','Pengaturan','sliders'],['audit','Audit Log','activity','audit.read']]]
 ];
 Pages.account = function (main) {
   var u = App.me.user;

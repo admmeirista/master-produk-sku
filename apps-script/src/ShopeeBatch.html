@@ -1,0 +1,25 @@
+<script>
+var SHOPEE_BATCH_ID='';
+function shopeeBatchPreference(){return 'shopee_batch_'+(App.me&&App.me.user&&App.me.user.email||'');}
+function shopeeBatchRemember(id){SHOPEE_BATCH_ID=id||'';Store.set(shopeeBatchPreference(),SHOPEE_BATCH_ID);}
+function shopeeTemplateBase64(buffer){var bytes=new Uint8Array(buffer),parts=[];for(var i=0;i<bytes.length;i+=16384)parts.push(String.fromCharCode.apply(null,bytes.subarray(i,i+16384)));return btoa(parts.join(''));}
+function shopeeBatchFile(batch){var raw=atob(batch.base64),bytes=new Uint8Array(raw.length);for(var i=0;i<raw.length;i++)bytes[i]=raw.charCodeAt(i);var file=shopeeReadTemplate(bytes.buffer,batch.name);file.store=batch.store;file.batchId=batch.id;return file;}
+function shopeeResumeBatch(id,done){
+  var m=modal('<h3>Lanjutkan batch Shopee</h3><div id="sbProgress" role="status">Memuat template asli…</div><div id="sbError"></div><div class="row"><button class="btn" data-close>Tutup</button></div>');
+  api('shopee.batchGet',{id:id},{silent:true}).then(function(batch){
+    if(!m.isConnected)return;
+    SHOPEE_WORKFILE=shopeeBatchFile(batch);shopeeBatchRemember(batch.id);
+    function next(){
+      if(!m.isConnected)return;
+      if(batch.status==='ready'){m.close();done(batch);return;}
+      $('#sbProgress',m).textContent='Mencocokkan '+batch.imported+' / '+batch.total+' variasi. Progres tersimpan; aman dilanjutkan setelah refresh.';
+      return api('shopee.import',{batchId:batch.id,offset:batch.imported,requestKey:uid()},{silent:true}).then(function(r){batch=r.batch;return next();});
+    }
+    return next();
+  }).catch(function(e){if(m.isConnected)$('#sbError',m).innerHTML=errBox(e.message+' Buka kembali batch ini untuk melanjutkan.');});
+}
+function shopeeBatchHistory(main){
+  var host=$('#ioShopeeBatches',main);if(!host)return;
+  api('shopee.batchList',{}, {silent:true}).then(function(batches){if(!host.isConnected)return;host.innerHTML=batches.length?'<h4>Unggahan tersimpan</h4>'+batches.map(function(b){return '<div class="row" style="margin-top:10px"><div class="grow"><b>'+esc(b.name)+'</b><div class="muted">'+esc(b.store)+' · '+fmtDate(b.createdAt)+' · '+b.imported+'/'+b.total+' variasi'+(b.status==='ready'?' · Siap diperiksa':' · Impor belum selesai')+'</div></div><button class="btn sm" data-resume-batch="'+esc(b.id)+'">'+(b.status==='ready'?'Buka batch':'Lanjutkan impor')+'</button></div>';}).join(''):'<p class="muted">Belum ada unggahan tersimpan.</p>';$$('[data-resume-batch]',host).forEach(function(button){button.onclick=function(){shopeeResumeBatch(button.getAttribute('data-resume-batch'),function(b){App.go('mapping',{batchId:b.id});});};});}).catch(function(e){if(host.isConnected)host.innerHTML=errBox(e.message);});
+}
+</script>

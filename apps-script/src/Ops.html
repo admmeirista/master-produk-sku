@@ -45,7 +45,7 @@ Pages.quality = function (main) {
 Pages.bundles = function (main, arg) {
   var w = can('product.write');
   var tab = arg && arg.tab || 'bundle';
-  main.innerHTML = pageHead('Operasional', 'Paket & Kemasan', w ? '<button class="btn pri" id="nb">' + icon('plus') + 'Buat paket</button>' : '',
+  main.innerHTML = pageHead('Katalog', 'Paket Penjualan', w ? '<button class="btn pri" id="nb">' + icon('plus') + 'Buat paket</button>' : '',
     '') +
     '<div class="dtabs"><a data-t="bundle" class="' + (tab === 'bundle' ? 'on' : '') + '">Paket</a><a data-t="pack" class="' + (tab === 'pack' ? 'on' : '') + '">Konversi kemasan</a></div><div id="bb"></div>';
   $$('[data-t]', main).forEach(function (a) { a.onclick = function () { App.go('bundles', { tab: a.getAttribute('data-t') }); }; });

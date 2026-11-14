@@ -15,7 +15,7 @@ function shopeeOpenReview(r, done) {
     '<label class="f">Jenis penjualan Shopee</label><select class="in w100" id="svType"' + (!w?' disabled':'') + '><option value="unclear">Pilih jenis penjualan</option><option value="single">Satuan</option><option value="multipack">Paket produk sama (MP)</option><option value="bundle">Paket kombinasi (BD)</option></select>' +
     '<div class="sect">SKU barang dan jumlah per pembelian</div><div id="svLines"></div>' + (w?'<button class="btn sm" id="svAdd">Tambah SKU barang</button>':'') + '<div id="svResolution" class="hint" role="status"></div>' +
     '<div id="svBarcode"></div><label class="f">Catatan pemeriksaan (opsional untuk persetujuan)</label><textarea class="in w100" id="svNote" rows="2"' + (!w?' readonly':'') + '>' + esc(r.note) + '</textarea><div id="svError"></div>' +
-    '<div class="row shopee-review-actions" style="margin-top:16px">' + (w?'<button class="btn pri" id="svApprove" disabled>Setujui pasangan SKU</button><button class="btn pri hidden" id="svCreate" disabled>Buat paket baru & setujui</button><button class="btn" id="svReview">Perlu diverifikasi</button>':'') + '<button class="btn" data-close>Tutup</button></div>', {wide:true});
+    '<div class="row shopee-review-actions" style="margin-top:16px">' + (w?'<button class="btn pri" id="svApprove" disabled>Setujui pasangan SKU</button><button class="btn pri" id="svApproveNext" disabled>Setujui & berikutnya</button><button class="btn pri hidden" id="svCreate" disabled>Buat paket baru & setujui</button><button class="btn" id="svReview">Perlu diverifikasi</button>':'') + '<button class="btn" data-close>Tutup</button></div>', {wide:true});
   $('#svType',m).value = type;
   var barcodeForm=packageBarcode($('#svBarcode',m),target||{},w&&can('product.write'));
   barcodeForm.set(target||{},type==='single');
@@ -30,11 +30,13 @@ function shopeeOpenReview(r, done) {
     $('#svApprove',m).classList.toggle('hidden',!!missing);
     $('#svCreate',m).classList.toggle('hidden',!missing || !can('product.write'));
     $('#svCreate',m).disabled = saving || !missing;
+    $('#svApproveNext',m).disabled=saving||!fresh||!!resolved.blocked||(!resolved.target&&!can('product.write'));
+    $('#svApproveNext',m).textContent=missing?'Buat paket, setujui & berikutnya':'Setujui & berikutnya';
     $('#svReview',m).disabled = saving;
   }
   function accept(result,key) {
     resolved = result; resolved.key = key; target = result.target; barcodeForm.set(target||{},type==='single'); drawTarget();
-    $('#svResolution',m).textContent = result.blocked || (target ? 'Menggunakan SKU yang sudah ada: '+target.sku+' · Total '+result.quantity+' unit per pembelian.' : 'Paket belum ada. '+(can('product.write')?'Buat dan setujui langsung; paket akan tersimpan di Kemasan & Bundling.':'Akun ini belum memiliki izin membuat paket.'));
+    $('#svResolution',m).textContent = result.blocked || (target ? 'Menggunakan SKU yang sudah ada: '+target.sku+' · Total '+result.quantity+' unit per pembelian.' : 'Paket belum ada. '+(can('product.write')?'Buat dan setujui langsung; paket akan tersimpan di Paket Penjualan.':'Akun ini belum memiliki izin membuat paket.'));
     buttons();
   }
   var lookup = debounce(function(mine,key,p) {
@@ -60,7 +62,7 @@ function shopeeOpenReview(r, done) {
   if(target && target.active && shopeeSelectionValid(type,lines) && shopeeSelectionKey(type,lines)===shopeeSelectionKey(target.kind,target.components)) {
     resolved={target:target,key:shopeeSelectionKey(type,lines),signature:null};buttons();
   } else changed();
-  function save(action,create,btn) {
+  function save(action,create,btn,advance) {
     if(saving)return;
     if(action==='approve' && (!resolved || resolved.key!==shopeeSelectionKey(type,lines) || resolved.blocked))return;
     var p={id:r.id,version:r.version,action:action,note:$('#svNote',m).value,requestKey:uid()};
@@ -70,9 +72,10 @@ function shopeeOpenReview(r, done) {
       else {p.selection=selection();p.selection.signature=resolved.signature;p.createPackage=!!create;if(target){p.sku=target.sku;p.targetSignature=target.signature;}}
     }
     saving=true;buttons();$('#svType',m).disabled=true;$$('#svLines input, #svLines button, #svAdd',m).forEach(function(el){el.disabled=true;});$('#svError',m).innerHTML='';
-    busy(btn,api('shopee.review',p,{silent:true})).then(function(updated){m.close();toast(updated.packageCreated?'Paket baru tersimpan di Kemasan & Bundling dan pemetaan disetujui.':action==='approve'?'Pasangan SKU disetujui.':'Status pemeriksaan disimpan.','ok');done(updated);}).catch(function(e){saving=false;$('#svType',m).disabled=false;drawLines();buttons();$('#svError',m).innerHTML=feList(e);});
+    busy(btn,api('shopee.review',p,{silent:true})).then(function(updated){m.close();toast(updated.packageCreated?'Paket baru tersimpan di Paket Penjualan dan pemetaan disetujui.':action==='approve'?'Pasangan SKU disetujui.':'Status pemeriksaan disimpan.','ok');done(updated,!!advance);}).catch(function(e){saving=false;$('#svType',m).disabled=false;drawLines();buttons();$('#svError',m).innerHTML=feList(e);});
   }
   $('#svApprove',m).onclick=function(){save('approve',false,this);};
+  $('#svApproveNext',m).onclick=function(){save('approve',!!(resolved&&!resolved.target),this,true);};
   $('#svCreate',m).onclick=function(){save('approve',true,this);};
   $('#svReview',m).onclick=function(){save('needs_review',false,this);};
   return m;

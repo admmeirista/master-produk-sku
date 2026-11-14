@@ -32,6 +32,7 @@ const DB_SPREADSHEET_ID = '11f_luP2oWDJHklnG4BjxWTjXXRA57XuO-un6tuAJbm4'; // fil
  *   CHANNEL_SKU_MAPPING = EXTERNAL_SKU_MAPPINGS (juga menyimpan Legacy SKU, System = "legacy")
  */
 const SCHEMA = {
+  SHOPEE_BATCHES: ['BatchID', 'FileName', 'StoreAccount', 'FileID', 'ManifestID', 'TotalRows', 'ImportedRows', 'Status', 'CreatedBy', 'CreatedAt'],
   // ---- sistem
   Settings: ['key', 'value', 'updated_by', 'updated_at'],
   Users: ['id', 'email', 'full_name', 'role', 'is_active', 'pw_salt', 'pw_hash', 'failed_logins', 'locked_until', 'last_login_at', 'created_at', 'updated_at'],

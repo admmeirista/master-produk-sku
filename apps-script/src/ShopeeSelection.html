@@ -1,7 +1,7 @@
 <script>
 var SHOPEE_SELECTED=Object.create(null);
-function shopeeIOImportCard(){return can('mapping.write')?'<div class="panel shopee-io-card"><h3>Template mass update Shopee</h3><p>Unggah file .xlsx asli untuk memperbarui daftar produk dan variasi Shopee. Pemeriksaan pasangan SKU dilakukan di SKU Mapping Shopee.</p><button class="btn pri" id="ioShopeeImport">'+icon('upload')+'Unggah template Shopee</button></div>':'';}
-function shopeeBindIOImport(main){if($('#ioShopeeImport',main))$('#ioShopeeImport',main).onclick=function(){shopeeImportDialog(function(){App.go('mapping');});};}
+function shopeeIOImportCard(){return can('mapping.write')?'<div class="panel shopee-io-card"><h3>Template mass update Shopee</h3><p>Unggah file .xlsx asli untuk memperbarui daftar produk dan variasi Shopee. Pemeriksaan pasangan SKU dilakukan di Pemetaan SKU Shopee.</p><button class="btn pri" id="ioShopeeImport">'+icon('upload')+'Unggah template Shopee</button><div id="ioShopeeBatches"></div></div>':'';}
+function shopeeBindIOImport(main){shopeeBatchHistory(main);if($('#ioShopeeImport',main))$('#ioShopeeImport',main).onclick=function(){shopeeImportDialog(function(){App.go('mapping',{batchId:SHOPEE_BATCH_ID});});};}
 function shopeeStatusCards(summary,current){
   var total=Number(summary.all)||0;
   return [['','Semua variasi',total],['verify','Perlu diverifikasi',Number(summary.verify)||0],['approved','Disetujui',Number(summary.approved)||0],['unavailable','Tidak tersedia',Number(summary.unavailable)||0]].map(function(item){var percent=total?Math.round(item[2]/total*1000)/10:0;return '<button class="shopee-stat shopee-stat-'+(item[0]||'all')+(current===item[0]?' on':'')+'" data-status-card="'+item[0]+'"><span>'+esc(item[1])+'</span><strong>'+fmtNum(item[2])+'</strong><small>'+percent.toLocaleString('id-ID',{maximumFractionDigits:1})+'% dari total</small><i style="--progress:'+Math.min(100,Math.max(0,percent))+'%"></i></button>';}).join('');
@@ -12,7 +12,7 @@ function shopeeReadTemplate(buffer,name){
   if(!found)throw new Error('Tidak ditemukan lembar template mass update Shopee.');
   return {name:name,buffer:buffer,sheetName:found.sheetName,aoa:found.aoa,rows:found.rows,views:[]};
 }
-function shopeeIOExportCard(){var count=Object.keys(SHOPEE_SELECTED).length;return '<div class="panel shopee-io-card"><h3>Mass update SKU Shopee</h3><p>Pilih variasi yang sudah Disetujui di SKU Mapping. File hasil hanya memuat variasi yang dipilih, dengan SKU/GTIN master terbaru dan format template Shopee.</p><div class="hint">'+(SHOPEE_WORKFILE?'Template acuan: '+esc(SHOPEE_WORKFILE.name)+' · '+esc(SHOPEE_WORKFILE.store):'Belum ada template acuan pada sesi ini. Pilih kembali file asli Shopee, atau impor melalui tab Import.')+'</div><div class="row" style="margin-top:12px"><button class="btn pri" id="ioShopeeExport"'+(!count?' disabled':'')+'>Ekspor terpilih ('+count+')</button><button class="btn" id="ioShopeeChoose">Pilih SKU disetujui</button><button class="btn" id="ioShopeeReference">Pilih template acuan</button></div></div>';}
+function shopeeIOExportCard(){var count=Object.keys(SHOPEE_SELECTED).length;return '<div class="panel shopee-io-card"><h3>Mass update SKU Shopee</h3><p>Pilih variasi yang sudah Disetujui di SKU Mapping. File hasil hanya memuat variasi yang dipilih, dengan SKU/GTIN master terbaru dan format template Shopee.</p><div class="hint">'+(SHOPEE_WORKFILE?'Template acuan: '+esc(SHOPEE_WORKFILE.name)+' · '+esc(SHOPEE_WORKFILE.store):'Buka unggahan tersimpan melalui tab Import, atau pilih template acuan.')+'</div><div class="row" style="margin-top:12px"><button class="btn pri" id="ioShopeeExport"'+(!count?' disabled':'')+'>Ekspor terpilih ('+count+')</button><button class="btn" id="ioShopeeChoose">Pilih SKU disetujui</button><button class="btn" id="ioShopeeReference">Pilih template acuan</button></div></div>';}
 function shopeeBindIOExport(main){
   $('#ioShopeeChoose',main).onclick=function(){App.go('mapping',{status:'approved'});};
   $('#ioShopeeReference',main).onclick=function(){shopeeReferenceDialog(function(){App.go('io',{tab:'export'});});};
@@ -40,6 +40,7 @@ function shopeeSelectedPlan(file,rows){
   var plan=shopeeExportChanges(file,results);plan.selectedRows=selectedRows;return plan;
 }
 function shopeeSelectedDownloadDialog(done){
+  if(SHOPEE_BATCH_ID&&(!SHOPEE_WORKFILE||SHOPEE_WORKFILE.batchId!==SHOPEE_BATCH_ID))return shopeeResumeBatch(SHOPEE_BATCH_ID,function(){shopeeSelectedDownloadDialog(done);});
   var ids=Object.keys(SHOPEE_SELECTED);if(!ids.length)return toast('Pilih variasi Disetujui terlebih dahulu.','warn');
   var file=SHOPEE_WORKFILE;
   var m=modal('<h3>Ekspor mass update Shopee</h3><p>'+ids.length+' variasi dipilih. Hanya baris pilihan yang akan dimasukkan ke file. Persetujuan, SKU dan GTIN diperiksa ulang saat mengunduh.</p><div class="hint">'+(file?'Template: '+esc(file.name)+' · '+esc(file.store):'Template acuan belum tersedia. Pilih file asli melalui Import & Export terlebih dahulu.')+'</div><div id="sxInfo" class="hint"></div><div id="sxError"></div><div class="row" style="margin-top:16px">'+(file?'<button class="btn pri" id="sxGo">Unduh '+ids.length+' variasi (.xlsx)</button>':'<button class="btn pri" id="sxIO">Buka Import & Export</button>')+'<button class="btn" data-close>Tutup</button></div>');

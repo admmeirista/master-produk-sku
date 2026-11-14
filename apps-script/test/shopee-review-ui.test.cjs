@@ -20,6 +20,16 @@ function ui(write = false) {
   return { context, modals, calls, elements };
 }
 
+test('Setujui & berikutnya hanya melanjutkan sesudah penyimpanan berhasil; gagal tetap di popup',async()=>{
+ const {context,elements,modals}=ui(true);let resolve,reject,saved=[],advance=[];
+ context.api=(action,p)=>{saved.push(p);return new Promise((a,b)=>{resolve=a;reject=b;});};context.feList=e=>e.message;
+ const row={id:'next-1',version:1,saleType:'single',quantity:1,expectedComponents:[{sku:'PRD000001-001',quantity:1}],target:{kind:'single',sku:'PRD000001-001',active:true,components:[{sku:'PRD000001-001',quantity:1}]}};
+ context.shopeeReviewDialog(row,(r,next)=>advance.push([r,next]));
+ elements['#svApproveNext'].onclick();elements['#svApproveNext'].onclick();assert.equal(saved.length,1);assert.equal(advance.length,0);
+ reject(new Error('Konflik versi'));await new Promise(setImmediate);assert.equal(advance.length,0);assert.equal(modals[0].isConnected,true);
+ elements['#svApproveNext'].onclick();resolve({...row,status:'approved'});await new Promise(setImmediate);assert.equal(advance.length,1);assert.equal(advance[0][1],true);assert.equal(modals[0].isConnected,false);
+});
+
 test('Periksa membuka detail tabel secara sinkron tanpa menunggu atau memanggil API tambahan', () => {
   const { context, modals, calls, elements } = ui();
   const row = { id: 'listing-1', name: 'Gatsby Clay 30 gr', variationName: '3 pcs', productId: '123', variationId: '456', expectedComponents: [{sku:'PRD000168-003',quantity:3}], target: {kind:'multipack',sku:'MP000243',name:'Gatsby paket 3 pcs',active:true,components:[{sku:'PRD000168-003',quantity:3}]}, saleType: 'multipack', quantity: 3, version: 4 };
