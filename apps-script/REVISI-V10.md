@@ -1,12 +1,20 @@
 # Revisi V10 — Pemeriksaan SKU Shopee melalui web
 
+## Paket langsung dari pemetaan Shopee
+
+Popup kini hanya memiliki satu definisi isi penjualan: jenis Satuan/MP/BD, Child SKU barang, dan qty per baris. Satuan selalu qty 1; MP satu SKU dengan qty minimal 2; BD minimal dua SKU barang berbeda. Tidak ada input total unit atau editor komposisi kedua.
+
+Sistem mencocokkan BOM secara persis (urutan baris diabaikan) dan memakai SKU paket aktif yang sudah tersedia. Jika belum ada, tombol **Buat paket baru & setujui** membuat paket virtual di Kemasan & Bundling sekaligus menyimpan pemetaan dan persetujuan dalam satu transaksi. Nama paket dibuat otomatis. Paket nonaktif dengan isi sama ditampilkan sebagai hambatan agar tidak digandakan. Paket pilih sendiri tidak dianggap BD berkomposisi tetap.
+
+Preview tidak menulis data. Pembuatan baru membutuhkan izin `product.write` dan pemetaan membutuhkan `mapping.write`. Server memeriksa ulang fingerprint SKU barang, BOM, signature master, dan versi listing di dalam lock. Jika paket yang sama dibuat pengguna lain sesudah preview, paket tersebut dipakai ulang. Bila penyimpanan gagal, paket, BOM, counter SKU, mapping, dan persetujuan dibatalkan bersama.
+
 Integrasi kini menyediakan satu halaman **SKU Mapping Shopee**. Tab TikTok, Tokopedia, BeeCloud, kanal lain, dan SKU lama tidak ditampilkan lagi. Riwayat lama pada database tetap tersedia untuk penelusuran; tidak ada penghapusan tabel/data historis.
 
 ## Daftar dan pemeriksaan
 
 - Tabel ringkas menampilkan produk/variasi, SKU Shopee, SKU sistem, dan status. Kolom/card Shopee berwarna orange (#ee4d2d), master mengikuti warna mocha sistem. Detail menampilkan label terpisah dan urutan nama, variasi, identitas produk, SKU, dan GTIN.
 - Pencarian, pagination, dan tiga filter status tersedia: Perlu diverifikasi (orange, ada target aktif namun belum disetujui), Disetujui (hijau), Tidak tersedia (merah, belum memiliki target aktif). GTIN paket tidak diambil dari GTIN komponen.
-- Pemeriksa memilih SKU barang / MP / BD, menentukan jenis, total unit dan komponen, lalu langsung menyetujui tanpa ceklis. Catatan opsional untuk persetujuan. Paket kombinasi harus memakai BD dengan BOM yang sesuai; request mix tanpa komposisi tetap tidak dapat disetujui lewat alur ini.
+- Pemeriksa memilih jenis Satuan/MP/BD, lalu Child SKU barang dan qty per baris. Komposisi dan total unit mengikuti isian tersebut secara otomatis. Paket yang sudah ada digunakan ulang, paket baru dapat dibuat sekaligus disetujui tanpa ceklis. Catatan opsional untuk persetujuan. Paket kombinasi harus memakai BD dengan BOM yang sesuai; request mix tanpa komposisi tetap tidak dapat disetujui lewat alur ini.
 - Persetujuan mencatat pengguna/waktu dan membuat mapping Shopee ke identitas master. Ini bukan perubahan otomatis di Shopee. Kolom SKU induk listing tidak dipakai untuk menentukan isi pesanan.
 - Perubahan nama/variasi/SKU pada tarikan berikutnya memicu pemeriksaan ulang dan menonaktifkan mapping lama. Perubahan master sejak pratinjau ditolak saat simpan; perubahan setelah persetujuan ditandai tidak sesuai.
 

@@ -33,7 +33,7 @@ function shopeeCatalog_() {
     if (b.Status === STATUS.DELETED) return;
     const raw = comps[b.BundleID] || [], cs = raw.map((c) => ({ sku: (byId[c.VariantID] || {}).sku || '', quantity: Number(c.Quantity), name: (byId[c.VariantID] || {}).name || 'SKU komponen tidak ditemukan', gtin: (byId[c.VariantID] || {}).gtin || '' }));
     const parents = Array.from(new Set(raw.map((c) => (byId[c.VariantID] || {}).parentSku).filter(Boolean)));
-    const t = { sku: b.BundleSKU, kind: b.BundleType === 'MULTIPACK' ? 'multipack' : 'bundle', name: b.BundleName, parentSku: parents.length === 1 ? parents[0] : '', gtin: bundleCodes[b.BundleID] || '', internalBarcode: '', active: b.Status === STATUS.ACTIVE && raw.length > 0 && raw.every((c) => byId[c.VariantID] && byId[c.VariantID].active), productId: '', variantId: '', bundleId: b.BundleID, unit: 'PAKET', bundleType: b.BundleType, components: cs };
+    const t = { sku: b.BundleSKU, kind: b.BundleType === 'MULTIPACK' ? 'multipack' : 'bundle', status: b.Status, name: b.BundleName, parentSku: parents.length === 1 ? parents[0] : '', gtin: bundleCodes[b.BundleID] || '', internalBarcode: '', active: b.Status === STATUS.ACTIVE && raw.length > 0 && raw.every((c) => byId[c.VariantID] && byId[c.VariantID].active), productId: '', variantId: '', bundleId: b.BundleID, unit: 'PAKET', bundleType: b.BundleType, components: cs };
     t.productName = b.BundleName;
     t.variationName = Array.from(new Set(raw.map((c) => (byId[c.VariantID] || {}).variationName).filter(Boolean))).join(' + ');
     t.signature = shopeeSignature_([t.sku, t.name, t.gtin, t.active, b.BundleType, cs]); bySku[t.sku] = t;
@@ -161,7 +161,25 @@ function shopeeReview_(user, p) {
   const action = p.action || 'approve', note = cleanText(p.note).slice(0, 4000);
   if (!['approve', 'needs_review', 'ignored'].includes(action)) throw new AppError('Tindakan pemeriksaan tidak dikenal.');
   const patch = { ReviewNote: note, ReviewedBy: user.email, ReviewedAt: now_(), UpdatedAt: now_(), Version: Number(r.Version || 1) + 1 };
+  let packageCreated = false;
   if (action === 'approve') {
+    if (p.selection) {
+      const resolved = shopeePackageResolve_(p.selection);
+      if (p.selection.signature !== resolved.signature) throw new AppError('Data SKU barang berubah. Periksa kembali pilihan paket.', [], 'CONFLICT');
+      if (resolved.blocked) throw new AppError(resolved.blocked);
+      let target = resolved.target;
+      if (!target) {
+        if (p.createPackage !== true) throw new AppError('Paket belum ada. Gunakan tombol Buat paket baru & setujui.');
+        assertPerm_(user, 'product.write');
+        const catalog = shopeeCatalog_();
+        const nameBase = resolved.name.slice(0, 120); let name = nameBase, suffix = 1;
+        while (db_('BUNDLE_MASTERS').find((b) => b.Status !== STATUS.ARCHIVED && b.NameKey === masterNameKey(name))) name = nameBase.slice(0, 108) + ' (' + (++suffix) + ')';
+        const saved = bundleSave_(user, { type: resolved.saleType === 'multipack' ? 'MULTIPACK' : 'MIXED', name, stockMode: 'VIRTUAL', components: resolved.components.map((c) => ({ variantId: catalog[c.sku].variantId, quantity: c.quantity })), description: 'Dibuat saat pemetaan listing Shopee ' + r.ExternalProductId });
+        delete db_('PRODUCT_VARIANTS')._shopeeCatalog;
+        target = shopeeTarget_(saved.sku); packageCreated = true;
+      } else if (p.sku && (p.sku !== target.sku || p.targetSignature !== target.signature)) throw new AppError('Master paket berubah. Periksa kembali pilihan paket.', [], 'CONFLICT');
+      p = Object.assign({}, p, { sku: target.sku, targetSignature: target.signature, saleType: resolved.saleType, quantity: resolved.quantity, components: resolved.components });
+    }
     const target = shopeeTarget_(p.sku);
     if (p.targetSignature !== target.signature) throw new AppError('Master berubah sejak pratinjau. Pilih ulang SKU dan periksa GTIN/komposisi terbaru.', [], 'CONFLICT');
     Object.assign(patch, { SaleType: p.saleType, SaleQuantity: Number(p.quantity), ExpectedComponents: shopeeComponents_(p.components), TargetSku: target.sku });
@@ -175,7 +193,28 @@ function shopeeReview_(user, p) {
   }
   const before = { targetSku: r.TargetSku, status: r.ReviewStatus };
   T.update(r, patch); audit_(user.email, 'shopee.' + action, 'shopee_listing', r.ListingID, before, { targetSku: r.TargetSku, status: r.ReviewStatus }, { note });
-  return shopeeView_(r, shopeeCatalog_());
+  return Object.assign(shopeeView_(r, shopeeCatalog_()), { packageCreated });
+}
+
+/** Definisi penjualan hanya satu sumber: jenis + baris Child SKU dan jumlah. */
+function shopeePackageResolve_(p) {
+  const saleType = p.saleType;
+  if (!['single', 'multipack', 'bundle'].includes(saleType)) throw new AppError('Pilih Satuan, MP, atau BD.');
+  const components = shopeeComponents_(p.components), catalog = shopeeCatalog_();
+  if (components.some((c) => !catalog[c.sku] || catalog[c.sku].kind !== 'single' || !catalog[c.sku].active)) throw new AppError('Pilih SKU barang aktif untuk seluruh baris.');
+  if (components.some((c) => c.quantity > 1000)) throw new AppError('Jumlah per SKU maksimal 1.000.');
+  if (saleType === 'single' && (components.length !== 1 || components[0].quantity !== 1)) throw new AppError('Satuan memakai satu SKU barang dengan jumlah 1.');
+  if (saleType === 'multipack' && (components.length !== 1 || components[0].quantity < 2)) throw new AppError('MP memakai satu SKU barang dengan jumlah minimal 2.');
+  if (saleType === 'bundle' && components.length < 2) throw new AppError('BD memakai minimal dua SKU barang berbeda.');
+  const quantity = components.reduce((n, c) => n + c.quantity, 0);
+  const signature = shopeeSignature_([saleType, components.map((c) => [c.sku, c.quantity, catalog[c.sku].signature])]);
+  if (saleType === 'single') return { saleType, components, quantity, signature, target: catalog[components[0].sku], name: catalog[components[0].sku].name, blocked: '' };
+  const key = shopeeCompositionKey_(components);
+  const matches = Object.keys(catalog).map((sku) => catalog[sku]).filter((t) => { if (t.kind !== saleType || t.status === STATUS.ARCHIVED || t.bundleType === 'REQUEST_MIX' || !t.components.length) return false; try { return shopeeCompositionKey_(t.components) === key; } catch (e) { return false; } }).sort((a, b) => a.sku.localeCompare(b.sku));
+  const active = matches.filter((t) => t.active), target = active.find((t) => t.sku === p.preferredSku) || active[0] || null;
+  // MP nonaktif/draf dengan komposisi sama tidak boleh digandakan (aturan master paket).
+  const blocked = !target && matches.length ? 'Paket yang sama sudah ada tetapi belum aktif: ' + matches[0].sku + '. Aktifkan paket tersebut sebelum digunakan.' : '';
+  return { saleType, components, quantity, signature, target, blocked, name: saleType === 'multipack' ? 'Paket ' + quantity + ' × ' + catalog[components[0].sku].name : 'Paket Kombinasi ' + components.map((c) => c.quantity + ' × ' + catalog[c.sku].name).join(' + ') };
 }
 /** Target sudah divalidasi pada transaksi yang sama; hindari membangun sellables seluruh katalog sekali lagi. */
 function shopeeUpsertMapping_(user, r, target, note) {

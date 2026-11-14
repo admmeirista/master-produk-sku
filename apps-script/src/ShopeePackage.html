@@ -1,0 +1,81 @@
+<script>
+function shopeeSelectionKey(type, lines) {
+  return JSON.stringify([type, lines.map(function (c) { return [c.sku, Number(c.quantity)]; }).sort(function (a,b) { return a[0].localeCompare(b[0]); })]);
+}
+function shopeeSelectionValid(type, lines) {
+  if (['single','multipack','bundle'].indexOf(type) < 0 || !lines.length || lines.some(function(c) { return !c.sku || !Number.isInteger(Number(c.quantity)) || c.quantity < 1 || c.quantity > 1000; })) return false;
+  if (new Set(lines.map(function(c) { return c.sku; })).size !== lines.length) return false;
+  return type === 'single' ? lines.length === 1 && Number(lines[0].quantity) === 1 : type === 'multipack' ? lines.length === 1 && Number(lines[0].quantity) >= 2 : lines.length >= 2;
+}
+function shopeeOpenReview(r, done) {
+  var w = can('mapping.write'), type = r.saleType || 'unclear', target = r.target, seq = 0, saving = false, resolved = null;
+  var lines = (r.expectedComponents && r.expectedComponents.length ? r.expectedComponents : target ? target.components : []).map(function(c) { return {sku:c.sku,quantity:c.quantity,name:c.name||''}; });
+  if (!lines.length) lines = [{sku:'',quantity:type === 'multipack' ? Number(r.quantity)||2 : 1}];
+  var m = modal('<h3>Periksa pasangan SKU Shopee</h3><div class="shopee-compare"><section><div class="eyebrow">SHOPEE</div>' + shopeeFields([['Nama Produk',r.name],['Variasi',r.variationName],['Kode Produk',r.productId],['Kode Variasi',r.variationId],['SKU Induk',r.parentSku],['SKU',r.sellerSku],['GTIN',r.gtin]]) + '</section><section><div class="eyebrow">MASTER SISTEM</div><div id="svTarget"></div></section></div>' +
+    '<label class="f">Jenis penjualan Shopee</label><select class="in w100" id="svType"' + (!w?' disabled':'') + '><option value="unclear">Pilih jenis penjualan</option><option value="single">Satuan</option><option value="multipack">Paket produk sama (MP)</option><option value="bundle">Paket kombinasi (BD)</option></select>' +
+    '<div class="sect">SKU barang dan jumlah per pembelian</div><div id="svLines"></div>' + (w?'<button class="btn sm" id="svAdd">Tambah SKU barang</button>':'') + '<div id="svResolution" class="hint" role="status"></div>' +
+    '<label class="f">Catatan pemeriksaan (opsional untuk persetujuan)</label><textarea class="in w100" id="svNote" rows="2"' + (!w?' readonly':'') + '>' + esc(r.note) + '</textarea><div id="svError"></div>' +
+    '<div class="row shopee-review-actions" style="margin-top:16px">' + (w?'<button class="btn pri" id="svApprove" disabled>Setujui pasangan SKU</button><button class="btn pri hidden" id="svCreate" disabled>Buat paket baru & setujui</button><button class="btn" id="svReview">Perlu diverifikasi</button>':'') + '<button class="btn" data-close>Tutup</button></div>', {wide:true});
+  $('#svType',m).value = type;
+  function drawTarget() {
+    $('#svTarget',m).innerHTML = shopeeFields([['Nama Produk',target&&(target.productName||target.name)],['Variasi',target&&target.variationName],['SKU Parent',target&&target.parentSku],['SKU',target&&target.sku],['GTIN',target&&target.gtin]]) + (target&&target.kind!=='single'?'<div class="shopee-bom">'+shopeeBom(target.components)+'</div>':'');
+  }
+  function selection() { return {saleType:type,components:lines.map(function(c){return {sku:c.sku,quantity:Number(c.quantity)};}),preferredSku:r.targetSku || r.target && r.target.sku || ''}; }
+  function buttons() {
+    if (!w) return;
+    var fresh = resolved && resolved.key === shopeeSelectionKey(type,lines), missing = fresh && !resolved.target && !resolved.blocked;
+    $('#svApprove',m).disabled = saving || !fresh || !resolved.target || !!resolved.blocked;
+    $('#svApprove',m).classList.toggle('hidden',!!missing);
+    $('#svCreate',m).classList.toggle('hidden',!missing || !can('product.write'));
+    $('#svCreate',m).disabled = saving || !missing;
+    $('#svReview',m).disabled = saving;
+  }
+  function accept(result,key) {
+    resolved = result; resolved.key = key; target = result.target; drawTarget();
+    $('#svResolution',m).textContent = result.blocked || (target ? 'Menggunakan SKU yang sudah ada: '+target.sku+' · Total '+result.quantity+' unit per pembelian.' : 'Paket belum ada. '+(can('product.write')?'Buat dan setujui langsung; paket akan tersimpan di Kemasan & Bundling.':'Akun ini belum memiliki izin membuat paket.'));
+    buttons();
+  }
+  var lookup = debounce(function(mine,key,p) {
+    if (mine!==seq || !m.isConnected) return;
+    api('shopee.packageResolve',p,{silent:true,quiet:true}).then(function(result) { if(mine!==seq || !m.isConnected)return;accept(result,key); }).catch(function(e) { if(mine!==seq || !m.isConnected)return;$('#svResolution',m).textContent='';$('#svError',m).innerHTML=feList(e);buttons(); });
+  },300);
+  function changed() {
+    if (!w || saving) return;
+    ++seq; resolved=null;target=null;drawTarget();$('#svError',m).innerHTML='';buttons();
+    if (!shopeeSelectionValid(type,lines)) {$('#svResolution',m).textContent=type==='bundle'?'Pilih minimal dua SKU barang berbeda dan jumlahnya.':'Pilih SKU barang dan jumlah yang sesuai (satuan 1, MP minimal 2).';return;}
+    $('#svResolution',m).textContent='Mencari paket dengan isi yang sama…';
+    lookup(seq,shopeeSelectionKey(type,lines),selection());
+  }
+  function drawLines() {
+    $('#svLines',m).innerHTML=lines.map(function(c,i){return '<div class="row shopee-component"><div id="svLine'+i+'" class="grow">'+(!w?'<span class="sku">'+esc(c.sku)+'</span>':'')+'</div><div><label class="shopee-sub" for="svQty'+i+'">Qty</label><input class="in" style="width:90px" id="svQty'+i+'" type="number" min="'+(type==='multipack'?2:1)+'" max="1000" step="1" data-qty="'+i+'" value="'+esc(c.quantity)+'"'+(!w||type==='single'?' disabled':'')+'></div>'+(w&&type==='bundle'?'<button class="btn sm ghost" data-remove="'+i+'" aria-label="Hapus SKU barang">'+icon('trash')+'</button>':'')+'</div>';}).join('');
+    if (!w)return;
+    lines.forEach(function(c,i){skuCombo($('#svLine'+i,m),['variant'],function(it){c.sku=it?it.sku:'';c.name=it?it.displayName:'';changed();},'Cari SKU barang, nama, atau GTIN…',c.sku?{sku:c.sku,displayName:c.name||c.sku}:null);});
+    $$('[data-qty]',m).forEach(function(el){el.oninput=function(){lines[Number(el.getAttribute('data-qty'))].quantity=Number(el.value);changed();};});
+    $$('[data-remove]',m).forEach(function(el){el.onclick=function(){if(saving)return;lines.splice(Number(el.getAttribute('data-remove')),1);drawLines();changed();};});
+    $('#svAdd',m).classList.toggle('hidden',type!=='bundle');
+  }
+  drawTarget();drawLines();
+  if(!w)return m;
+  $('#svType',m).onchange=function(){if(saving)return;type=this.value;if(type==='single'||type==='multipack'){lines=lines.slice(0,1);if(!lines.length)lines=[{sku:'',quantity:1}];lines[0].quantity=type==='single'?1:Math.max(2,Number(lines[0].quantity)||2);}else if(type==='bundle'){while(lines.length<2)lines.push({sku:'',quantity:1});}drawLines();changed();};
+  $('#svAdd',m).onclick=function(){if(saving)return;lines.push({sku:'',quantity:1});drawLines();changed();};
+  // Usulan yang sudah membawa target & BOM lengkap langsung dapat disetujui.
+  if(target && target.active && shopeeSelectionValid(type,lines) && shopeeSelectionKey(type,lines)===shopeeSelectionKey(target.kind,target.components)) {
+    resolved={target:target,key:shopeeSelectionKey(type,lines),signature:null};buttons();
+  } else changed();
+  function save(action,create,btn) {
+    if(saving)return;
+    if(action==='approve' && (!resolved || resolved.key!==shopeeSelectionKey(type,lines) || resolved.blocked))return;
+    var p={id:r.id,version:r.version,action:action,note:$('#svNote',m).value,requestKey:uid()};
+    if(action==='approve') {
+      if(!resolved.signature && target) Object.assign(p,{sku:target.sku,targetSignature:target.signature,saleType:type,quantity:lines.reduce(function(n,c){return n+Number(c.quantity);},0),components:selection().components});
+      else {p.selection=selection();p.selection.signature=resolved.signature;p.createPackage=!!create;if(target){p.sku=target.sku;p.targetSignature=target.signature;}}
+    }
+    saving=true;buttons();$('#svType',m).disabled=true;$$('#svLines input, #svLines button, #svAdd',m).forEach(function(el){el.disabled=true;});$('#svError',m).innerHTML='';
+    busy(btn,api('shopee.review',p,{silent:true})).then(function(updated){m.close();toast(updated.packageCreated?'Paket baru tersimpan di Kemasan & Bundling dan pemetaan disetujui.':action==='approve'?'Pasangan SKU disetujui.':'Status pemeriksaan disimpan.','ok');done(updated);}).catch(function(e){saving=false;$('#svType',m).disabled=false;drawLines();buttons();$('#svError',m).innerHTML=feList(e);});
+  }
+  $('#svApprove',m).onclick=function(){save('approve',false,this);};
+  $('#svCreate',m).onclick=function(){save('approve',true,this);};
+  $('#svReview',m).onclick=function(){save('needs_review',false,this);};
+  return m;
+}
+</script>

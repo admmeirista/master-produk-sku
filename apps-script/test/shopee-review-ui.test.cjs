@@ -8,19 +8,20 @@ function ui(write = false) {
   const elements = {}, modals = [], calls = [];
   const context = {
     Pages: {}, can: () => write, esc: value => String(value ?? ''),
-    $$: () => [], icon: () => '', skuCombo: () => {}, uid: () => 'request-1', busy: (button,promise) => promise, toast: () => {},
-    $: (selector) => elements[selector] ||= { innerHTML: '' },
+    debounce: fn => fn, $$: () => [], icon: () => '', skuCombo: () => {}, uid: () => 'request-1', busy: (button,promise) => promise, toast: () => {},
+    $: (selector) => elements[selector] ||= { innerHTML: '', classList: {toggle(){} } },
     modal: html => { const m = { html, isConnected: true, close() { this.isConnected = false; } }; modals.push(m); return m; },
     loadingBox: text => text, errBox: text => 'Error: ' + text,
     api: (...args) => { calls.push(args); return new Promise(() => {}); }
   };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/Shopee.html'), 'utf8').replace(/^<script>\s*/, '').replace(/<\/script>\s*$/, ''), context);
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/ShopeePackage.html'), 'utf8').replace(/^<script>\s*/, '').replace(/<\/script>\s*$/, ''), context);
   return { context, modals, calls, elements };
 }
 
 test('Periksa membuka detail tabel secara sinkron tanpa menunggu atau memanggil API tambahan', () => {
   const { context, modals, calls, elements } = ui();
-  const row = { id: 'listing-1', name: 'Gatsby Clay 30 gr', variationName: '3 pcs', productId: '123', variationId: '456', expectedComponents: [{sku:'PRD000168-003',quantity:3}], target: {sku:'MP000243',name:'Gatsby paket 3 pcs',active:true,components:[{sku:'PRD000168-003',quantity:3}]}, saleType: 'multipack', quantity: 3, version: 4 };
+  const row = { id: 'listing-1', name: 'Gatsby Clay 30 gr', variationName: '3 pcs', productId: '123', variationId: '456', expectedComponents: [{sku:'PRD000168-003',quantity:3}], target: {kind:'multipack',sku:'MP000243',name:'Gatsby paket 3 pcs',active:true,components:[{sku:'PRD000168-003',quantity:3}]}, saleType: 'multipack', quantity: 3, version: 4 };
   const result = context.shopeeReviewDialog(row, () => {});
   assert.equal(modals.length, 1);assert.equal(result, modals[0]);assert.equal(calls.length, 0);
   assert.match(modals[0].html, /Gatsby Clay 30 gr/);assert.match(elements['#svTarget'].innerHTML, /MP000243/);
@@ -29,7 +30,7 @@ test('Periksa membuka detail tabel secara sinkron tanpa menunggu atau memanggil 
 
 test('popup menampilkan urutan kolom pembanding dan menyetujui sekali tanpa ceklis atau permintaan detail tambahan', () => {
   const { context, modals, calls, elements } = ui(true);
-  const row={id:'1',name:'Nama Shopee',variationName:'3 pcs',productId:'123',variationId:'456',parentSku:'PRD000168',sellerSku:'kode-lama',gtin:'899',expectedComponents:[{sku:'PRD000168-003',quantity:3}],target:{sku:'MP000243',productName:'Nama master',variationName:'30 gr',parentSku:'PRD000168',active:true,components:[{sku:'PRD000168-003',quantity:3}]},saleType:'multipack',quantity:3,version:1};
+  const row={id:'1',name:'Nama Shopee',variationName:'3 pcs',productId:'123',variationId:'456',parentSku:'PRD000168',sellerSku:'kode-lama',gtin:'899',expectedComponents:[{sku:'PRD000168-003',quantity:3}],target:{kind:'multipack',sku:'MP000243',productName:'Nama master',variationName:'30 gr',parentSku:'PRD000168',active:true,components:[{sku:'PRD000168-003',quantity:3}]},saleType:'multipack',quantity:3,version:1};
   context.shopeeReviewDialog(row,()=>{});
   assert.doesNotMatch(modals[0].html,/checkbox|svAck/);
   const sourceLabels=[...modals[0].html.matchAll(/<dt>(.*?)<\/dt>/g)].map(m=>m[1]);
