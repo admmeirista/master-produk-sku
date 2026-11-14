@@ -1,5 +1,13 @@
 # Revisi V10 — Pemeriksaan SKU Shopee melalui web
 
+## Form seragam dan cache daftar
+
+Registrasi MP/BD di Kemasan & Bundling dan pemetaan Shopee memakai renderer baris SKU–qty dan pilihan barcode yang sama: Tanpa barcode, GTIN, atau Barcode internal. Mode stok tidak ditampilkan. Paket baru memakai perilaku virtual yang sudah menjadi default sistem; data mode paket historis dipertahankan. Paket pilih sendiri dihapus dari daftar/form dan pembuatan melalui API ditolak; arsip lama tidak dihapus.
+
+Barcode paket baru dibuat dalam transaksi pembuatan paket/pemetaan yang sama. Barcode paket yang sudah ada ditampilkan dari master; perubahan memerlukan izin mengubah produk, pemeriksaan signature, validasi barcode unik dan audit histori. Barcode internal tidak ditulis sebagai GTIN dalam template Shopee.
+
+Cache browser per akun bertahan dua menit dalam sesi tab: daftar terakhir langsung digambar, lalu diperbarui dari server. Permintaan bersamaan untuk filter yang sama digabungkan. Logout, sesi kedaluwarsa, dan penulisan data mengosongkan cache. Cache server memakai versi data dan diganti setelah perubahan master/listing. Proses simpan dan unduh tetap memvalidasi data sumber terbaru, bukan snapshot tampilan.
+
 ## Paket langsung dari pemetaan Shopee
 
 Popup kini hanya memiliki satu definisi isi penjualan: jenis Satuan/MP/BD, Child SKU barang, dan qty per baris. Satuan selalu qty 1; MP satu SKU dengan qty minimal 2; BD minimal dua SKU barang berbeda. Tidak ada input total unit atau editor komposisi kedua.

@@ -1,0 +1,46 @@
+<script>
+/** Satu renderer baris barang untuk registrasi paket dan pemetaan Shopee. */
+function packageLines(host, options) {
+  var o=options, prefix=o.prefix, writable=o.writable;
+  host.innerHTML=o.lines.map(function(c,i){return '<div class="package-line"><div class="package-sku-field"><label class="f" for="'+prefix+'Sku'+i+'">SKU barang</label><div id="'+prefix+'Line'+i+'">'+(!writable?'<span class="sku">'+esc(c.sku)+'</span>':'')+'</div></div><div class="package-qty-field"><label class="f" for="'+prefix+'Qty'+i+'">Qty</label><input class="in w100" id="'+prefix+'Qty'+i+'" type="number" min="'+(o.type==='multipack'?2:1)+'" max="1000" step="1" data-package-qty="'+i+'" value="'+esc(c.quantity)+'"'+(!writable||o.type==='single'?' disabled':'')+'></div>'+(writable&&o.type==='bundle'?'<button class="btn sm ghost package-remove" data-package-remove="'+i+'" aria-label="Hapus SKU barang">'+icon('trash')+'</button>':'<span></span>')+'</div>';}).join('');
+  if(!writable)return;
+  o.lines.forEach(function(c,i){var box=$('#'+prefix+'Line'+i,host);skuCombo(box,['variant'],function(it){c.sku=it?it.sku:'';c.name=it?it.displayName:'';c.variantId=it?it.variantId:'';o.changed();},'Cari SKU barang, nama, atau GTIN…',c.sku?{sku:c.sku,displayName:c.name||c.sku}:null);var input=$('input',box);if(input)input.id=prefix+'Sku'+i;});
+  $$('[data-package-qty]',host).forEach(function(el){el.oninput=function(){o.lines[Number(el.getAttribute('data-package-qty'))].quantity=Number(el.value);o.changed();};});
+  $$('[data-package-remove]',host).forEach(function(el){el.onclick=function(){o.remove(Number(el.getAttribute('data-package-remove')));};});
+}
+function packageBarcode(host, initial, writable) {
+  var state,original,locked=false,prefix='pb'+uid().replace(/[^a-z0-9]/gi,'');
+  function set(value,readOnly){original=value||{};state={mode:original.gtin?'gtin':original.internalBarcode?'internal':'none',code:original.gtin||original.internalBarcode||''};locked=!!readOnly;draw();}
+  function draw(){host.innerHTML='<label class="f">Barcode paket</label><select class="in w100" data-package-barcode aria-label="Barcode paket"'+(!writable||locked?' disabled':'')+'><option value="none">Tanpa barcode</option><option value="gtin">GTIN</option><option value="internal">Barcode internal</option></select><div data-package-code class="'+(state.mode==='gtin'?'':'hidden')+'"><label class="f" for="'+prefix+'Code">GTIN paket</label><input class="in w100 code" id="'+prefix+'Code" placeholder="GTIN paket dari produsen" value="'+esc(state.mode==='gtin'?state.code:'')+'"'+(!writable||locked?' readonly':'')+'></div><div class="hint" data-package-barcode-hint></div>';
+    $('[data-package-barcode]',host).value=state.mode;
+    $('[data-package-barcode-hint]',host).textContent=locked?'Barcode satuan mengikuti master barang.':state.mode==='internal'?(state.code?'Barcode internal: '+state.code:'Barcode internal dibuat otomatis saat disimpan.'):'GTIN paket tidak diambil dari GTIN barang komponennya.';
+    $('[data-package-barcode]',host).onchange=function(){state.mode=this.value;state.code=state.mode==='gtin'?(original.gtin||''):state.mode==='internal'?(original.internalBarcode||''):'';$('[data-package-code]',host).classList.toggle('hidden',state.mode!=='gtin');$('#'+prefix+'Code',host).value=state.mode==='gtin'?state.code:'';$('[data-package-barcode-hint]',host).textContent=state.mode==='internal'?(state.code?'Barcode internal: '+state.code:'Barcode internal dibuat otomatis saat disimpan.'):'GTIN paket tidak diambil dari GTIN barang komponennya.';};
+    $('#'+prefix+'Code',host).oninput=function(){state.code=this.value.trim();};
+  }
+  set(initial,false);
+  return {get:function(){return {mode:state.mode,code:state.code};},set:set,disable:function(value){writable=!value;draw();}};
+}
+function bundleRowsHtml(d){return d.rows.length?'<div class="tablewrap"><table class="t"><thead><tr><th>Kode Paket</th><th>Nama</th><th>Jenis</th><th>Isi paket</th><th>Total isi</th><th>Status</th><th></th></tr></thead><tbody>'+d.rows.map(function(b){return '<tr><td class="sku">'+esc(b.sku)+(b.barcode?'<small class="shopee-sub">'+esc(b.barcode)+'</small>':'')+'</td><td><b>'+esc(b.name)+'</b></td><td>'+esc(b.type==='MULTIPACK'?'MP':'BD')+'</td><td>'+b.components.map(function(c){return '<div>'+c.quantity+' × <span class="sku">'+esc(c.sku)+'</span> '+esc(c.name)+'</div>';}).join('')+'</td><td>'+b.components.reduce(function(n,c){return n+c.quantity;},0)+'</td><td>'+badge(b.status)+'</td><td><button class="btn sm" data-e="'+esc(b.id)+'">Buka</button></td></tr>';}).join('')+'</tbody></table></div>':emptyBox('Belum ada paket','','boxes');}
+/** Form MP/BD yang sama dengan pemetaan Shopee, tanpa pilihan mode stok. */
+function bundleEditor(id,done,snapshot){
+  function after(){if(done)done();else if(App.page==='bundles'&&Pages.bundles.reload)Pages.bundles.reload();}
+  function open(b){b=b||{type:'MULTIPACK',status:'DRAFT',components:[]};if(b.type==='REQUEST_MIX')return toast('Paket ini merupakan arsip lama. Gunakan MP atau BD.','warn');
+    var w=can('product.write')&&b.status!=='ARCHIVED',locked=!!b.id&&b.status!=='DRAFT',type=b.type==='MULTIPACK'?'multipack':'bundle',lines=b.components.map(function(c){return {sku:c.sku,name:c.name,variantId:c.variantId,quantity:c.quantity};}),saving=false;
+    if(!lines.length)lines=[{sku:'',quantity:2}];
+    var m=modal('<h3>'+(b.id?'Paket '+esc(b.sku):'Paket baru')+'</h3><label class="f">Jenis paket</label><select class="in w100" id="bpType"'+(!w||b.id?' disabled':'')+'><option value="multipack">Paket produk sama (MP)</option><option value="bundle">Paket kombinasi (BD)</option></select><div id="bpLines"></div>'+(w&&!locked?'<button class="btn sm" id="bpAdd">Tambah SKU barang</button>':'')+(locked?'<div class="hint">Isi paket aktif tetap. Untuk isi berbeda, buat paket baru.</div>':'')+'<label class="f">Nama paket</label><input class="in w100" id="bpName" value="'+esc(b.name||'')+'" placeholder="Otomatis dari SKU dan qty jika dikosongkan"'+(!w?' readonly':'')+'><div id="bpBarcode"></div><div id="bpError"></div><div class="row shopee-review-actions" style="margin-top:16px">'+(w?'<button class="btn pri" id="bpSave">Simpan paket</button>'+(!b.id?'<button class="btn" id="bpDraft">Simpan sebagai draft</button>':'<button class="btn" id="bpStatus">Ubah status</button>'):'')+'<button class="btn" data-close>Tutup</button></div>',{wide:true});
+    $('#bpType',m).value=type;
+    var bc=packageBarcode($('#bpBarcode',m),{gtin:b.barcodeType==='GTIN'?b.barcode:'',internalBarcode:b.barcodeType==='INTERNAL'?b.barcode:''},w);
+    function draw(){packageLines($('#bpLines',m),{prefix:'bp',lines:lines,type:type,writable:w&&!locked,changed:function(){},remove:function(i){if(saving)return;lines.splice(i,1);draw();}});if($('#bpAdd',m))$('#bpAdd',m).classList.toggle('hidden',type!=='bundle');}
+    draw();if(!w)return m;
+    $('#bpType',m).onchange=function(){type=this.value;if(type==='multipack'){lines=lines.slice(0,1);if(!lines.length)lines=[{sku:'',quantity:2}];lines[0].quantity=Math.max(2,Number(lines[0].quantity)||2);}else while(lines.length<2)lines.push({sku:'',quantity:1});draw();};
+    if($('#bpAdd',m))$('#bpAdd',m).onclick=function(){if(saving)return;lines.push({sku:'',quantity:1});draw();};
+    function save(btn,draft){if(saving)return;if(!shopeeSelectionValid(type,lines))return toast('Pilih SKU barang dan qty yang sesuai.','err');var barcode=bc.get(),name=$('#bpName',m).value.trim()||('Paket '+(type==='bundle'?'Kombinasi ':'')+lines.map(function(c){return c.quantity+' × '+(c.name||c.sku);}).join(' + ')).slice(0,120);
+      saving=true;$('#bpError',m).innerHTML='';var p={id:b.id,version:b.version,type:type==='multipack'?'MULTIPACK':'MIXED',name:name,stockMode:b.stockMode||'VIRTUAL',components:lines.map(function(c){return {sku:c.sku,variantId:c.variantId,quantity:Number(c.quantity)};}),barcode:barcode,barcodeChangeReason:'Diperbarui melalui form paket',saveAsDraft:!!draft,requestKey:uid()};
+      busy(btn,api('bundle.save',p,{silent:true})).then(function(saved){m.close();toast(saved.sku+' tersimpan.','ok');after();}).catch(function(e){saving=false;$('#bpError',m).innerHTML=feList(e);});
+    }
+    $('#bpSave',m).onclick=function(){save(this,false);};if($('#bpDraft',m))$('#bpDraft',m).onclick=function(){save(this,true);};if($('#bpStatus',m))$('#bpStatus',m).onclick=function(){lifecyclePrompt(b.sku,b.status).then(function(v){if(v)api('bundle.setStatus',{id:b.id,status:v.status,reason:v.reason}).then(function(){m.close();after();});});};return m;
+  }
+  if(!id||snapshot)return open(snapshot);
+  fastRead('bundle.get',{id:id},function(b,meta){if(!meta.cached)open(b);}).catch(function(){});
+}
+</script>

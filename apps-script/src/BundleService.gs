@@ -11,6 +11,7 @@
  */
 
 const BUNDLE_TYPES = { MULTIPACK: 'Paket Produk Sama', MIXED: 'Paket Kombinasi', REQUEST_MIX: 'Paket Pilih Sendiri' };
+function bundleListCached_(f){const key='bl3:'+dataVersion_()+':'+shopeeSignature_(f||{}),cached=cacheGetBig_(key);if(cached)return cached;const result=bundleList_(f);cachePutBig_(key,result);return result;}
 
 function bundleView_(b, ctx) {
   ctx = ctx || { variants: indexBy_(db_('PRODUCT_VARIANTS').rows(), 'VariantID'), products: indexBy_(db_('MASTER_PRODUCTS').rows(), 'ProductID') };
@@ -31,7 +32,7 @@ function bundleList_(f) {
   const ctx = { variants: indexBy_(db_('PRODUCT_VARIANTS').rows(), 'VariantID'), products: indexBy_(db_('MASTER_PRODUCTS').rows(), 'ProductID') };
   const q = String(f.search || '').toUpperCase();
   let rows = db_('BUNDLE_MASTERS')
-    .filter((b) => (!f.type || b.BundleType === f.type) && (f.status === 'all' || !f.status ? b.Status !== STATUS.ARCHIVED || f.status === 'all' : b.Status === f.status))
+    .filter((b) => b.BundleType !== 'REQUEST_MIX' && (!f.type || b.BundleType === f.type) && (f.status === 'all' || !f.status ? b.Status !== STATUS.ARCHIVED || f.status === 'all' : b.Status === f.status))
     .map((b) => bundleView_(b, ctx));
   if (f.variantId) rows = rows.filter((b) => b.components.some((c) => c.variantId === f.variantId));
   if (f.productId) rows = rows.filter((b) => b.components.some((c) => c.productId === f.productId));
@@ -56,6 +57,7 @@ function bundleSave_(user, input, opts) {
   if (existing && input.version !== undefined && input.version !== null && Number(input.version) !== existing.Version) throw new AppError('Bundle baru saja diubah pengguna lain. Muat ulang.', [], 'STALE_VERSION');
   if (existing && existing.Status === STATUS.ARCHIVED) throw new AppError('Bundle yang diarsipkan tidak dapat diubah');
   const type = existing ? existing.BundleType : input.type;
+  if (type === 'REQUEST_MIX') throw new AppError('Paket pilih sendiri tidak tersedia. Gunakan MP atau BD dengan isi tetap.', [], 'VALIDATION_FAILED');
   if (!BUNDLE_TYPES[type]) err('type', 'Pilih jenis: Paket Produk Sama, Paket Kombinasi, atau Paket Pilih Sendiri');
   if (existing && input.type && input.type !== existing.BundleType) err('type', 'Jenis bundle tidak dapat diubah setelah tersimpan (SKU permanen)');
   const name = cleanText(input.name);

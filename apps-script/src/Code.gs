@@ -97,7 +97,7 @@ const ROUTES = {
   'supplierMap.save': { perm: 'mapping.write', write: true, fn: (u, p) => supplierMapSave_(u, p) },
   'supplierMap.setStatus': { perm: 'mapping.write', write: true, fn: (u, p) => supplierMapSetStatus_(u, p) },
 
-  'bundle.list': { perm: 'product.read', fn: (u, p) => bundleList_(p) },
+  'bundle.list': { perm: 'product.read', fn: (u, p) => bundleListCached_(p) },
   'bundle.get': { perm: 'product.read', fn: (u, p) => bundleGet_(p.id) },
   'bundle.validate': { perm: 'product.write', fn: (u, p) => bundleSave_(u, p, { dryRun: true }) },
   'bundle.save': { perm: 'product.write', write: true, fn: (u, p) => bundleSave_(u, p) },

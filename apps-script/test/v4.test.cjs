@@ -193,7 +193,7 @@ test('[AC-9][AC-22] satu Child SKU di beberapa listing & kanal; listing/variasi 
   assert.ok(ok(call(V, 'mapping.summary', {})).shopee.unmapped >= 1);
 });
 
-test('[AC-11][AC-12][AC-13] multipack virtual 6 PCS, mixed bundle 3 SKU, request mix dengan komposisi aktual', () => {
+test('[AC-11][AC-12][AC-13] multipack virtual 6 PCS, mixed bundle 3 SKU, paket pilih sendiri tidak tersedia', () => {
   const viva = ok(call(T, 'product.get', { id: ids.viva }));
   const p = ok(call(T, 'product.get', { id: ids.parfum }));
   const mp = ok(call(T, 'bundle.save', { type: 'MULTIPACK', name: 'Paket Viva Air Mawar 6 PCS', components: [{ variantId: viva.variants[0].id, quantity: 6 }] }));
@@ -209,12 +209,7 @@ test('[AC-11][AC-12][AC-13] multipack virtual 6 PCS, mixed bundle 3 SKU, request
   const mix = ok(call(T, 'bundle.save', { type: 'MIXED', name: 'Bundle 3 Parfum 50 ml', components: [p.variants[0], p.variants[2], p.variants[3]].map((v) => ({ variantId: v.id, quantity: 1 })) }));
   assert.match(mix.sku, /^BD\d{6}$/);
   assert.equal(mix.components.length, 3);
-  const rm = ok(call(T, 'bundle.save', { type: 'REQUEST_MIX', name: 'Parfum Request Mix isi 3', pickQuantity: 3, components: [p.variants[0], p.variants[2], p.variants[3]].map((v) => ({ variantId: v.id, quantity: 3 })) }));
-  fail(call(T, 'bundle.save', { type: 'REQUEST_MIX', name: 'RM rakit', pickQuantity: 2, stockMode: 'PREASSEMBLED', components: [p.variants[0], p.variants[2]].map((v) => ({ variantId: v.id, quantity: 2 })) }), 'VALIDATION_FAILED');
-  const actual = ok(call(V, 'bundle.resolve', { id: rm.id, selections: [{ sku: p.variants[0].sku, quantity: 2 }, { sku: p.variants[3].sku, quantity: 1 }] }));
-  assert.deepEqual(actual.components.map((c) => c.quantity), [2, 1]);
-  fail(call(V, 'bundle.resolve', { id: rm.id, selections: [{ sku: p.variants[0].sku, quantity: 2 }] }), 'VALIDATION_FAILED');
-  fail(call(V, 'bundle.resolve', { id: rm.id, selections: [{ sku: p.variants[1].sku, quantity: 3 }] }), 'VALIDATION_FAILED');
+  fail(call(T, 'bundle.save', { type: 'REQUEST_MIX', name: 'Paket pilih sendiri', pickQuantity: 3, components: [p.variants[0],p.variants[2]].map(v=>({variantId:v.id,quantity:3})) }), 'VALIDATION_FAILED');
   // bundle dirakit = stockable (punya identitas stok sendiri)
   const pre = ok(call(T, 'bundle.save', { type: 'MIXED', name: 'Gift Box Parfum (dirakit)', stockMode: 'PREASSEMBLED', components: [p.variants[0], p.variants[2]].map((v) => ({ variantId: v.id, quantity: 1 })), barcode: { mode: 'internal' } }));
   assert.equal(pre.stockable, true);

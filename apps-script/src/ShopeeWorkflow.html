@@ -19,8 +19,8 @@ Pages.mapping = function (main, arg) {
       var q = f.search.toLowerCase();
       var filtered = rows.filter(function (r) { return (!f.status || shopeeDisplayStatus(r) === f.status) && (!q || [r.name, r.variationName, r.sellerSku, r.targetSku, r.gtin].join(' ').toLowerCase().indexOf(q) >= 0); });
       request = Promise.resolve({ rows: filtered.slice((f.page - 1) * f.pageSize, f.page * f.pageSize), total: filtered.length, page: f.page, pageSize: f.pageSize, pages: Math.ceil(filtered.length / f.pageSize), summary: summary });
-    } else request = api('shopee.list', f, { silent: true }).then(function (d) { return d; });
-    request.then(function (d) {
+    } else request = null;
+    function render(d) {
       if (mine !== sequence || !$('#slRows', main)) return;
       var s = d.summary;
       $('#slSummary', main).innerHTML = '<b>' + fmtNum(s.all) + '</b> variasi <span>·</span> <b>' + fmtNum(s.verify) + '</b> perlu diverifikasi <span>·</span> <b>' + fmtNum(s.approved) + '</b> disetujui <span>·</span> <b>' + fmtNum(s.unavailable) + '</b> tidak tersedia';
@@ -36,10 +36,13 @@ Pages.mapping = function (main, arg) {
           d.summary[oldStatus]--; d.summary[newStatus]++;
           d.rows = d.rows.map(function (r) { return r.id === updated.id ? updated : r; });
           if (f.status && newStatus !== f.status) { d.rows = d.rows.filter(function (r) { return r.id !== updated.id; }); d.total--; }
+          FastReadCache.put(FastReadCache.key('shopee.list',f),JSON.parse(JSON.stringify(d)));
           load(d);
         });
       }; });
-    }).catch(function (e) { if (mine === sequence) box.innerHTML = errBox(e.message); });
+    }
+    if(request)request.then(render).catch(function(e){if(mine===sequence)box.innerHTML=errBox(e.message);});
+    else fastRead('shopee.list',f,render).catch(function(e){if(mine===sequence&&$('#slRows',main))box.innerHTML=errBox(e.message);});
   }
   $('#slSearch', main).oninput = debounce(function (e) { f.search = e.target.value; f.page = 1; load(); }, 250);
   $('#slStatus', main).onchange = function (e) { f.status = e.target.value; f.page = 1; load(); };

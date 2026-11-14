@@ -15,6 +15,7 @@ function ui(write = false) {
     api: (...args) => { calls.push(args); return new Promise(() => {}); }
   };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/Shopee.html'), 'utf8').replace(/^<script>\s*/, '').replace(/<\/script>\s*$/, ''), context);
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/PackageForm.html'), 'utf8').replace(/^<script>\s*/, '').replace(/<\/script>\s*$/, ''), context);
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/ShopeePackage.html'), 'utf8').replace(/^<script>\s*/, '').replace(/<\/script>\s*$/, ''), context);
   return { context, modals, calls, elements };
 }

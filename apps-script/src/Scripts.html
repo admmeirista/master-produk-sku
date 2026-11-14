@@ -370,6 +370,19 @@ function busy(btn, promise) {
  * Di dalam Apps Script: google.script.run.api(token, action, payload).
  * Di luar (GitHub Pages): fetch POST ke URL Web App (doPost) — window.RPM_API_URL.
  * opts: silent (tanpa toast error), quiet (tanpa progress bar). Error: { code, message, details }. */
+var FastReadCache={m:{},pending:{},generation:0,prefix:'meirista_fast_v1:',ttl:120000,
+  key:function(action,p){return this.prefix+JSON.stringify([App.me&&(App.me.id||App.me.email),App.me&&App.me.role,action,p||{}]);},
+  get:function(key){var v=this.m[key];try{if(!v)v=JSON.parse(sessionStorage.getItem(key)||'null');}catch(e){}return v&&Date.now()-v.at<this.ttl?JSON.parse(JSON.stringify(v.data)):null;},
+  put:function(key,data){var v={at:Date.now(),data:data};this.m[key]=v;var keys=Object.keys(this.m);if(keys.length>12){var old=keys[0];delete this.m[old];try{sessionStorage.removeItem(old);}catch(e){}}try{sessionStorage.setItem(key,JSON.stringify(v));}catch(e){}},
+  clear:function(){this.m={};this.pending={};this.generation++;try{for(var i=sessionStorage.length-1;i>=0;i--){var key=sessionStorage.key(i);if(key.indexOf(this.prefix)===0)sessionStorage.removeItem(key);}}catch(e){}}
+};
+function fastRead(action,p,render){
+  var key=FastReadCache.key(action,p),hit=FastReadCache.get(key),generation=FastReadCache.generation;
+  if(hit)render(hit,{cached:true});
+  var pending=FastReadCache.pending[key];
+  if(!pending){pending=api(action,p,{silent:true,quiet:!!hit}).then(function(d){if(generation!==FastReadCache.generation)return null;FastReadCache.put(key,d);return d;}).finally(function(){if(FastReadCache.pending[key]===pending)delete FastReadCache.pending[key];});FastReadCache.pending[key]=pending;}
+  return pending.then(function(d){if(d&&generation===FastReadCache.generation)render(JSON.parse(JSON.stringify(d)),{cached:false});return d;});
+}
 function api(action, payload, opts) {
   opts = opts || {};
   netStart(opts.quiet);
@@ -379,6 +392,7 @@ function api(action, payload, opts) {
       if (typeof r === 'string') { try { r = JSON.parse(r); } catch (e) { r = null; } }
       // perubahan data dari perangkat ini → cache daftar produk di browser dikosongkan
       if (r && r.ok && window.ProductCache && /\.(save|delete|deleteMany|setStatus|commit|import|rename|create|createMany|deprecate|upload|verify)$/.test(action)) ProductCache.clear();
+      if(r&&r.ok&&(action==='shopee.review'||/\.(save|delete|deleteMany|setStatus|commit|import|rename|create|createMany|deprecate|upload|verify)$/.test(action)))FastReadCache.clear();
       if (r && r.ok) return resolve(r.data);
       var e = (r && r.error) || { message: 'Respon server tidak valid.', code: 'BAD_RESPONSE' };
       var err = { code: e.code || 'ERROR', message: e.message || 'Terjadi kesalahan.', details: e.details || [] };
@@ -608,7 +622,7 @@ var App = {
     }).catch(function (e) { if (e.code !== 'UNAUTHENTICATED' && !cached) App.showLogin(e.message); });
   },
   remember: function (me) { App.me = me; Store.set('rpm_me', JSON.stringify(me)); },
-  forget: function () { App.token = null; App.me = null; Store.del('rpm_token'); Store.del('rpm_me'); Ref.data = {}; },
+  forget: function () { FastReadCache.clear(); App.token = null; App.me = null; Store.del('rpm_token'); Store.del('rpm_me'); Ref.data = {}; },
 
   authShell: function (formHtml) {
     var flow = [['camera', 'Scan barcode', 'Kamera HP langsung mengenali SKU'], ['plus', 'Registrasi SKU', 'Barcode terisi otomatis, tanpa ketik ulang'],

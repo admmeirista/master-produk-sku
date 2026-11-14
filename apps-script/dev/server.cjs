@@ -57,7 +57,6 @@ save({ brandId: B('Hanasui'), categoryId: C('Lipstick'), name: 'Hanasui Matte Li
   const pf = det('Parfum'), viva = det('Viva'), lip = det('Hanasui');
   must(call(entry, 'bundle.save', { type: 'MULTIPACK', name: 'Paket Viva Air Mawar isi 6', components: [{ variantId: viva.variants[0].id, quantity: 6 }] }), 'multipack');
   must(call(entry, 'bundle.save', { type: 'MIXED', name: 'Bundle Lip Cream 3 Shade', components: lip.variants.map((v) => ({ variantId: v.id, quantity: 1 })) }), 'mixed');
-  must(call(entry, 'bundle.save', { type: 'REQUEST_MIX', name: 'Lip Cream Pilih 2', pickQuantity: 2, components: lip.variants.map((v) => ({ variantId: v.id, quantity: 1 })) }), 'request mix');
   must(call(entry, 'mapping.create', { system: 'shopee', storeAccount: 'Meirista Official', sku: pf.variants[0].sku, externalProductId: '43465728785', externalVariationId: '351267547392', externalParentSku: 'EDP-OCEAN', externalSku: 'EDP-OB50' }), 'mapping');
   save({ brandId: B('Pixy'), categoryId: C('Powder Refill'), name: 'Pixy Two Way Cake Refill', baseUnit: 'PCS', hasVariants: false, saveAsDraft: true, variants: [{ barcode: { mode: 'internal' }, conversions: [] }] });
 }

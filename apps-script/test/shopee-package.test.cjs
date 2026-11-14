@@ -6,7 +6,7 @@ const ok=r=>{assert.equal(r.ok,true,JSON.stringify(r.error));return r.data;};
 let token,product,skus,mp,bd,serial=700000000;
 const resolve=(saleType,components)=>ok(api('shopee.packageResolve',{saleType,components}));
 const listing=()=>ok(api('shopee.import',{store:'Test',rows:[{productId:String(++serial),variationId:'1',name:'Listing paket Shopee',price:10000,stock:2}]})).rows[0];
-const approve=(r,preview,create=false)=>api('shopee.review',{id:r.id,version:r.version,action:'approve',note:'',selection:{saleType:preview.saleType,components:preview.components,signature:preview.signature},sku:preview.target&&preview.target.sku,targetSignature:preview.target&&preview.target.signature,createPackage:create});
+const approve=(r,preview,create=false,barcode)=>api('shopee.review',{id:r.id,version:r.version,action:'approve',note:'',selection:{saleType:preview.saleType,components:preview.components,signature:preview.signature},sku:preview.target&&preview.target.sku,targetSignature:preview.target&&preview.target.signature,createPackage:create,barcode});
 const count=()=>G.ctx.db_('BUNDLE_MASTERS').rows().length;
 
 test('persiapan: master barang, MP dan BD yang sudah tersedia',()=>{
@@ -64,4 +64,17 @@ test('gagal simpan mapping membatalkan paket baru, BOM, counter dan persetujuan 
  assert.equal(failed.error.code,'WRITE_FAILED');assert.equal(count(),before);assert.equal(G.ctx.db_('BUNDLE_COMPONENTS').rows().length,comps);assert.equal(JSON.stringify(G.ctx.db_('SYSTEM_COUNTERS').rows()),counters);
  assert.notEqual(ok(api('shopee.get',{id:r.id})).status,'approved');
  const saved=ok(approve(r,p,true));assert.equal(saved.packageCreated,true);assert.equal(count(),before+1);
+});
+test('barcode paket melalui mapping: tanpa barcode, GTIN, internal; GTIN salah/duplikat membatalkan pembuatan',()=>{
+ const p=resolve('multipack',[{sku:skus[2],quantity:13}]);
+ let saved=ok(approve(listing(),p,true,{mode:'gtin',code:'8992796011501'}));assert.equal(saved.target.gtin,'8992796011501');const targetSku=saved.targetSku;
+ const countBefore=count(),bad=resolve('multipack',[{sku:skus[2],quantity:14}]);
+ assert.equal(approve(listing(),bad,true,{mode:'gtin',code:'123'}).ok,false);assert.equal(count(),countBefore);
+ assert.equal(approve(listing(),bad,true,{mode:'gtin',code:'8992796011501'}).ok,false);assert.equal(count(),countBefore);
+ // Preview lama tidak boleh menghapus GTIN paket yang baru dibuat pengguna lain.
+ const raced=ok(approve(listing(),p,true,{mode:'none'}));assert.equal(raced.targetSku,targetSku);assert.equal(raced.target.gtin,'8992796011501');
+ const current=resolve('multipack',[{sku:skus[2],quantity:13}]);saved=ok(approve(listing(),current,false,{mode:'internal'}));assert.equal(saved.target.gtin,'');assert.match(saved.target.internalBarcode,/^200\d{10}$/);
+ const internal=saved.target.internalBarcode;
+ saved=ok(approve(listing(),resolve('multipack',[{sku:skus[2],quantity:13}]),false,{mode:'internal'}));assert.equal(saved.target.internalBarcode,internal,'internal tidak dialokasikan ulang');
+ saved=ok(approve(listing(),resolve('multipack',[{sku:skus[2],quantity:13}]),false,{mode:'none'}));assert.equal(saved.target.internalBarcode,'');assert.equal(saved.target.gtin,'');
 });
