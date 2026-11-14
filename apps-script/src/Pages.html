@@ -942,9 +942,9 @@ function barcodeHistory(code) {
 
 /* ───────── Import & Export ───────── */
 Pages.io = function (main, arg) {
-  var tab = arg && arg.tab || (can('import.run') ? 'import' : 'export');
+  var tab = arg && arg.tab || (can('import.run') || can('mapping.write') ? 'import' : 'export');
   main.innerHTML = pageHead('Sistem', 'Import & Export', '', 'Import data produk serta ekspor master untuk operasional. Pemeriksaan listing Shopee tersedia di SKU Mapping Shopee. Import Master Brand/Kategori ada di halaman masing-masing (Upload Excel).') +
-    '<div class="dtabs">' + (can('import.run') ? '<a data-t="import" class="' + (tab === 'import' ? 'on' : '') + '">Import</a>' : '') + '<a data-t="export" class="' + (tab === 'export' ? 'on' : '') + '">Ekspor</a></div><div id="iob"></div>';
+    '<div class="dtabs">' + (can('import.run') || can('mapping.write') ? '<a data-t="import" class="' + (tab === 'import' ? 'on' : '') + '">Import</a>' : '') + '<a data-t="export" class="' + (tab === 'export' ? 'on' : '') + '">Ekspor</a></div><div id="iob"></div>';
   $$('[data-t]', main).forEach(function (a) { a.onclick = function () { App.go('io', { tab: a.getAttribute('data-t') }); }; });
   (tab === 'import' ? Pages.import : Pages.export)($('#iob', main));
 };
@@ -954,11 +954,13 @@ Pages.export = function (main) {
       '<div class="row" style="margin-top:12px"><button class="btn pri" data-x="' + kind + '" data-f="xlsx">' + icon('download') + 'XLSX</button><button class="btn" data-x="' + kind + '" data-f="csv">CSV</button><button class="btn ghost" data-x="' + kind + '" data-f="sheet">' + icon('file') + 'Tulis ke tab spreadsheet</button></div></div>';
   };
   main.innerHTML = (main.id === 'main' ? pageHead('Sistem', 'Ekspor Data') : '') + '<div class="hint" style="margin-bottom:12px">File dibuat di browser; kolom SKU & barcode tetap teks. Draft & arsip tidak ikut diekspor. Bila unduhan diblokir, gunakan "Tulis ke tab spreadsheet".</div>' +
+    shopeeIOExportCard() +
     '<div class="grid2">' + item('inventory', 'Inventory master (FMS / stock opname)', 'Hanya identitas STOCKABLE: SKU produk & bundle rakitan, satuan dasar, kemasan, semua barcode yang dapat dipindai. Parent & bundle virtual tidak muncul (mencegah double counting).') +
     item('master', 'Master SKU lengkap', 'SKU produk, kemasan ber-SKU, dan bundle — barcode, satuan, brand, kategori, stockable, SKU lama.') +
     item('conversions', 'Satuan & konversi', 'Seluruh kemasan per SKU produk dengan tanggal berlaku.') +
-    item('bundles', 'Bundle & BOM', 'Multipack, mixed bundle, request mix beserta komponen & mode stok.') +
+    item('bundles', 'Bundle & BOM', 'Paket MP dan BD beserta SKU barang dan jumlahnya.') +
     item('mappings', 'Mapping kanal', 'Daftar mapping per kanal beserta status.', '<select class="in" id="xs">' + CHANNELS.map(function (c) { return '<option value="' + c[0] + '">' + c[1] + '</option>'; }).join('') + '</select>') + '</div><div id="xr"></div>';
+  shopeeBindIOExport(main);
   $$('[data-x]', main).forEach(function (b) {
     b.onclick = function () {
       var kind = b.getAttribute('data-x'), fm = b.getAttribute('data-f');
@@ -975,6 +977,7 @@ Pages.export = function (main) {
 
 /* ───────── Import (migrasi template Excel, listing kanal) ───────── */
 Pages.import = function (main) {
+  if(!can('import.run')){main.innerHTML=shopeeIOImportCard()||emptyBox('Tidak ada akses import','','upload');shopeeBindIOImport(main);return;}
   var TYPES = [
     ['products', 'Produk baru (format sistem)', 'Sheet "Import Produk": 1 baris = 1 SKU (Brand, Nama Produk Induk, Kategori, variasi, GTIN). Brand baru dibuat otomatis; produk yang sudah ada dilewati.', /import produk|produk baru/i],
     ['reference', 'Referensi Brand & Kategori', 'Sheet "Referensi Kode". Kode lama dipakai bila belum ada; kode yang sudah ada tidak diubah.', /referensi/i],
@@ -982,11 +985,12 @@ Pages.import = function (main) {
     ['master', 'Master Produk lama', 'Sheet "Master Produk". 1 barcode = 1 SKU produk; Isi > 1 → multipack virtual; SKU lama tercatat.', /master produk/i],
   ];
   var st = { type: 'products', wb: null, file: '', sheet: '', rows: null, preview: null };
-  main.innerHTML = (main.id === 'main' ? pageHead('Sistem', 'Import Data') : '') + '<div class="hint" style="margin-bottom:12px">Urutan migrasi: Referensi → Barcode Internal → Master Produk. Perbarui tarikan Shopee melalui halaman SKU Mapping Shopee. Selalu <b>Pratinjau</b> (dry-run) dulu — tidak ada yang tersimpan sebelum Anda menekan Import. Import ulang tidak menggandakan data.</div>' +
+  main.innerHTML = (main.id === 'main' ? pageHead('Sistem', 'Import Data') : '') + shopeeIOImportCard() + '<div class="hint" style="margin-bottom:12px">Urutan migrasi master: Referensi → Barcode Internal → Master Produk. Selalu <b>Pratinjau</b> (dry-run) dulu — tidak ada yang tersimpan sebelum Anda menekan Import. Import ulang tidak menggandakan data.</div>' +
     '<div class="imp-grid" id="ty">' + TYPES.map(function (t, i) { return '<div class="imp-card' + (i ? '' : ' on') + '" data-t="' + t[0] + '"><b>' + (i + 1) + '. ' + t[1] + '</b><span>' + t[2] + '</span></div>'; }).join('') + '</div>' +
     '<div class="card" style="margin-top:14px"><div class="row"><label class="btn">' + icon('upload') + 'Pilih file Excel / CSV<input type="file" id="fi" accept=".xlsx,.xls,.csv" class="hidden"></label><span id="fn" class="muted">Belum ada file</span><select class="in hidden" id="sh" style="width:auto"></select>' +
     '<span id="chx" class="row hidden"><select class="in" id="chs" style="width:auto">' + CHANNELS.filter(function (c) { return isMarketplace(c[0]); }).map(function (c) { return '<option value="' + c[0] + '">' + c[1] + '</option>'; }).join('') + '</select><input class="in" id="sto" placeholder="Toko/akun (mis. Meirista Official)" style="width:220px"></span>' +
     '<button class="btn" id="pv" disabled>' + icon('eye') + 'Pratinjau</button><button class="btn pri" id="go" disabled>' + icon('check') + 'Import</button></div><div id="rp"></div></div><div class="sect">Riwayat import</div><div id="hi">' + loadingBox() + '</div>';
+  shopeeBindIOImport(main);
   var pickSheet = function () {
     var t = TYPES.find(function (x) { return x[0] === st.type; });
     $('#chx', main).classList.toggle('hidden', st.type !== 'channel_listing');

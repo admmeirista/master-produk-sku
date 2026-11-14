@@ -1,5 +1,15 @@
 # Revisi V10 — Pemeriksaan SKU Shopee melalui web
 
+## Kartu status, impor terpusat dan ekspor pilihan
+
+Unggah template Shopee dipindahkan ke **Import & Export → Import**. Pengguna dengan `mapping.write` dapat mengakses unggahan Shopee tanpa memperoleh izin impor master (`import.run`). SKU Mapping menampilkan semua listing tersimpan, kartu jumlah/persentase Semua variasi, Perlu diverifikasi, Disetujui, dan Tidak tersedia. Persentase menggunakan total listing sebagai denominator; kartu juga berfungsi sebagai filter.
+
+Hanya baris Disetujui yang dapat dicentang. Pilihan bertahan saat paging/filter atau berpindah ke Import & Export dan dibersihkan saat logout. Ekspor tersedia dari tombol **Ekspor terpilih** di Mapping atau bagian mass update Shopee pada tab Ekspor. Server memvalidasi ulang setiap ID yang dipilih dengan hak `export.run` dan menolak status/master yang tidak lagi sesuai.
+
+File acuan asli dipakai dari unggahan pada sesi browser yang sama. Sesudah refresh atau saat mengerjakan file lain, pilih kembali `.xlsx` asli melalui **Import & Export → Ekspor → Pilih template acuan**; pemilihan acuan tidak mengimpor data. Seluruh pilihan harus ada pada file/toko acuan dan cocok dengan snapshot listing. Tidak ada template atau data produk pengguna yang dipublikasikan ke repository.
+
+Ekspor hanya menyertakan baris yang dipilih, dengan metadata/header, kolom, format, dan lembar bantu asli. Baris output dirapatkan; string produk yang tidak dipilih dibuang dari sharedStrings. SKU dan GTIN memakai master terbaru; SKU induk hanya diubah bila seluruh variasi produk pada acuan ikut disetujui dan menunjuk parent yang sama. Harga, stok, ID, nama, dan nilai kolom lain dipertahankan; rumus pada baris data yang dipilih dibekukan ke hasil tersimpan agar referensi lama tidak berpindah ke produk berbeda.
+
 ## Form seragam dan cache daftar
 
 Registrasi MP/BD di Kemasan & Bundling dan pemetaan Shopee memakai renderer baris SKU–qty dan pilihan barcode yang sama: Tanpa barcode, GTIN, atau Barcode internal. Mode stok tidak ditampilkan. Paket baru memakai perilaku virtual yang sudah menjadi default sistem; data mode paket historis dipertahankan. Paket pilih sendiri dihapus dari daftar/form dan pembuatan melalui API ditolak; arsip lama tidak dihapus.

@@ -156,6 +156,12 @@ function shopeeExport_(p) {
     return { productId: x.productId, variationId: x.variationId, eligible: status === 'approved', reason: status === 'approved' ? '' : SHOPEE_REVIEW_STATES.includes(status) ? 'Belum disetujui' : 'Master berubah; periksa kembali', sku: status === 'approved' ? t.sku : '', parentSku: status === 'approved' ? t.parentSku : '', gtin: status === 'approved' ? t.gtin : '' };
   });
 }
+function shopeeExportSelected_(p) {
+  if(!Array.isArray(p.ids)||!p.ids.length||p.ids.length>200||p.ids.some((id)=>typeof id!=='string'||!id)||new Set(p.ids).size!==p.ids.length)throw new AppError('Pilih 1–200 identitas listing yang unik.');
+  const T=db_('SHOPEE_LISTINGS'),catalog=shopeeCatalog_(),rows=[],rejected=[];
+  p.ids.forEach((id)=>{const r=T.byId(id);if(!r||shopeeStatus_(r,catalog)!=='approved'){rejected.push({id,reason:r?'Status bukan Disetujui atau master telah berubah.':'Listing tidak ditemukan.'});return;}rows.push(shopeeView_(r,catalog));});
+  return {rows,rejected};
+}
 function shopeeReview_(user, p) {
   const T = db_('SHOPEE_LISTINGS'), r = T.byId(p.id);
   if (!r) throw new AppError('Listing tidak ditemukan.');

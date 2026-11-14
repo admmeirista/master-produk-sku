@@ -622,7 +622,7 @@ var App = {
     }).catch(function (e) { if (e.code !== 'UNAUTHENTICATED' && !cached) App.showLogin(e.message); });
   },
   remember: function (me) { App.me = me; Store.set('rpm_me', JSON.stringify(me)); },
-  forget: function () { FastReadCache.clear(); App.token = null; App.me = null; Store.del('rpm_token'); Store.del('rpm_me'); Ref.data = {}; },
+  forget: function () { if(typeof SHOPEE_SELECTED!=='undefined')SHOPEE_SELECTED=Object.create(null);if(typeof SHOPEE_WORKFILE!=='undefined')SHOPEE_WORKFILE=null;FastReadCache.clear(); App.token = null; App.me = null; Store.del('rpm_token'); Store.del('rpm_me'); Ref.data = {}; },
 
   authShell: function (formHtml) {
     var flow = [['camera', 'Scan barcode', 'Kamera HP langsung mengenali SKU'], ['plus', 'Registrasi SKU', 'Barcode terisi otomatis, tanpa ketik ulang'],

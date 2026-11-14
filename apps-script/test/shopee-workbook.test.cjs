@@ -29,3 +29,24 @@ test('unduhan mempertahankan ZIP template, metadata, style, rumus, sheet lain da
   assert.equal(doc.getElementsByTagNameNS(ns,'mergeCell')[0].getAttribute('ref'),'A1:O1');assert.equal(doc.getElementsByTagNameNS(ns,'dataValidation')[0].getAttribute('sqref'),'I7:I8');
   assert.deepEqual(Array.from(cell('F7').parentNode.getElementsByTagNameNS(ns,'c')).map(c=>c.getAttribute('r')),['A7','E7','F7','G7','H7','I7']);
 });
+
+test('ekspor pilihan menyisakan hanya data terpilih, merapatkan nomor baris dan membersihkan sharedStrings tanpa mengubah header/format',async()=>{
+ const zip=new JSZip(),ns='http://schemas.openxmlformats.org/spreadsheetml/2006/main';
+ zip.file('xl/workbook.xml',`<workbook xmlns="${ns}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Mass Update" sheetId="1" r:id="r1"/><sheet name="Petunjuk" sheetId="2" r:id="r2"/></sheets></workbook>`);
+ zip.file('xl/_rels/workbook.xml.rels','<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="r1" Target="worksheets/sheet1.xml"/><Relationship Id="r2" Target="worksheets/sheet2.xml"/></Relationships>');
+ zip.file('xl/sharedStrings.xml',`<sst xmlns="${ns}" count="4" uniqueCount="4"><si><t>HEADER_ORIGINAL</t></si><si><t>PRODUK_TIDAK_DIPILIH</t></si><si><t>00012345678901234567890</t></si><si><t>PETUNJUK_LAIN</t></si></sst>`);
+ zip.file('xl/worksheets/sheet1.xml',`<worksheet xmlns="${ns}"><dimension ref="A1"/><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c></row><row r="7"><c r="A7" t="s"><v>1</v></c></row><row r="9" ht="27"><c r="A9" t="s"><v>2</v></c><c r="F9" s="3" t="inlineStr"><is><t>lama</t></is></c><c r="G9"><f>I9*2</f><v>200</v></c><c r="I9"><v>9</v></c></row></sheetData><autoFilter ref="A3:I9"/><mergeCells><mergeCell ref="A1:I1"/></mergeCells></worksheet>`);
+ zip.file('xl/worksheets/sheet2.xml',`<worksheet xmlns="${ns}"><sheetData><row r="1"><c r="A1" t="s"><v>3</v></c></row></sheetData></worksheet>`);
+ zip.file('xl/styles.xml','STYLES_ORIGINAL');
+ const context={Pages:{},JSZip,XLSX,DOMParser,XMLSerializer};vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../src/ShopeeWorkflow.html'),'utf8').replace(/^<script>\s*/,'').replace(/<\/script>\s*$/,''),context);
+ const file={buffer:await zip.generateAsync({type:'nodebuffer'}),sheetName:'Mass Update',rows:[{sourceRow:7},{sourceRow:9}]};
+ const blob=await context.shopeePatchWorkbook(file,[{row:9,col:5,value:'PRD000001-001'}],[9]),result=await JSZip.loadAsync(await blob.arrayBuffer());
+ const parser=new DOMParser(),sheet=parser.parseFromString(await result.file('xl/worksheets/sheet1.xml').async('string'),'application/xml'),shared=await result.file('xl/sharedStrings.xml').async('string');
+ assert.deepEqual(Array.from(sheet.getElementsByTagNameNS(ns,'row')).map(r=>r.getAttribute('r')),['1','7']);
+ const cell=ref=>Array.from(sheet.getElementsByTagNameNS(ns,'c')).find(c=>c.getAttribute('r')===ref);
+ assert.equal(cell('F7').textContent,'PRD000001-001');assert.equal(cell('F7').getAttribute('s'),'3');assert.equal(cell('I7').textContent,'9');assert.equal(cell('G7').textContent,'200');assert.equal(cell('G7').getElementsByTagNameNS(ns,'f').length,0);
+ assert.equal(sheet.getElementsByTagNameNS(ns,'row')[1].getAttribute('ht'),'27');assert.equal(sheet.getElementsByTagNameNS(ns,'dimension')[0].getAttribute('ref'),'A1:I7');assert.equal(sheet.getElementsByTagNameNS(ns,'autoFilter')[0].getAttribute('ref'),'A3:I7');
+ assert.ok(!shared.includes('PRODUK_TIDAK_DIPILIH'));assert.ok(shared.includes('00012345678901234567890'));assert.ok(shared.includes('HEADER_ORIGINAL'));assert.ok(shared.includes('PETUNJUK_LAIN'));
+ assert.equal(await result.file('xl/styles.xml').async('string'),'STYLES_ORIGINAL');
+ await assert.rejects(()=>context.shopeePatchWorkbook(file,[],[]),/tidak valid/);
+});

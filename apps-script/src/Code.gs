@@ -130,6 +130,7 @@ const ROUTES = {
   'shopee.target': { perm: 'product.read', fn: (u, p) => shopeeTarget_(p.sku) },
   'shopee.packageResolve': { perm: 'product.read', fn: (u, p) => shopeePackageResolve_(p) },
   'shopee.export': { perm: 'product.read', fn: (u, p) => shopeeExport_(p) },
+  'shopee.exportSelected': { perm: 'export.run', fn: (u, p) => shopeeExportSelected_(p) },
   'shopee.import': { perm: 'mapping.write', write: true, fn: (u, p) => shopeeImport_(u, p) },
   'shopee.review': { perm: 'mapping.write', write: true, fn: (u, p) => shopeeReview_(u, p) },
   'sku.search': { perm: 'product.read', fn: (u, p) => skuSearch_(p.q, p.kinds) },

@@ -2,36 +2,35 @@
 // Workbook asli hanya disimpan di memori tab ini, sehingga format template tetap utuh.
 var SHOPEE_WORKFILE = null;
 Pages.mapping = function (main, arg) {
-  var f = { search: arg && arg.search || '', status: '', page: 1, pageSize: 30 }, sequence = 0, w = can('mapping.write');
-  main.innerHTML = pageHead('Integrasi', 'SKU Mapping Shopee', (w ? '<button class="btn" id="slImport">' + icon('upload') + 'Unggah template</button>' : '') + '<button class="btn pri" id="slDownload">' + icon('download') + 'Unduh hasil</button>', 'Unggah template mass edit Shopee, periksa pasangan SKU, lalu unduh file untuk diunggah kembali ke Shopee.') +
-    '<div class="shopee-workflow"><span><b>1</b> Unggah template</span><span><b>2</b> Periksa SKU</span><span><b>3</b> Unduh hasil</span></div><div id="slFile" class="hint"></div><div id="slSummary" class="shopee-totals"></div><div class="toolbar shopee-filters"><div class="search">' + icon('search') + '<input class="in" id="slSearch" placeholder="Cari produk, variasi atau SKU" value="' + esc(f.search) + '"></div><select class="in" id="slStatus" aria-label="Status pemeriksaan"><option value="">Semua status</option><option value="verify">Perlu diverifikasi</option><option value="approved">Disetujui</option><option value="unavailable">Tidak tersedia</option></select></div><div id="slRows"></div>';
+  var f = { search: arg && arg.search || '', status: arg && arg.status || '', page: 1, pageSize: 30 }, sequence = 0, w = can('mapping.write');
+  main.innerHTML = pageHead('Integrasi', 'SKU Mapping Shopee', can('export.run') ? '<button class="btn pri" id="slExportSelected" disabled>'+icon('download')+'Ekspor terpilih (0)</button><button class="btn" id="slClearSelection" disabled>Bersihkan pilihan</button>' : '', 'Periksa pasangan SKU Shopee dan pilih variasi yang sudah disetujui untuk ekspor mass update.') +
+    '<div id="slSummary" class="shopee-status-cards"></div><div class="toolbar shopee-filters"><div class="search">'+icon('search')+'<input class="in" id="slSearch" placeholder="Cari produk, variasi atau SKU" value="'+esc(f.search)+'"></div><select class="in" id="slStatus" aria-label="Status pemeriksaan"><option value="">Semua status</option><option value="verify">Perlu diverifikasi</option><option value="approved">Disetujui</option><option value="unavailable">Tidak tersedia</option></select></div><div id="slSelectionInfo" class="hint"></div><div id="slRows"></div>';
+  $('#slStatus',main).value=f.status;
+  function selectionInfo(){var count=Object.keys(SHOPEE_SELECTED).length,button=$('#slExportSelected',main);if(button){button.disabled=!count;button.innerHTML=icon('download')+'Ekspor terpilih ('+count+')';}var clear=$('#slClearSelection',main);if(clear)clear.disabled=!count;var info=$('#slSelectionInfo',main);if(info)info.textContent=count?count+' variasi dipilih. Pilihan tetap tersimpan saat berpindah halaman atau filter.':'Centang variasi berstatus Disetujui untuk ekspor. Unggah template tersedia di Import & Export.';}
+
   function load(cached) {
-    var mine = ++sequence, box = $('#slRows', main), wf = SHOPEE_WORKFILE;
+    var mine = ++sequence, box = $('#slRows', main);
     if (!box) return;
-    $('#slDownload', main).disabled = !wf || wf.busy;
-    $('#slFile', main).textContent = wf ? 'File aktif: ' + wf.name + ' · ' + fmtNum(wf.rows.length) + ' variasi. Simpan hasil sebelum menutup atau memuat ulang halaman.' : 'Daftar tersimpan ditampilkan di bawah. Unggah template .xlsx untuk mulai dan mengunduh hasil dalam format yang sama.';
-    box.innerHTML = loadingBox('Memuat produk…');
-    var request;
-    if (cached) request = Promise.resolve(cached);
-    else if (wf) {
-      var rows = wf.views, summary = { all: rows.length, approved: 0, verify: 0, unavailable: 0 };
-      rows.forEach(function (r) { summary[shopeeDisplayStatus(r)]++; });
-      var q = f.search.toLowerCase();
-      var filtered = rows.filter(function (r) { return (!f.status || shopeeDisplayStatus(r) === f.status) && (!q || [r.name, r.variationName, r.sellerSku, r.targetSku, r.gtin].join(' ').toLowerCase().indexOf(q) >= 0); });
-      request = Promise.resolve({ rows: filtered.slice((f.page - 1) * f.pageSize, f.page * f.pageSize), total: filtered.length, page: f.page, pageSize: f.pageSize, pages: Math.ceil(filtered.length / f.pageSize), summary: summary });
-    } else request = null;
+    box.innerHTML=loadingBox('Memuat produk…');
+    var request=cached?Promise.resolve(cached):null;
     function render(d) {
       if (mine !== sequence || !$('#slRows', main)) return;
       var s = d.summary;
-      $('#slSummary', main).innerHTML = '<b>' + fmtNum(s.all) + '</b> variasi <span>·</span> <b>' + fmtNum(s.verify) + '</b> perlu diverifikasi <span>·</span> <b>' + fmtNum(s.approved) + '</b> disetujui <span>·</span> <b>' + fmtNum(s.unavailable) + '</b> tidak tersedia';
-      box.innerHTML = d.rows.length ? '<div class="tablewrap shopee-simple"><table class="t"><thead><tr><th>Produk Shopee</th><th>Variasi</th><th>SKU Shopee</th><th>SKU sistem</th><th>Status</th><th></th></tr></thead><tbody>' + d.rows.map(function (r) {
-        return '<tr><td><b>' + esc(r.name) + '</b></td><td>' + esc(r.variationName || '—') + '</td><td class="sku">' + esc(r.sellerSku || '—') + '</td><td>' + (r.target ? '<b class="sku">' + esc(r.target.sku) + '</b><small class="shopee-sub">' + esc(r.target.name) + '</small>' : '<span class="muted">Tidak tersedia</span>') + '</td><td>' + shopeeBadge(shopeeDisplayStatus(r)) + '</td><td><button class="btn sm" data-review="' + esc(r.id) + '">' + (w ? 'Periksa' : 'Lihat') + '</button></td></tr>';
-      }).join('') + '</tbody></table></div>' + pager(d, function (p) { f.page = p; load(); }) : emptyBox('Tidak ada produk', 'Unggah template atau ubah pencarian.', 'upload');
+      $('#slSummary',main).innerHTML=shopeeStatusCards(s,f.status);
+      $$('[data-status-card]',main).forEach(function(button){button.onclick=function(){f.status=button.getAttribute('data-status-card');$('#slStatus',main).value=f.status;f.page=1;load();};});
+      d.rows.forEach(function(r){if(r.status!=='approved')delete SHOPEE_SELECTED[r.id];});
+      box.innerHTML = d.rows.length ? '<div class="tablewrap shopee-simple"><table class="t"><thead><tr><th class="shopee-selection"><input type="checkbox" id="slSelectPage" aria-label="Pilih semua variasi disetujui pada halaman ini"></th><th class="sh-source shopee-product">Produk Shopee</th><th class="sh-source">Variasi</th><th class="sh-source">SKU Shopee</th><th class="sh-master">SKU sistem</th><th>Status</th><th></th></tr></thead><tbody>' + d.rows.map(function (r) {
+        return '<tr><td class="shopee-selection"><input type="checkbox" data-select-listing="'+esc(r.id)+'" aria-label="Pilih '+esc(r.name)+' '+esc(r.variationName||'')+'"'+(r.status!=='approved'||!can('export.run')?' disabled':'')+(SHOPEE_SELECTED[r.id]?' checked':'')+'></td><td class="sh-source shopee-product"><b>' + esc(r.name) + '</b></td><td class="sh-source shopee-variation-cell">' + esc(r.variationName || '—') + '</td><td class="sh-source shopee-seller-sku sku">' + esc(r.sellerSku || '—') + '</td><td class="sh-master">' + (r.target ? '<b class="sku">' + esc(r.target.sku) + '</b><small class="shopee-sub">' + esc(r.target.name) + '</small>' : '<span class="muted">Tidak tersedia</span>') + '</td><td>' + shopeeBadge(shopeeDisplayStatus(r)) + '</td><td><button class="btn sm" data-review="' + esc(r.id) + '">' + (w ? 'Periksa' : 'Lihat') + '</button></td></tr>';
+      }).join('') + '</tbody></table></div>' + pager(d, function (p) { f.page = p; load(); }) : emptyBox('Tidak ada produk', 'Ubah pencarian atau impor template melalui Import & Export.', 'search');
+      $$('[data-select-listing]',box).forEach(function(input){input.onchange=function(){var id=input.getAttribute('data-select-listing'),row=d.rows.find(function(r){return r.id===id;});if(this.checked&&row&&row.status==='approved')SHOPEE_SELECTED[id]=true;else delete SHOPEE_SELECTED[id];selectionInfo();};});
+      var selectPage=$('#slSelectPage',box),eligible=d.rows.filter(function(r){return r.status==='approved';});
+      if(selectPage){selectPage.disabled=!eligible.length||!can('export.run');selectPage.checked=!!eligible.length&&eligible.every(function(r){return !!SHOPEE_SELECTED[r.id];});selectPage.onchange=function(){var checked=this.checked;eligible.forEach(function(r){if(checked)SHOPEE_SELECTED[r.id]=true;else delete SHOPEE_SELECTED[r.id];});render(d);};}
+      selectionInfo();
       $$('[data-review]', box).forEach(function (b) { b.onclick = function () {
         var id = b.getAttribute('data-review'), before = d.rows.find(function (r) { return r.id === id; });
         shopeeReviewDialog(before, function (updated) {
           if (!updated) return;
-          if (SHOPEE_WORKFILE) { SHOPEE_WORKFILE.views = SHOPEE_WORKFILE.views.map(function (r) { return r.id === updated.id ? updated : r; }); load(); return; }
+          if(updated.status!=='approved')delete SHOPEE_SELECTED[updated.id];
           var oldStatus = shopeeDisplayStatus(before), newStatus = shopeeDisplayStatus(updated);
           d.summary[oldStatus]--; d.summary[newStatus]++;
           d.rows = d.rows.map(function (r) { return r.id === updated.id ? updated : r; });
@@ -46,8 +45,8 @@ Pages.mapping = function (main, arg) {
   }
   $('#slSearch', main).oninput = debounce(function (e) { f.search = e.target.value; f.page = 1; load(); }, 250);
   $('#slStatus', main).onchange = function (e) { f.status = e.target.value; f.page = 1; load(); };
-  if (w) $('#slImport', main).onclick = function () { shopeeImportDialog(function () { f.page = 1; load(); }); };
-  $('#slDownload', main).onclick = function () { shopeeDownloadDialog(load); };
+  if($('#slExportSelected',main))$('#slExportSelected',main).onclick=function(){shopeeSelectedDownloadDialog(selectionInfo);};
+  if($('#slClearSelection',main))$('#slClearSelection',main).onclick=function(){SHOPEE_SELECTED=Object.create(null);load();};
   load();
 };
 
@@ -62,10 +61,7 @@ function shopeeImportDialog(done) {
     rd.onload = function () {
       if (seq !== reading) return;
       try {
-        var wb = XLSX.read(rd.result, { type: 'array' }), found;
-        wb.SheetNames.some(function (name) { var aoa = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, raw: true, defval: '' }); if (aoa.slice(0, 20).some(function (r) { return r.some(function (v) { return String(v).trim().toLowerCase() === 'kode produk'; }) && r.some(function (v) { return String(v).trim().toLowerCase() === 'nama produk'; }); })) { found = { sheetName: name, aoa: aoa, rows: shopeeReadRows(aoa) }; return true; } return false; });
-        if (!found) throw new Error('Tidak ditemukan lembar template mass edit Shopee.');
-        fileState = { name: file.name, buffer: rd.result, sheetName: found.sheetName, aoa: found.aoa, rows: found.rows, views: [] };
+        fileState=shopeeReadTemplate(rd.result,file.name);var found={rows:fileState.rows};
         $('#siInfo', m).textContent = fmtNum(found.rows.length) + ' variasi siap dicocokkan dengan master SKU.'; $('#siGo', m).disabled = false;
       } catch (e) { $('#siError', m).innerHTML = errBox(e.message); }
     }; rd.readAsArrayBuffer(file);
@@ -101,30 +97,8 @@ function shopeeExportChanges(file, results) {
   return { changes: changes, eligible: eligible, unchanged: file.rows.length - eligible };
 }
 
-function shopeeDownloadDialog(done) {
-  var file = SHOPEE_WORKFILE; if (!file || file.busy) return;
-  var m = modal('<h3>Unduh template hasil</h3><p>Hanya pasangan yang sudah disetujui dan masih sesuai master yang akan mengubah kolom SKU, SKU induk, dan GTIN. Baris lainnya tetap seperti file asal.</p><div id="sdInfo" class="hint">Memeriksa ulang pasangan dan master terbaru…</div><div id="sdError"></div><div class="row" style="margin-top:16px"><button class="btn pri" id="sdGo" disabled>Unduh .xlsx</button><button class="btn" data-close>Tutup</button></div>');
-  var offset = 0, results = [], plan;
-  function next() {
-    api('shopee.export', { store: file.store, rows: file.rows.slice(offset, offset + 150) }, { silent: true }).then(function (rows) {
-      results = results.concat(rows); offset += 150;
-      if (offset < file.rows.length) { $('#sdInfo', m).textContent = 'Memeriksa ' + offset + ' / ' + file.rows.length + ' variasi…'; next(); return; }
-      plan = shopeeExportChanges(file, results);
-      $('#sdInfo', m).textContent = plan.eligible + ' variasi disetujui akan memakai data master. ' + plan.unchanged + ' variasi lainnya tetap seperti file asal. Harga, stok, ID, nama, dan kolom lain tidak diubah.';
-      $('#sdGo', m).disabled = !plan.eligible;
-      if (!plan.eligible) $('#sdError', m).innerHTML = errBox('Belum ada pasangan yang dapat diterapkan. Periksa dan setujui SKU terlebih dahulu.');
-    }).catch(function (e) { $('#sdError', m).innerHTML = errBox(e.message); });
-  } next();
-  $('#sdGo', m).onclick = function () {
-    var btn = this; btn.disabled = true; file.busy = true;
-    shopeePatchWorkbook(file, plan.changes).then(function (blob) {
-      var url = URL.createObjectURL(blob), a = document.createElement('a'); a.href = url; a.download = file.name.replace(/\.xlsx$/i, '') + '_SKU_diperbarui.xlsx'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(url); }, 30000); m.close(); toast('Template hasil berhasil diunduh.', 'ok');
-    }).catch(function (e) { $('#sdError', m).innerHTML = errBox(e.message); btn.disabled = false; }).finally(function () { file.busy = false; done(); });
-  };
-}
-
 /** Patch XML di dalam ZIP asli, bukan membangun ulang workbook dengan konversi tabel. */
-async function shopeePatchWorkbook(file, changes) {
+async function shopeePatchWorkbook(file, changes, selectedRows) {
   var zip = await JSZip.loadAsync(file.buffer), parser = new DOMParser(), serializer = new XMLSerializer();
   function parse(text) { var d = parser.parseFromString(text, 'application/xml'); if (d.getElementsByTagName('parsererror').length) throw new Error('Struktur template Excel tidak valid.'); return d; }
   var wb = parse(await zip.file('xl/workbook.xml').async('string'));
@@ -146,6 +120,28 @@ async function shopeePatchWorkbook(file, changes) {
     while (cell.firstChild) cell.removeChild(cell.firstChild);
     cell.setAttribute('t', 'inlineStr'); var is = doc.createElementNS(ns, 'is'), text = doc.createElementNS(ns, 't'); text.setAttributeNS('http://www.w3.org/XML/1998/namespace', 'xml:space', 'preserve'); text.textContent = change.value; is.appendChild(text); cell.appendChild(is);
   });
+  if(selectedRows){
+    var selected=new Set(selectedRows.map(Number)),dataStart=Math.min.apply(null,file.rows.map(function(r){return r.sourceRow;}));
+    if(!selected.size||selectedRows.length!==selected.size||selectedRows.some(function(n){return !rowIndex[n]||n<dataStart;}))throw new Error('Pilihan baris template tidak valid.');
+    var outputRow=dataStart;
+    Array.from(doc.getElementsByTagNameNS(ns,'row')).forEach(function(row){var old=Number(row.getAttribute('r'));if(old<dataStart)return;if(!selected.has(old)){row.parentNode.removeChild(row);return;}
+      row.setAttribute('r',String(outputRow));Array.from(row.getElementsByTagNameNS(ns,'c')).forEach(function(cell){var coord=XLSX.utils.decode_cell(cell.getAttribute('r'));cell.setAttribute('r',XLSX.utils.encode_col(coord.c)+outputRow);
+        // Mass update membutuhkan nilai snapshot. Bekukan rumus agar referensi baris lama tidak bergeser ke barang lain.
+        Array.from(cell.getElementsByTagNameNS(ns,'f')).forEach(function(formula){if(!cell.getElementsByTagNameNS(ns,'v').length)throw new Error('Rumus pada template belum memiliki hasil tersimpan. Simpan ulang file asli di Excel sebelum ekspor.');cell.removeChild(formula);});
+      });outputRow++;
+    });
+    var dimension=doc.getElementsByTagNameNS(ns,'dimension')[0];if(dimension){var range=XLSX.utils.decode_range(dimension.getAttribute('ref'));range.e.r=outputRow-2;Array.from(doc.getElementsByTagNameNS(ns,'c')).forEach(function(cell){range.e.c=Math.max(range.e.c,XLSX.utils.decode_cell(cell.getAttribute('r')).c);});dimension.setAttribute('ref',XLSX.utils.encode_range(range));}
+    Array.from(doc.getElementsByTagNameNS(ns,'autoFilter')).forEach(function(filter){var range=XLSX.utils.decode_range(filter.getAttribute('ref'));range.e.r=outputRow-2;filter.setAttribute('ref',XLSX.utils.encode_range(range));});
+    // Buang string produk yang tidak ikut diekspor, termasuk salinan yang tersembunyi di sharedStrings.
+    if(zip.file('xl/sharedStrings.xml')){
+      var shared=parse(await zip.file('xl/sharedStrings.xml').async('string')),strings=Array.from(shared.getElementsByTagNameNS('*','si')),sheets={};sheets[path]=doc;
+      var used=new Set(),refs=[];
+      for(var sheetPath of Object.keys(zip.files).filter(function(name){return /^xl\/worksheets\/[^/]+\.xml$/.test(name);})){var sheetDoc=sheets[sheetPath]||parse(await zip.file(sheetPath).async('string'));sheets[sheetPath]=sheetDoc;Array.from(sheetDoc.getElementsByTagNameNS('*','c')).forEach(function(cell){if(cell.getAttribute('t')!=='s')return;var v=cell.getElementsByTagNameNS('*','v')[0];if(v){used.add(Number(v.textContent));refs.push(v);}});}
+      var ordered=Array.from(used).sort(function(a,b){return a-b;}),remap={};ordered.forEach(function(old,i){if(!strings[old])throw new Error('Referensi string Excel tidak valid.');remap[old]=i;});refs.forEach(function(v){v.textContent=String(remap[Number(v.textContent)]);});
+      var root=shared.documentElement;while(root.firstChild)root.removeChild(root.firstChild);ordered.forEach(function(old){root.appendChild(strings[old]);});root.setAttribute('count',String(refs.length));root.setAttribute('uniqueCount',String(ordered.length));zip.file('xl/sharedStrings.xml',serializer.serializeToString(shared));
+      Object.keys(sheets).forEach(function(name){zip.file(name,serializer.serializeToString(sheets[name]));});
+    }
+  }
   zip.file(path, serializer.serializeToString(doc));
   return zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', compression: 'DEFLATE' });
 }
