@@ -1,0 +1,19 @@
+<script>
+function shopeeAutoBrand(rows,listing,lines){
+  var selected=lines.map(function(c){return rows.find(function(r){return r.sku===c.sku;});}).filter(Boolean),ids=Array.from(new Set(selected.map(function(r){return r.brandId;}).filter(Boolean)));
+  if(ids.length)return ids.length===1?ids[0]:'';
+  function words(s){return ' '+String(s||'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim()+' ';}
+  var title=words(listing.name+' '+(listing.variationName||'')),brands={};rows.forEach(function(r){if(r.brandId&&r.brandName)brands[r.brandId]=r.brandName;});
+  var matches=Object.keys(brands).filter(function(id){return new RegExp('(?:^|\\s)'+words(brands[id]).trim().split(/\s+/).join('\\s*')+'(?=\\s|$)').test(title);});
+  if(matches.length===1)return matches[0];
+  if(matches.length>1){matches.sort(function(a,b){return brands[b].length-brands[a].length;});if(matches.every(function(id){return words(brands[matches[0]]).indexOf(words(brands[id]))>=0;}))return matches[0];}
+  return '';
+}
+function shopeeSelectionPreview(type,lines,rows){
+  var chosen=lines.map(function(c){var r=rows.find(function(r){return r.sku===c.sku;});return r?{row:r,quantity:Number(c.quantity)||1}:null;}).filter(Boolean);
+  if(!chosen.length)return null;
+  if(type==='single'){var r=chosen[0].row;return {preview:true,kind:'single',name:r.displayName,productName:r.productName||r.displayName,variationName:r.variationName,parentSku:r.parentSku,sku:r.sku,gtin:r.gtin,components:[]};}
+  var names=chosen.map(function(c){return c.quantity+' × '+c.row.displayName;}),parents=Array.from(new Set(chosen.map(function(c){return c.row.parentSku;}).filter(Boolean)));
+  return {preview:true,kind:type,name:names.join(' + '),productName:names.join(' + '),variationName:Array.from(new Set(chosen.map(function(c){return c.row.variationName;}).filter(Boolean))).join(' + '),parentSku:parents.length===1?parents[0]:parents.length>1?'Beberapa parent':'',sku:'Belum ditentukan ('+(type==='multipack'?'MP':'BD')+')',gtin:'',components:chosen.map(function(c){return {sku:c.row.sku,name:c.row.displayName,quantity:c.quantity,gtin:c.row.gtin};})};
+}
+</script>

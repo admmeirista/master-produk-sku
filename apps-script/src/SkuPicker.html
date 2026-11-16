@@ -3,7 +3,7 @@ var SkuPicker={
   data:null,at:0,account:'',pending:null,generation:0,
   clear:function(){this.data=null;this.pending=null;this.at=0;this.generation++;},
   load:function(){
-    var key=FastReadCache.key('sku.picker',{});if(key!==this.account){this.clear();this.account=key;}
+    var key=FastReadCache.key('sku.picker',{schema:2});if(key!==this.account){this.clear();this.account=key;}
     if(this.data&&Date.now()-this.at<120000)return Promise.resolve(this.data.rows);
     var hit=FastReadCache.get(key);if(hit){this.data=hit;this.at=Date.now();return Promise.resolve(hit.rows);}
     if(this.pending)return this.pending;

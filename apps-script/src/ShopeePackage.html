@@ -8,7 +8,7 @@ function shopeeSelectionValid(type, lines) {
   return type === 'single' ? lines.length === 1 && Number(lines[0].quantity) === 1 : type === 'multipack' ? lines.length === 1 && Number(lines[0].quantity) >= 2 : lines.length >= 2;
 }
 function shopeeOpenReview(r, done) {
-  var w = can('mapping.write'), type = r.saleType || 'unclear', target = r.target, seq = 0, saving = false, resolved = null, brandId = '';
+  var w = can('mapping.write'), type = r.saleType || 'unclear', target = r.target, seq = 0, saving = false, resolved = null, brandId = '', brandManual=false, pickerRows=[];
   var lines = (r.expectedComponents && r.expectedComponents.length ? r.expectedComponents : target ? target.components : []).map(function(c) { var detail=target&&target.components.find(function(x){return x.sku===c.sku;});return {sku:c.sku,quantity:c.quantity,name:c.name||detail&&detail.name||''}; });
   if (!lines.length) lines = [{sku:'',quantity:type === 'multipack' ? Number(r.quantity)||2 : 1}];
   var m = modal('<header class="sh-review-header"><h3>Periksa pasangan SKU Shopee</h3><p class="muted">Bandingkan produk, pilih SKU barang dan jumlah, lalu setujui.</p></header><div class="sh-review-workspace"><aside class="sh-review-context"><div class="sh-review-context-summary"><b>'+esc(r.name)+'</b><small>'+esc(r.variationName||'Tanpa variasi')+'</small></div><details class="sh-review-comparison" open><summary>Lihat perbandingan Shopee dan master</summary><div class="shopee-compare"><section><div class="eyebrow">SHOPEE</div>' + shopeeFields([['Nama Produk',r.name],['Variasi',r.variationName],['SKU Induk',r.parentSku],['SKU',r.sellerSku],['GTIN',r.gtin]]) + '</section><section><div class="eyebrow">MASTER SISTEM</div><div id="svTarget"></div></section></div></details></aside><section class="sh-review-form"><h4>Pemetaan penjualan</h4>' +
@@ -21,7 +21,9 @@ function shopeeOpenReview(r, done) {
   var barcodeForm=packageBarcode($('#svBarcode',m),target||{},w&&can('product.write'));
   barcodeForm.set(target||{},type==='single');
   function drawTarget() {
-    $('#svTarget',m).innerHTML = shopeeFields([['Nama Produk',target&&(target.productName||target.name)],['Variasi',target&&target.variationName],['SKU Parent',target&&target.parentSku],['SKU',target&&target.sku],['GTIN',target&&target.gtin]]) + (target&&target.kind!=='single'?'<div class="shopee-bom">'+shopeeBom(target.components)+'</div>':'');
+    var shown=target||(typeof shopeeSelectionPreview!=='undefined'?shopeeSelectionPreview(type,lines,pickerRows):null);
+    $('#svTarget',m).innerHTML = shopeeFields([['Nama Produk',shown&&(shown.productName||shown.name)],['Variasi',shown&&shown.variationName],['SKU Parent',shown&&shown.parentSku],['SKU',shown&&shown.sku],['GTIN',shown&&shown.gtin]]) + (shown&&shown.kind!=='single'?'<div class="shopee-bom">'+shopeeBom(shown.components)+'</div>':'');
+    if(shown&&shown.preview)$('#svTarget',m).innerHTML+='<div class="hint">Pratinjau pilihan'+(type==='single'?'':' · SKU dan GTIN paket mengikuti paket yang ditemukan atau dibuat')+'.</div>';
   }
   function selection() { return {saleType:type,components:lines.map(function(c){return {sku:c.sku,quantity:Number(c.quantity)};}),preferredSku:r.targetSku || r.target && r.target.sku || ''}; }
   function buttons() {
@@ -44,9 +46,10 @@ function shopeeOpenReview(r, done) {
     if (mine!==seq || !m.isConnected) return;
     api('shopee.packageResolve',p,{silent:true,quiet:true}).then(function(result) { if(mine!==seq || !m.isConnected)return;accept(result,key); }).catch(function(e) { if(mine!==seq || !m.isConnected)return;$('#svResolution',m).textContent='';$('#svError',m).innerHTML=feList(e);buttons(); });
   },300);
+  function updateBrand(){if(brandManual||!pickerRows.length||typeof shopeeAutoBrand==='undefined')return;var next=shopeeAutoBrand(pickerRows,r,lines);if(next!==brandId){brandId=next;$('#svBrand',m).value=brandId;drawLines();}}
   function changed() {
     if (!w || saving) return;
-    ++seq; resolved=null;target=null;barcodeForm.set({},type==='single');drawTarget();$('#svError',m).innerHTML='';buttons();
+    updateBrand();++seq; resolved=null;target=null;barcodeForm.set({},type==='single');drawTarget();$('#svError',m).innerHTML='';buttons();
     if (!shopeeSelectionValid(type,lines)) {$('#svResolution',m).textContent=type==='bundle'?'Pilih minimal dua SKU barang berbeda dan jumlahnya.':'Pilih SKU barang dan jumlah yang sesuai (satuan 1, MP minimal 2).';return;}
     $('#svResolution',m).textContent='Mencari paket dengan isi yang sama…';
     lookup(seq,shopeeSelectionKey(type,lines),selection());
@@ -57,10 +60,10 @@ function shopeeOpenReview(r, done) {
   }
   drawTarget();drawLines();
   if(!w)return m;
-  $('#svBrand',m).onchange=function(){brandId=this.value;drawLines();};
+  $('#svBrand',m).onchange=function(){brandManual=true;brandId=this.value;drawLines();};
   if(typeof SkuPicker!=='undefined'){
     $('#svPickerStatus',m).textContent='Menyiapkan pilihan SKU…';
-    SkuPicker.load().then(function(rows){if(!m.isConnected)return;var brands={};rows.forEach(function(item){if(item.brandId)brands[item.brandId]=item.brandName;});$('#svBrand',m).innerHTML='<option value="">Semua brand</option>'+Object.keys(brands).sort(function(a,b){return brands[a].localeCompare(brands[b],'id');}).map(function(id){return '<option value="'+esc(id)+'">'+esc(brands[id])+'</option>';}).join('');$('#svBrand',m).value=brandId;$('#svBrand',m).disabled=saving;$('#svPickerStatus',m).textContent='Cari langsung, atau persempit pilihan dengan brand.';}).catch(function(){if(m.isConnected)$('#svPickerStatus',m).textContent='Pilihan belum termuat. Klik kolom SKU untuk mencoba lagi.';});
+    SkuPicker.load().then(function(rows){if(!m.isConnected)return;pickerRows=rows;var brands={};rows.forEach(function(item){if(item.brandId)brands[item.brandId]=item.brandName;});$('#svBrand',m).innerHTML='<option value="">Semua brand</option>'+Object.keys(brands).sort(function(a,b){return brands[a].localeCompare(brands[b],'id');}).map(function(id){return '<option value="'+esc(id)+'">'+esc(brands[id])+'</option>';}).join('');updateBrand();drawTarget();$('#svBrand',m).value=brandId;$('#svBrand',m).disabled=saving;$('#svPickerStatus',m).textContent='Cari langsung, atau persempit pilihan dengan brand.';}).catch(function(){if(m.isConnected)$('#svPickerStatus',m).textContent='Pilihan belum termuat. Klik kolom SKU untuk mencoba lagi.';});
   }
   $('#svType',m).onchange=function(){if(saving)return;type=this.value;if(type==='single'||type==='multipack'){lines=lines.slice(0,1);if(!lines.length)lines=[{sku:'',quantity:1}];lines[0].quantity=type==='single'?1:Math.max(2,Number(lines[0].quantity)||2);}else if(type==='bundle'){while(lines.length<2)lines.push({sku:'',quantity:1});}drawLines();changed();};
   $('#svAdd',m).onclick=function(){if(saving)return;lines.push({sku:'',quantity:1});drawLines();changed();};
@@ -74,7 +77,7 @@ function shopeeOpenReview(r, done) {
     var p={id:r.id,version:r.version,action:action,note:$('#svNote',m).value,requestKey:uid()};
     if(action==='approve') {
       if(type!=='single'&&can('product.write'))p.barcode=barcodeForm.get();
-      if(!resolved.signature && target) Object.assign(p,{sku:target.sku,targetSignature:target.signature,saleType:type,quantity:lines.reduce(function(n,c){return n+Number(c.quantity);},0),components:selection().components});
+      if(target) Object.assign(p,{sku:target.sku,targetSignature:target.signature,saleType:type,quantity:lines.reduce(function(n,c){return n+Number(c.quantity);},0),components:selection().components});
       else {p.selection=selection();p.selection.signature=resolved.signature;p.createPackage=!!create;if(target){p.sku=target.sku;p.targetSignature=target.signature;}}
     }
     saving=true;buttons();$('#svType',m).disabled=true;$('#svBrand',m).disabled=true;$$('#svLines input, #svLines button, #svAdd',m).forEach(function(el){el.disabled=true;});$('#svError',m).innerHTML='';

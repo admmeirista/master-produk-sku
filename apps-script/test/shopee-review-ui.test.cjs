@@ -17,8 +17,18 @@ function ui(write = false) {
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/Shopee.html'), 'utf8').replace(/^<script>\s*/, '').replace(/<\/script>\s*$/, ''), context);
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/PackageForm.html'), 'utf8').replace(/^<script>\s*/, '').replace(/<\/script>\s*$/, ''), context);
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/ShopeePackage.html'), 'utf8').replace(/^<script>\s*/, '').replace(/<\/script>\s*$/, ''), context);
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/ShopeeReviewHelpers.html'), 'utf8').replace(/^<script>\s*/, '').replace(/<\/script>\s*$/, ''), context);
   return { context, modals, calls, elements };
 }
+
+test('brand otomatis dapat diganti manual dan pilihan tetap bertahan saat jenis penjualan berubah; pratinjau terisi sebelum paket ditemukan',async()=>{
+ const {context:c,elements}=ui(true);
+ const rows=[{sku:'PRD000001-001',brandId:'p',brandName:'Purbasari',productName:'Gluta Hya',displayName:'Purbasari Gluta Hya',parentSku:'PRD000001'},{sku:'PRD000002-001',brandId:'v',brandName:'Viva'}];
+ c.SkuPicker={load:()=>Promise.resolve(rows)};
+ c.shopeeOpenReview({id:'x',name:'Purbasari Gluta Hya',saleType:'bundle',expectedComponents:[{sku:rows[0].sku,quantity:1}]},()=>{});await new Promise(setImmediate);
+ assert.equal(elements['#svBrand'].value,'p');assert.match(elements['#svTarget'].innerHTML,/Gluta Hya/);assert.match(elements['#svTarget'].innerHTML,/Belum ditentukan/);
+ elements['#svBrand'].value='v';elements['#svBrand'].onchange();elements['#svType'].value='multipack';elements['#svType'].onchange();assert.equal(elements['#svBrand'].value,'v');
+});
 
 test('Setujui & berikutnya hanya melanjutkan sesudah penyimpanan berhasil; gagal tetap di popup',async()=>{
  const {context,elements,modals}=ui(true);let resolve,reject,saved=[],advance=[];
