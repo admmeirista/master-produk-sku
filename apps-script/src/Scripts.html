@@ -325,7 +325,7 @@ function modal(html, opts) {
   opts = opts || {};
   var bg = document.createElement('div');
   bg.className = 'modal-bg';
-  bg.innerHTML = '<div class="modal ' + (opts.wide ? 'wide' : '') + '">' + html + '</div>';
+  bg.innerHTML = '<div class="modal ' + (opts.wide ? 'wide' : '') + (opts.className?' '+esc(opts.className):'') + '">' + html + '</div>';
   document.body.appendChild(bg);
   var m = bg.firstChild;
   var closed = false;
@@ -393,6 +393,7 @@ function api(action, payload, opts) {
       // perubahan data dari perangkat ini → cache daftar produk di browser dikosongkan
       if (r && r.ok && window.ProductCache && /\.(save|delete|deleteMany|setStatus|commit|import|rename|create|createMany|deprecate|upload|verify)$/.test(action)) ProductCache.clear();
       if(r&&r.ok&&(action==='shopee.review'||/\.(save|delete|deleteMany|setStatus|commit|import|rename|create|createMany|deprecate|upload|verify)$/.test(action)))FastReadCache.clear();
+      if(r&&r.ok&&typeof SkuPicker!=='undefined'&&/^(product|variant|brand|barcode|import)\./.test(action)&&/\.(save|delete|deleteMany|setStatus|commit|import|rename|create|createMany|deprecate|upload|verify|run)$/.test(action))SkuPicker.clear();
       if (r && r.ok) return resolve(r.data);
       var e = (r && r.error) || { message: 'Respon server tidak valid.', code: 'BAD_RESPONSE' };
       var err = { code: e.code || 'ERROR', message: e.message || 'Terjadi kesalahan.', details: e.details || [] };
@@ -442,7 +443,7 @@ function combo(host, o) {
   var query = function (q) {
     var my = ++seq;
     if (!items.length) list.innerHTML = '<div class="cb-empty">Memuat…</div>';
-    Promise.resolve(o.load(q)).then(function (res) { if (my !== seq) return; items = res || []; active = items.length ? 0 : canCreate() ? 0 : -1; render(); }).catch(function () {});
+    Promise.resolve(o.load(q)).then(function (res) { if (my !== seq) return; items = res || []; active = items.length ? 0 : canCreate() ? 0 : -1; render(); }).catch(function () {if(my!==seq)return;items=[];active=-1;list.innerHTML='<div class="cb-empty" role="alert">Pilihan belum termuat. Ketik ulang untuk mencoba lagi.</div>';});
   };
   var openList = function () { if (o.disabled) return; open = true; list.classList.remove('hidden'); query(input.value && cur && input.value === o.label(cur) ? '' : input.value); };
   var close = function () { open = false; list.classList.add('hidden'); show(); };
@@ -623,7 +624,7 @@ var App = {
     }).catch(function (e) { if (e.code !== 'UNAUTHENTICATED' && !cached) App.showLogin(e.message); });
   },
   remember: function (me) { App.me = me; Store.set('rpm_me', JSON.stringify(me)); },
-  forget: function () { if(typeof SHOPEE_BATCH_ID!=='undefined')SHOPEE_BATCH_ID=''; if(typeof SHOPEE_SELECTED!=='undefined')SHOPEE_SELECTED=Object.create(null);if(typeof SHOPEE_WORKFILE!=='undefined')SHOPEE_WORKFILE=null;FastReadCache.clear(); App.token = null; App.me = null; Store.del('rpm_token'); Store.del('rpm_me'); Ref.data = {}; },
+  forget: function () { if(typeof SkuPicker!=='undefined')SkuPicker.clear(); if(typeof SHOPEE_BATCH_ID!=='undefined')SHOPEE_BATCH_ID=''; if(typeof SHOPEE_SELECTED!=='undefined')SHOPEE_SELECTED=Object.create(null);if(typeof SHOPEE_WORKFILE!=='undefined')SHOPEE_WORKFILE=null;FastReadCache.clear(); App.token = null; App.me = null; Store.del('rpm_token'); Store.del('rpm_me'); Ref.data = {}; },
 
   authShell: function (formHtml) {
     var flow = [['camera', 'Scan barcode', 'Kamera HP langsung mengenali SKU'], ['plus', 'Registrasi SKU', 'Barcode terisi otomatis, tanpa ketik ulang'],

@@ -1,0 +1,15 @@
+<script>
+var SkuPicker={
+  data:null,at:0,account:'',pending:null,generation:0,
+  clear:function(){this.data=null;this.pending=null;this.at=0;this.generation++;},
+  load:function(){
+    var key=FastReadCache.key('sku.picker',{});if(key!==this.account){this.clear();this.account=key;}
+    if(this.data&&Date.now()-this.at<120000)return Promise.resolve(this.data.rows);
+    var hit=FastReadCache.get(key);if(hit){this.data=hit;this.at=Date.now();return Promise.resolve(hit.rows);}
+    if(this.pending)return this.pending;
+    var generation=this.generation,pending=api('sku.picker',{}, {silent:true,quiet:true}).then(function(d){if(generation!==SkuPicker.generation||key!==SkuPicker.account)return [];SkuPicker.data=d;SkuPicker.at=Date.now();FastReadCache.put(key,d);return d.rows;}).finally(function(){if(SkuPicker.pending===pending)SkuPicker.pending=null;});this.pending=pending;return pending;
+  },
+  filter:function(rows,q,brandId){var words=String(q||'').toLowerCase().trim().split(/\s+/).filter(Boolean);return rows.filter(function(r){if(brandId&&r.brandId!==brandId)return false;var text=[r.sku,r.displayName,r.brandName,r.barcode,r.gtin,r.internalBarcode].join(' ').toLowerCase();return words.every(function(w){return text.indexOf(w)>=0;});}).sort(function(a,b){var exact=function(r){return [r.sku,r.barcode,r.gtin,r.internalBarcode].some(function(v){return v&&String(v).toLowerCase()===String(q||'').toLowerCase().trim();})?1:0;};return exact(b)-exact(a);}).slice(0,30);},
+  search:function(q,brandId){return this.load().then(function(rows){return SkuPicker.filter(rows,q,brandId);});}
+};
+</script>

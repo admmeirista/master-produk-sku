@@ -137,6 +137,7 @@ const ROUTES = {
   'shopee.batchGet': { perm: 'product.read', fn: (u, p) => shopeeBatchGet_(p) },
   'shopee.review': { perm: 'mapping.write', write: true, fn: (u, p) => shopeeReview_(u, p) },
   'sku.search': { perm: 'product.read', fn: (u, p) => skuSearch_(p.q, p.kinds) },
+  'sku.picker': { perm: 'product.read', fn: () => skuPickerIndex_() },
 
   'export.data': { perm: 'export.run', write: true, fn: (u, p) => exportData_(u, p) },
   'export.toSheet': { perm: 'export.run', write: true, fn: (u, p) => exportToSheet_(u, p) },

@@ -2,10 +2,10 @@
 /* ═════════════ Halaman operasional: Data Quality, Packaging & Bundle, Channel SKU Mapping (modul supplier dihapus di v5; data lama tetap di sheet) ═════════════ */
 
 /** Searchable dropdown SKU (SKU produk / kemasan / bundle aktif). */
-function skuCombo(host, kinds, onChange, placeholder, value) {
+function skuCombo(host, kinds, onChange, placeholder, value, filters) {
   return combo(host, {
     value: value || null, placeholder: placeholder || 'Cari SKU, nama, atau barcode…',
-    load: function (q) { return api('sku.search', { q: q, kinds: kinds }, { quiet: true, silent: true }); },
+    load: function (q) { return kinds&&kinds.length===1&&kinds[0]==='variant'?SkuPicker.search(q,filters&&filters.brandId):api('sku.search', { q: q, kinds: kinds }, { quiet: true, silent: true }); },
     label: function (it) { return it.sku + ' — ' + it.displayName; }, sub: function (it) { return (it.kind === 'bundle' ? 'Paket' : it.kind === 'pack' ? 'Kemasan' : 'SKU produk') + (it.barcode ? ' · ' + it.barcode : ''); },
     empty: 'Tidak ada SKU aktif yang cocok', onChange: onChange
   });

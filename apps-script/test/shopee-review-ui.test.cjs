@@ -45,7 +45,7 @@ test('popup menampilkan urutan kolom pembanding dan menyetujui sekali tanpa cekl
   context.shopeeReviewDialog(row,()=>{});
   assert.doesNotMatch(modals[0].html,/checkbox|svAck/);
   const sourceLabels=[...modals[0].html.matchAll(/<dt>(.*?)<\/dt>/g)].map(m=>m[1]);
-  assert.deepEqual(sourceLabels,['Nama Produk','Variasi','Kode Produk','Kode Variasi','SKU Induk','SKU','GTIN']);
+  assert.deepEqual(sourceLabels,['Nama Produk','Variasi','SKU Induk','SKU','GTIN']);
   const targetLabels=[...elements['#svTarget'].innerHTML.matchAll(/<dt>(.*?)<\/dt>/g)].map(m=>m[1]);
   assert.deepEqual(targetLabels,['Nama Produk','Variasi','SKU Parent','SKU','GTIN']);
   context.$('#svType').value='multipack';context.$('#svQty').value='3';context.$('#svNote').value='';
