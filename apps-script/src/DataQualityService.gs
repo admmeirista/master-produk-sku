@@ -5,9 +5,9 @@
  */
 
 /** Hasil pemeriksaan kualitas dari cache per versi data (pemeriksaan berat — dijalankan ulang hanya setelah ada perubahan). */
-function dataQualityCached_() {
-  const key = 'dq1:' + dataVersion_();
-  const hit = cacheGetBig_(key);
+function dataQualityCached_(options) {
+  const key = 'dq2:' + dataVersion_();
+  const hit = options && options.force ? null : cacheGetBig_(key);
   if (hit) return hit;
   const d = dataQuality_();
   cachePutBig_(key, d);
@@ -46,10 +46,11 @@ function dataQuality_() {
   const combos = [];
   Object.values(groupBy_(V.filter((v) => live(v.Status)), 'ProductID')).forEach((list) => dupBy(list, (v) => v.AttributeKey || '(tanpa atribut)').forEach((d) => combos.push({ productId: d.items[0].ProductID, product: (pById[d.items[0].ProductID] || {}).ProductName, combination: d.key, skus: d.items.map((v) => v.SKU).join(', ') })));
   add('dup_variant_combo', 'Kombinasi varian ganda dalam satu produk', 'error', combos, 'Koreksi atribut salah satu varian, atau deprecate SKU duplikatnya.');
-  ['brand', 'category'].forEach((kind) => {
+  ['brand'].forEach((kind) => {
     const k = MASTER_KIND[kind];
     add('dup_' + kind, k.label + ' ganda (nama sama setelah normalisasi)', 'error', dupBy(db_(k.table).filter((r) => r.Status !== STATUS.DELETED), (r) => r.NameKey).map((d) => ({ name: d.items.map((r) => r[k.name] + ' (' + r[k.code] + ')').join(' | ') })), 'Nonaktifkan duplikat yang tidak dipakai; kode yang sudah dipakai tetap dipertahankan.');
   });
+  add('dup_category', 'Kategori ganda (jalur sama atau ID kanal sama)', 'error', qualityCategoryDuplicates_(db_('MASTER_CATEGORIES').rows()), 'Nama yang sama pada cabang berbeda adalah kategori yang berbeda. Periksa hanya duplikat pada jalur yang sama atau ID kanal yang sama; pertahankan referensi produk sebelum menonaktifkan duplikat.');
   const ch = db_('EXTERNAL_SKU_MAPPINGS').filter((m) => m.IsActive && m.System !== 'legacy');
   add('dup_channel_map', 'Mapping kanal ganda', 'error', dupBy(ch, (m) => (MARKETPLACES[m.System] ? m.System + '|' + String(m.StoreAccount || '').toUpperCase() + '|' + m.ExternalProductId + '|' + (m.ExternalVariationId || '') : m.System + '|' + String(m.StoreAccount || '').toUpperCase() + '|' + String(m.ExternalSku).toUpperCase())).map((d) => ({ channel: CHANNEL_LABEL[d.items[0].System], listing: d.key.split('|').slice(2).join(' / '), skus: d.items.map((m) => mappingTarget_(m).internalSku).join(', ') })), 'Satu listing/variasi hanya boleh menunjuk satu SKU internal. Nonaktifkan mapping yang salah.');
 
@@ -85,7 +86,8 @@ function dataQuality_() {
   const bundles = db_('BUNDLE_MASTERS').filter((b) => b.Status === STATUS.ACTIVE);
   bundles.forEach((b) => db_('BUNDLE_COMPONENTS').filter((c) => c.BundleID === b.BundleID && c.Status === STATUS.ACTIVE).forEach((c) => notActive(vById[c.VariantID]) && inactiveUse.push(Object.assign(vLabel(vById[c.VariantID] || {}), { usedBy: 'Bundle ' + b.BundleSKU }))));
   add('inactive_in_use', 'SKU tidak aktif masih dipakai mapping / bundle aktif', 'warn', inactiveUse, 'Pindahkan mapping ke SKU pengganti (controlled deprecation) atau nonaktifkan mapping/bundle tersebut.');
-  add('parent_without_child', 'Parent tanpa Child SKU yang valid', 'error', P.filter((p) => [STATUS.ACTIVE, STATUS.DRAFT].indexOf(p.Status) >= 0 && !V.some((v) => v.ProductID === p.ProductID && [STATUS.ACTIVE, STATUS.DRAFT].indexOf(v.Status) >= 0)).map((p) => ({ productId: p.ProductID, productCode: p.ProductCode, product: p.ProductName, status: p.Status })), 'Tambahkan / aktifkan Child SKU, atau ubah status produk menjadi Discontinued/Archived.');
+  const parentsWithChild = new Set(V.filter(v=>[STATUS.ACTIVE,STATUS.DRAFT].includes(v.Status)).map(v=>v.ProductID));
+  add('parent_without_child', 'Parent tanpa Child SKU yang valid', 'error', P.filter((p) => [STATUS.ACTIVE, STATUS.DRAFT].indexOf(p.Status) >= 0 && !parentsWithChild.has(p.ProductID)).map((p) => ({ productId: p.ProductID, productCode: p.ProductCode, product: p.ProductName, status: p.Status })), 'Tambahkan / aktifkan Child SKU, atau ubah status produk menjadi Discontinued/Archived.');
   const badBundles = [];
   db_('BUNDLE_MASTERS')
     .filter((b) => [STATUS.ACTIVE, STATUS.DRAFT].indexOf(b.Status) >= 0)
@@ -107,17 +109,8 @@ function dataQuality_() {
   add('variant_no_barcode', 'SKU produk aktif belum ada GTIN / barcode (perlu didata)', 'warn', V.filter((v) => [STATUS.ACTIVE, STATUS.DRAFT].indexOf(v.Status) >= 0 && !v.GTIN && !v.InternalBarcode && [STATUS.ACTIVE, STATUS.DRAFT].indexOf((pById[v.ProductID] || {}).Status) >= 0).map(vLabel), 'Cek fisik barang: scan GTIN di Edit produk › Varian & Barcode, atau pilih "Tidak ada GTIN" agar sistem membuat nomor internal.');
   const dims = dimensionsByVariant_();
   add('packaging_incomplete', 'Data kemasan belum lengkap (dimensi/berat satuan dasar)', 'info', V.filter((v) => v.Status === STATUS.ACTIVE && (pById[v.ProductID] || {}).Status === STATUS.ACTIVE && !packagingComplete_(v.BaseUnit || (pById[v.ProductID] || {}).BaseUnit, dims[v.VariantID])).map(vLabel), 'Lengkapi panjang, lebar, tinggi, dan berat di Edit produk › Kemasan & Logistik. Tidak memengaruhi SKU.');
-  const threshold = Number(getSettings_().fuzzy_threshold) || 0.82;
-  const pairs = [];
-  Object.values(groupBy_(P.filter((p) => live(p.Status)), 'BrandID')).forEach((list) => {
-    for (let i = 0; i < list.length && pairs.length < 300; i++)
-      for (let j = i + 1; j < list.length; j++) {
-        const a = list[i], b = list[j];
-        const score = a.NameKey === b.NameKey ? 1 : nameSimilarity(a.ProductName, b.ProductName);
-        if (score >= threshold) pairs.push({ brand: (brands[a.BrandID] || {}).BrandName, a: a.ProductName + ' (' + a.ProductCode + ')', b: b.ProductName + ' (' + b.ProductCode + ')', score: Math.round(score * 100) + '%', productId: a.ProductID, productId2: b.ProductID });
-      }
-  });
-  add('similar_parents', 'Kandidat Parent ganda (nama mirip)', 'warn', pairs, 'Bandingkan barcode & ukuran. Bila barang sama: pindahkan varian/mapping ke produk utama lalu deprecate duplikatnya. Tidak pernah digabung otomatis.');
+  const pairs = qualityParentPairs_(P.filter(p=>live(p.Status)),brands);
+  add('similar_parents', 'Parent ganda (skor ≥ 90%: sama)', 'error', pairs, 'Skor minimal 90% dalam brand yang sama ditandai sebagai parent sama. Bandingkan barcode, ukuran dan varian sebelum memindahkan relasi atau menonaktifkan duplikat. Tidak digabung otomatis.');
 
   const summary = { error: 0, warn: 0, info: 0 };
   sections.forEach((s) => (summary[s.severity] += s.count));

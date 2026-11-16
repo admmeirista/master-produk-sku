@@ -371,7 +371,7 @@ function busy(btn, promise) {
  * Di luar (GitHub Pages): fetch POST ke URL Web App (doPost) — window.RPM_API_URL.
  * opts: silent (tanpa toast error), quiet (tanpa progress bar). Error: { code, message, details }. */
 var FastReadCache={m:{},pending:{},generation:0,prefix:'meirista_fast_v1:',ttl:120000,
-  key:function(action,p){return this.prefix+JSON.stringify([App.me&&(App.me.id||App.me.email),App.me&&App.me.role,action,p||{}]);},
+  key:function(action,p){return this.prefix+JSON.stringify([App.me&&((App.me.user||App.me).id||(App.me.user||App.me).email),App.me&&(App.me.user||App.me).role,action,p||{}]);},
   get:function(key){var v=this.m[key];try{if(!v)v=JSON.parse(sessionStorage.getItem(key)||'null');}catch(e){}return v&&Date.now()-v.at<this.ttl?JSON.parse(JSON.stringify(v.data)):null;},
   put:function(key,data){var v={at:Date.now(),data:data};this.m[key]=v;var keys=Object.keys(this.m);if(keys.length>12){var old=keys[0];delete this.m[old];try{sessionStorage.removeItem(old);}catch(e){}}try{sessionStorage.setItem(key,JSON.stringify(v));}catch(e){}},
   clear:function(){this.m={};this.pending={};this.generation++;try{for(var i=sessionStorage.length-1;i>=0;i--){var key=sessionStorage.key(i);if(key.indexOf(this.prefix)===0)sessionStorage.removeItem(key);}}catch(e){}}

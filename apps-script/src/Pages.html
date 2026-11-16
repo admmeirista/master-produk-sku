@@ -268,13 +268,13 @@ Pages.products = function (main, arg) {
   // Daftar dari cache browser tampil seketika; data terbaru diambil di belakang lalu menggantikan bila berubah.
   var seq = 0;
   var load = function () {
-    var box = $('#pl', main), my = ++seq, key = JSON.stringify(f), hit = ProductCache.get(key);
+    var box = $('#pl', main), my = ++seq, key = JSON.stringify(f), hit = ProductCache.get(key), generation=FastReadCache.generation;
     if (hit) render(hit); else box.innerHTML = loadingBox();
-    api('product.list', f, { quiet: !!hit }).then(function (d) {
-      if (my !== seq || !$('#pl', main)) return;
+    fastRead('product.list', f, function (d) {
+      if (my !== seq || generation!==FastReadCache.generation || !$('#pl', main)) return;
       var same = hit && JSON.stringify(hit) === JSON.stringify(d);
-      ProductCache.put(key, d);
       if (!same) render(d);
+      hit=d;
     }).catch(function (e) { if (!hit) box.innerHTML = errBox(e.message); });
   };
   $('#fq', main).oninput = debounce(function (e) { f.search = e.target.value; f.page = 1; load(); }, 300);
@@ -291,10 +291,9 @@ function prodThumb(url, cls) {
 }
 /** Cache daftar produk di browser (per filter), dikosongkan saat data diubah dari perangkat ini. */
 var ProductCache = {
-  m: {}, keys: [],
-  get: function (k) { return this.m[k] || null; },
-  put: function (k, v) { if (!this.m[k]) { this.keys.push(k); if (this.keys.length > 30) delete this.m[this.keys.shift()]; } this.m[k] = v; },
-  clear: function () { this.m = {}; this.keys = []; SkuDetailCache = {}; }
+  get:function(k){return FastReadCache.get(FastReadCache.key('product.list',JSON.parse(k)));},
+  put:function(k,v){FastReadCache.put(FastReadCache.key('product.list',JSON.parse(k)),v);},
+  clear:function(){FastReadCache.clear();SkuDetailCache={};}
 };
 /** Baris ringkas Kode SKU Produk (dari indeks daftar). */
 function skuRowsHtml(r) {

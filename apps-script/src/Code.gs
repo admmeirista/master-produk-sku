@@ -39,7 +39,7 @@ function include(name) {
 const ROUTES = {
   'dashboard.get': { perm: 'product.read', fn: () => dashboard_() },
 
-  'brand.list': { perm: 'product.read', fn: (u, p) => brandList_(p) },
+  'brand.list': { perm: 'product.read', fn: (u, p) => masterListCached_('brand',p) },
   'brand.preview': { perm: 'product.read', fn: (u, p) => brandPreview_(p.name) },
   'brand.create': { perm: 'master.write', write: true, fn: (u, p) => brandCreate_(u, p) },
   'brand.createMany': { perm: 'master.write', write: true, fn: (u, p) => brandCreateMany_(u, p) },
@@ -50,7 +50,7 @@ const ROUTES = {
   'brand.importPreview': { perm: 'master.write', fn: (u, p) => masterImport_(u, 'brand', p, { dryRun: true }) },
   'brand.import': { perm: 'master.write', write: true, fn: (u, p) => masterImport_(u, 'brand', p) },
 
-  'category.list': { perm: 'product.read', fn: (u, p) => categoryList_(p) },
+  'category.list': { perm: 'product.read', fn: (u, p) => masterListCached_('category',p) },
   'category.preview': { perm: 'product.read', fn: (u, p) => categoryPreview_(p.name) },
   'category.create': { perm: 'master.write', write: true, fn: (u, p) => categoryCreate_(u, p) },
   'category.createMany': { perm: 'master.write', write: true, fn: (u, p) => categoryCreateMany_(u, p) },
@@ -61,7 +61,7 @@ const ROUTES = {
   'category.importPreview': { perm: 'master.write', fn: (u, p) => masterImport_(u, 'category', p, { dryRun: true }) },
   'category.import': { perm: 'master.write', write: true, fn: (u, p) => masterImport_(u, 'category', p) },
 
-  'product.list': { perm: 'product.read', fn: (u, p) => productList_(p) },
+  'product.list': { perm: 'product.read', fn: (u, p) => productListCached_(p) },
   'product.search': { perm: 'product.read', fn: (u, p) => productSearch_(p.q) },
   'product.get': { perm: 'product.read', fn: (u, p) => productDetailCached_(p.id) },
   'product.check': { perm: 'product.read', fn: (u, p) => productCheck_(p) },
@@ -104,7 +104,7 @@ const ROUTES = {
   'bundle.setStatus': { perm: 'product.write', write: true, fn: (u, p) => bundleSetStatus_(u, p) },
   'bundle.resolve': { perm: 'product.read', fn: (u, p) => bundleResolve_(p) },
 
-  'quality.get': { perm: 'product.read', fn: () => dataQualityCached_() },
+  'quality.get': { perm: 'product.read', fn: (u,p) => dataQualityCached_(p) },
   'attribute.list': { perm: 'product.read', fn: (u, p) => attributeValues_(p) },
   'attribute.save': { perm: 'master.write', write: true, fn: (u, p) => attributeValueSave_(u, p) },
   'attribute.delete': { perm: 'master.write', write: true, fn: (u, p) => attributeValueDelete_(u, p) },

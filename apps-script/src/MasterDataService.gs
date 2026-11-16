@@ -27,6 +27,11 @@ function masterView_(k, r, counts) {
   return v;
 }
 
+function masterListCached_(kind,f){
+  const key='ml1:'+dataVersion_()+':'+kind+':'+shopeeSignature_(f||{}),hit=cacheGetBig_(key);
+  if(hit)return hit;
+  const result=masterList_(kind,f);cachePutBig_(key,result);return result;
+}
 function masterList_(kind, f) {
   const k = masterCfg_(kind);
   f = f || {};

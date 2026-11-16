@@ -199,6 +199,11 @@ function productIndex_() {
   return rows;
 }
 
+function productListCached_(f) {
+  const key='pl1:'+dataVersion_()+':'+shopeeSignature_(f||{}),hit=cacheGetBig_(key);
+  if(hit)return hit;
+  const result=productList_(f);cachePutBig_(key,result);return result;
+}
 function productList_(f) {
   f = f || {};
   const q = cleanText(f.search);

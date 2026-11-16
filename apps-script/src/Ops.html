@@ -14,31 +14,22 @@ function feList(err) { return '<ul class="err-list">' + (err.details && err.deta
 
 /* ───────── Data Quality ───────── */
 Pages.quality = function (main) {
-  main.innerHTML = pageHead('Master data', 'Kualitas Data', '<button class="btn" id="rq">' + icon('refresh') + 'Periksa ulang</button>', 'Deteksi duplikasi & inkonsistensi master data. Sistem hanya memberi rekomendasi — tidak ada merge otomatis.') + '<div id="qb">' + loadingBox('Memeriksa master data…') + '</div>';
-  masterTabs(main, 'quality');
-  var load = function () {
-    $('#qb', main).innerHTML = loadingBox('Memeriksa master data…');
-    api('quality.get').then(function (q) {
-      var sev = { error: ['ERR', 'Harus diperbaiki'], warn: ['NONE', 'Perlu dicek'], info: ['CHECK', 'Info'] };
-      $('#qb', main).innerHTML = '<div class="kpi4" style="grid-template-columns:repeat(3,minmax(0,1fr))">' +
-        '<div class="kpi ' + (q.summary.error ? 'alert' : '') + '"><div class="top"><span class="chip">' + icon('alertCircle') + '</span>Harus diperbaiki</div><div class="v">' + fmtNum(q.summary.error) + '</div><div class="s">identitas ganda / konflik / tidak konsisten</div></div>' +
-        '<div class="kpi"><div class="top"><span class="chip">' + icon('alert') + '</span>Perlu dicek</div><div class="v">' + fmtNum(q.summary.warn) + '</div><div class="s">kandidat duplikat, SKU tidak aktif terpakai</div></div>' +
-        '<div class="kpi"><div class="top"><span class="chip">' + icon('barcode') + '</span>Info</div><div class="v">' + fmtNum(q.summary.info) + '</div><div class="s">kelengkapan data</div></div></div>' +
-        q.sections.map(function (s, i) {
-          var cols = s.rows.length ? Object.keys(s.rows[0]).filter(function (k) { return ['productId', 'productId2', 'bundleId'].indexOf(k) < 0; }) : [];
-          return '<div class="vcard' + (s.count && s.severity !== 'info' ? ' open' : '') + '" data-q="' + i + '"><div class="vcard-h">' + icon('chevron', 'chev') + '<span class="badge b-' + sev[s.severity][0] + '">' + sev[s.severity][1] + '</span><span class="nm">' + esc(s.label) + '</span><span class="right"><b>' + s.count + '</b></span></div>' +
-            '<div class="vcard-b"><div class="info-box">' + icon('zap') + '<span>' + esc(s.recommendation) + '</span></div>' +
-            (s.count ? '<div class="tbl-x" style="margin-top:10px"><table class="t"><thead><tr>' + cols.map(function (c) { return '<th>' + esc(c) + '</th>'; }).join('') + '<th></th></tr></thead><tbody>' + s.rows.map(function (r) {
-              return '<tr>' + cols.map(function (c) { return '<td>' + (c === 'status' ? badge(r[c]) : esc(r[c] === null || r[c] === undefined ? '' : r[c])) + '</td>'; }).join('') + '<td class="nowrap">' + (r.productId ? '<button class="btn sm ghost" data-p="' + esc(r.productId) + '">Buka</button>' : '') + (r.productId2 ? '<button class="btn sm ghost" data-p="' + esc(r.productId2) + '">Buka 2</button>' : '') + (r.bundleId ? '<button class="btn sm ghost" data-b="' + esc(r.bundleId) + '">Bundle</button>' : '') + '</td></tr>';
-            }).join('') + '</tbody></table></div>' : '<div class="muted" style="margin-top:8px">Tidak ada temuan.</div>') + '</div></div>';
-        }).join('') + '<div class="hint">Diperiksa ' + fmtDate(q.checkedAt) + '</div>';
-      $$('.vcard-h', main).forEach(function (h) { h.onclick = function () { h.parentNode.classList.toggle('open'); }; });
-      $$('[data-p]', main).forEach(function (b) { b.onclick = function () { App.go('product', b.getAttribute('data-p')); }; });
-      $$('[data-b]', main).forEach(function (b) { b.onclick = function () { bundleEditor(b.getAttribute('data-b')); }; });
-    }).catch(function (e) { $('#qb', main).innerHTML = errBox(e.message); });
-  };
-  $('#rq', main).onclick = load;
-  load();
+  main.innerHTML=pageHead('Katalog','Kualitas Data','<button class="btn" id="rq">'+icon('refresh')+'Periksa ulang</button>','Parent dengan skor minimal 90% pada brand yang sama ditandai sama. Kategori diperiksa berdasarkan jalur. Buka kelompok temuan untuk melihat rinciannya.')+'<div id="qb">'+loadingBox('Memeriksa master data…')+'</div>';
+  masterTabs(main,'quality');var sequence=0;
+  function render(q){
+    if(!main.isConnected)return;
+    var sev={error:['ERR','Harus diperbaiki'],warn:['NONE','Perlu dicek'],info:['CHECK','Info']};
+    $('#qb',main).innerHTML='<div class="kpi4" style="grid-template-columns:repeat(3,minmax(0,1fr))">'+[['error','Harus diperbaiki'],['warn','Perlu dicek'],['info','Info']].map(function(x){return '<div class="kpi"><div class="top">'+x[1]+'</div><div class="v">'+fmtNum(q.summary[x[0]])+'</div><div class="s">temuan</div></div>';}).join('')+'</div>'+q.sections.map(function(s,i){return '<div class="vcard" data-q="'+i+'"><div class="vcard-h" role="button" tabindex="0" aria-expanded="false">'+icon('chevron','chev')+'<span class="badge b-'+sev[s.severity][0]+'">'+sev[s.severity][1]+'</span><span class="nm">'+esc(s.label)+'</span><span class="right"><b>'+fmtNum(s.count)+'</b></span></div><div class="vcard-b" data-quality-body></div></div>';}).join('')+'<div class="hint">Diperiksa '+fmtDate(q.checkedAt)+'</div>';
+    $$('.vcard-h',main).forEach(function(h){
+      function toggle(){var card=h.parentNode,on=!card.classList.contains('open');card.classList.toggle('open',on);h.setAttribute('aria-expanded',String(on));var body=$('[data-quality-body]',card);if(!on||body.dataset.loaded)return;body.dataset.loaded='1';var s=q.sections[Number(card.getAttribute('data-q'))],cols=s.rows.length?Object.keys(s.rows[0]).filter(function(k){return ['productId','productId2','bundleId'].indexOf(k)<0;}):[];
+        body.innerHTML='<div class="info-box">'+icon('zap')+'<span>'+esc(s.recommendation)+'</span></div>'+(s.count?'<div class="tbl-x" style="margin-top:10px"><table class="t"><thead><tr>'+cols.map(function(c){return '<th>'+esc(c)+'</th>';}).join('')+'<th></th></tr></thead><tbody>'+s.rows.map(function(r){return '<tr>'+cols.map(function(c){return '<td>'+(c==='status'?badge(r[c]):esc(r[c]===null||r[c]===undefined?'':r[c]))+'</td>';}).join('')+'<td class="nowrap">'+(r.productId?'<button class="btn sm ghost" data-p="'+esc(r.productId)+'">Buka</button>':'')+(r.productId2?'<button class="btn sm ghost" data-p="'+esc(r.productId2)+'">Buka 2</button>':'')+(r.bundleId?'<button class="btn sm ghost" data-b="'+esc(r.bundleId)+'">Paket</button>':'')+'</td></tr>';}).join('')+'</tbody></table></div>'+(s.count>s.rows.length?'<p class="hint">Menampilkan '+s.rows.length+' dari '+s.count+' temuan.</p>':''):'<p class="muted">Tidak ada temuan.</p>');
+        $$('[data-p]',body).forEach(function(b){b.onclick=function(){App.go('product',b.getAttribute('data-p'));};});$$('[data-b]',body).forEach(function(b){b.onclick=function(){bundleEditor(b.getAttribute('data-b'));};});
+      }
+      h.onclick=toggle;h.onkeydown=function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();toggle();}};
+    });
+  }
+  function load(force){var mine=++sequence;$('#rq',main).disabled=true;var request=force?api('quality.get',{force:true}).then(function(q){FastReadCache.put(FastReadCache.key('quality.get',{}),q);if(mine===sequence)render(q);}):fastRead('quality.get',{},function(q){if(mine===sequence)render(q);});request.catch(function(e){if(main.isConnected&&mine===sequence)$('#qb',main).innerHTML=errBox(e.message);}).finally(function(){if(main.isConnected&&mine===sequence)$('#rq',main).disabled=false;});}
+  $('#rq',main).onclick=function(){load(true);};load(false);
 };
 
 /* ───────── Packaging & Bundle ───────── */

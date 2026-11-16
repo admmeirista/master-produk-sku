@@ -99,15 +99,22 @@ function extractSizes_(name) {
 }
 /** Skor 0..1. Ukuran berbeda (100ml vs 200ml) menurunkan skor. Hanya untuk PERINGATAN, tidak pernah auto-merge. */
 function nameSimilarity(a, b) {
-  const na = normalizeName(a), nb = normalizeName(b);
+  return nameSimilarityPrepared_(prepareNameSimilarity_(a), prepareNameSimilarity_(b));
+}
+function prepareNameSimilarity_(name) {
+  const normalized=normalizeName(name), tokens=new Set(normalized.split(' '));
+  return {normalized,tokens,sorted:Array.from(tokens).sort().join(' '),sizes:extractSizes_(name)};
+}
+function nameSimilarityPrepared_(a, b) {
+  const na = a.normalized, nb = b.normalized;
   if (!na || !nb) return 0;
   if (na === nb) return 1;
-  const ta = new Set(na.split(' ')), tb = new Set(nb.split(' '));
+  const ta = a.tokens, tb = b.tokens;
   let inter = 0;
   ta.forEach((t) => tb.has(t) && inter++);
   const jaccard = inter / (ta.size + tb.size - inter);
-  let score = Math.max(jaccard, ratio_(Array.from(ta).sort().join(' '), Array.from(tb).sort().join(' ')), ratio_(na, nb));
-  const sa = extractSizes_(a), sb = extractSizes_(b);
+  let score = Math.max(jaccard, ratio_(a.sorted, b.sorted), ratio_(na, nb));
+  const sa = a.sizes, sb = b.sizes;
   if (sa && sb && sa !== sb) score *= 0.75;
   return Math.round(score * 1000) / 1000;
 }

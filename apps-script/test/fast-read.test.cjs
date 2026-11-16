@@ -1,4 +1,10 @@
 const test=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs'),path=require('node:path');
+
+test('kunci cache mengikuti struktur sesi aplikasi yang sebenarnya (me.user)',()=>{
+ const c={App:{me:{user:{id:'a',email:'a@local',role:'viewer'}}}};
+ const s=fs.readFileSync(path.join(__dirname,'../src/Scripts.html'),'utf8');vm.runInNewContext(s.slice(s.indexOf('var FastReadCache='),s.indexOf('function api(')),c);
+ const a=c.FastReadCache.key('quality.get',{});c.App.me={user:{id:'b',email:'b@local',role:'viewer'}};assert.notEqual(c.FastReadCache.key('quality.get',{}),a);
+});
 test('cache browser menampilkan snapshot langsung, menyegarkan data, terpisah per akun dan tidak menerima respons lama setelah invalidasi',async()=>{
  const data=new Map(),pending=[];let now=1000;
  const storage={getItem:k=>data.get(k)||null,setItem:(k,v)=>data.set(k,v),removeItem:k=>data.delete(k),key:i=>[...data.keys()][i],get length(){return data.size;}};
