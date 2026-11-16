@@ -27,6 +27,8 @@
     <?!= include('Wizard'); ?>
     <?!= include('Photo'); ?>
     <?!= include('Mobile'); ?>
-    <script>App.start();</script>
+    <?!= include('AppUpdate'); ?>
+    <script>window.RPM_NATIVE_VERSION = <?!= JSON.stringify(appUiVersion_()); ?>;</script>
+    <script>App.start();AppUpdate.start();</script>
   </body>
 </html>

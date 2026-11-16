@@ -3,6 +3,7 @@ function shopeeSalesProfileInstall_(profile){
   if(!profile||!/^sales\d{4}_\d{8}$/.test(profile.id)||!profile.store||!Array.isArray(profile.soldVariations)||!Array.isArray(profile.soldProducts))throw new AppError('Profil penjualan tidak valid.');
   profile.soldVariations.forEach(p=>{if(!Array.isArray(p)||p.length!==2||!p.every(v=>/^\d{1,25}$/.test(v)))throw new AppError('ID variasi penjualan tidak valid.');});
   if(profile.soldProducts.some(p=>!/^\d{3,25}$/.test(p)))throw new AppError('ID produk penjualan tidak valid.');
+  if(profile.productSales&&Object.keys(profile.productSales).some(id=>!/^\d{3,25}$/.test(id)||typeof profile.productSales[id]!=='number'||!Number.isFinite(profile.productSales[id])||profile.productSales[id]<0))throw new AppError('Penjualan produk harus berisi ID valid dan nilai rupiah nonnegatif.');
   const json=JSON.stringify(profile);if(json.length>300000)throw new AppError('Profil penjualan terlalu besar.');
   const props=PropertiesService.getScriptProperties(),size=7000,count=Math.ceil(json.length/size);
   for(let i=0;i<count;i++)props.setProperty(profile.id+':'+i,json.slice(i*size,(i+1)*size));

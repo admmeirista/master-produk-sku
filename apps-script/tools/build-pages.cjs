@@ -4,6 +4,7 @@
  *   APPS_SCRIPT_URL=https://script.google.com/macros/s/XXXX/exec node apps-script/tools/build-pages.cjs _site
  */
 const fs = require('node:fs');
+const crypto = require('node:crypto');
 const path = require('node:path');
 
 const SRC = path.join(__dirname, '../src');
@@ -15,6 +16,7 @@ if (!/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(apiUrl) && 
 }
 let html = fs.readFileSync(path.join(SRC, 'Index.html'), 'utf8');
 html = html.replace(/<\?!= include\('(\w+)'\); \?>/g, (_, n) => fs.readFileSync(path.join(SRC, n + '.html'), 'utf8'));
+html = html.replace('<script>window.RPM_NATIVE_VERSION = <?!= JSON.stringify(appUiVersion_()); ?>;</script>', '');
 if (/<\?/.test(html)) throw new Error('Masih ada scriptlet Apps Script yang belum diproses');
 html = html.replace('<base target="_top" />', '');
 html = html.replace(
@@ -33,6 +35,9 @@ fs.mkdirSync(out, { recursive: true });
 // ikon & manifest (pasang ke layar utama / PWA) + foto sumber import (foto-import/…, dijemput sekali oleh data job)
 const PAGES = path.join(__dirname, '../pages');
 fs.cpSync(PAGES, out, { recursive: true });
+const version=crypto.createHash('sha256').update(html).digest('hex');
+html=html.replace('<meta charset="utf-8" />','<meta charset="utf-8" /><script>window.RPM_BUILD_VERSION='+JSON.stringify(version)+';</script>');
+fs.writeFileSync(path.join(out,'version.json'),JSON.stringify({version}));
 fs.writeFileSync(path.join(out, 'index.html'), html);
 fs.writeFileSync(path.join(out, '.nojekyll'), '');
 console.log('Halaman GitHub Pages dibuat di', out, '-> API:', apiUrl);

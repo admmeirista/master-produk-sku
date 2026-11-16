@@ -37,6 +37,8 @@ function include(name) {
 
 /** perm: hak minimal; write: dijalankan di dalam lock + staging + jurnal (atomik). */
 const ROUTES = {
+  'app.dataVersion': { perm: 'product.read', fn: () => ({data:dataVersion_()}) },
+  'app.versions': { perm: 'product.read', fn: () => ({ui:appUiVersion_(),data:dataVersion_()}) },
   'dashboard.get': { perm: 'product.read', fn: () => dashboard_() },
 
   'brand.list': { perm: 'product.read', fn: (u, p) => masterListCached_('brand',p) },
@@ -279,7 +281,7 @@ function autoSchema_() {
 }
 
 /** Naikkan bila ensureData_ / DATA_JOBS_ membawa migrasi data baru (memicu pembaruan otomatis sekali). */
-const DATA_MIGRATION_VERSION_ = 23;
+const DATA_MIGRATION_VERSION_ = 24;
 
 /**
  * Import data sekali jalan (mis. katalog pemasok) lewat jalur import produk biasa: tercatat di Riwayat import & audit
@@ -313,6 +315,7 @@ const DATA_JOBS_ = [
   { id: 'job_shopee_review_20261112', run: (user) => shopeeSeed_(user) },
   { id: 'job_shopee_sales_20261116', run: (user) => shopeeSalesSeed_(user) },
   { id: 'job_shopee_template_20261116', run: (user) => shopeeOriginalTemplateSeed_(user) },
+  { id: 'job_shopee_sales_sheet3_20261117', run: (user) => shopeeSalesSeed_(user) },
 ];
 /** Mengembalikan false bila masih ada job yang belum selesai (batas waktu ±4 menit per eksekusi; dilanjutkan berikutnya). */
 function runDataJobs_() {

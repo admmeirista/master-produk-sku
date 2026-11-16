@@ -15,7 +15,7 @@ const files = fs.readdirSync(SRC).filter((f) => f.endsWith('.html'));
 test('frontend: semua blok <script> lolos parse', () => {
   for (const f of files) {
     const html = fs.readFileSync(path.join(SRC, f), 'utf8');
-    const js = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]).join('\n');
+    const js = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1].replace(/<\?!=[\s\S]*?\?>/g,'null')).join('\n');
     assert.doesNotThrow(() => new Function(js), f);
   }
 });

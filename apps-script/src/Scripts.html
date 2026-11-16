@@ -624,7 +624,7 @@ var App = {
     }).catch(function (e) { if (e.code !== 'UNAUTHENTICATED' && !cached) App.showLogin(e.message); });
   },
   remember: function (me) { App.me = me; Store.set('rpm_me', JSON.stringify(me)); },
-  forget: function () { if(typeof SkuPicker!=='undefined')SkuPicker.clear(); if(typeof SHOPEE_BATCH_ID!=='undefined')SHOPEE_BATCH_ID=''; if(typeof SHOPEE_SELECTED!=='undefined')SHOPEE_SELECTED=Object.create(null);if(typeof SHOPEE_WORKFILE!=='undefined')SHOPEE_WORKFILE=null;FastReadCache.clear(); App.token = null; App.me = null; Store.del('rpm_token'); Store.del('rpm_me'); Ref.data = {}; },
+  forget: function () { App.refreshData=null;if(typeof AppUpdate!=='undefined'){AppUpdate.pendingData=false;AppUpdate.dataVersion=null;AppUpdate.dirty=false;}  if(typeof SkuPicker!=='undefined')SkuPicker.clear(); if(typeof SHOPEE_BATCH_ID!=='undefined')SHOPEE_BATCH_ID=''; if(typeof SHOPEE_SELECTED!=='undefined')SHOPEE_SELECTED=Object.create(null);if(typeof SHOPEE_WORKFILE!=='undefined')SHOPEE_WORKFILE=null;FastReadCache.clear(); App.token = null; App.me = null; Store.del('rpm_token'); Store.del('rpm_me'); Ref.data = {}; },
 
   authShell: function (formHtml) {
     var flow = [['camera', 'Scan barcode', 'Kamera HP langsung mengenali SKU'], ['plus', 'Registrasi SKU', 'Barcode terisi otomatis, tanpa ketik ulang'],
@@ -694,7 +694,8 @@ var App = {
     $('#m-back').onclick = function () { App.back(); };
     $$('#tabbar [data-tab]').forEach(function (b) { b.onclick = function () { var t = b.getAttribute('data-tab'); if (t === 'menu') { side.classList.add('open'); bg.classList.add('open'); } else App.go(t); }; });
     bg.onclick = function () { side.classList.remove('open'); bg.classList.remove('open'); };
-    App.go(App.page || 'dashboard', App.pageArg);
+    var resumed=typeof AppUpdate!=='undefined'?AppUpdate.restore():null;
+    App.go(resumed?resumed.page:App.page||'dashboard',resumed?resumed.arg:App.pageArg);
     if (!App.keysBound) {
       App.keysBound = true;
       // F2 = langsung ke Master Produk › Cari SKU / Scan (scanner USB cukup ditembakkan setelahnya)
@@ -722,6 +723,7 @@ var App = {
     if(page==='io')page='mapping';
     if (!Pages[page]) page = 'dashboard';
     App.track(page, arg, opts);
+    App.refreshData=null;if(typeof AppUpdate!=='undefined')AppUpdate.dirty=false;
     App.page = page; App.pageArg = arg;
     document.body.classList.toggle('mtopl', TOP_PAGES.indexOf(page) >= 0);
     var mt = $('#m-title'); if (mt) mt.textContent = pageTitle(page);

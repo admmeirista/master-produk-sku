@@ -76,7 +76,9 @@ if (process.env.PREVIEW_MASTER_XLSX) {
 function page() {
   let html = fs.readFileSync(path.join(SRC, 'Index.html'), 'utf8');
   html = html.replace(/<\?!= include\('(\w+)'\); \?>/g, (_, n) => fs.readFileSync(path.join(SRC, n + '.html'), 'utf8'));
-  const shim = `<script>
+  html=html.replace('<script>window.RPM_NATIVE_VERSION = <?!= JSON.stringify(appUiVersion_()); ?>;</script>', '');
+  const shim = `<script>window.RPM_BUILD_VERSION='dev';
+
   (function(){
     function runner(ok, fail){
       return new Proxy({}, { get: function(_, name){
@@ -116,6 +118,7 @@ http
       res.end(fs.readFileSync(path.join(dir, 'index.html')));
       return;
     }
+    if(req.url==='/version.json'){res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({version:'dev'}));return;}
     if (req.method === 'POST' && req.url === '/rpc') {
       let body = '';
       req.on('data', (c) => (body += c));

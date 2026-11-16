@@ -1,0 +1,20 @@
+<script>
+var AppUpdate={
+  started:false,busy:false,pendingUi:false,pendingData:false,dataVersion:null,dirty:false,reloading:false,lastInput:0,
+  account:function(){return App.me&&App.me.user&&App.me.user.id||'';},
+  safe:function(){return Date.now()-this.lastInput>1500&&!this.dirty&&!App.leaveGuard&&!document.querySelector('.modal,.cam-bg')&&!(typeof SHOPEE_EXPORTING!=='undefined'&&SHOPEE_EXPORTING)&&!Net.pending;},
+  capture:function(){return {account:this.account(),page:App.page,arg:App.page==='mapping'?App.shopeeState:App.pageArg,selected:typeof SHOPEE_SELECTED!=='undefined'?Object.keys(SHOPEE_SELECTED):[],profile:typeof SHOPEE_SALES_ID!=='undefined'?SHOPEE_SALES_ID:null,at:Date.now()};},
+  restore:function(){try{var raw=sessionStorage.getItem('meirista_update_resume');if(!raw)return null;var state=JSON.parse(raw);sessionStorage.removeItem('meirista_update_resume');if(state.account!==this.account()||Date.now()-state.at>3600000)return null;if(typeof SHOPEE_SELECTED!=='undefined'){SHOPEE_SELECTED=Object.create(null);(state.selected||[]).forEach(function(id){SHOPEE_SELECTED[id]=true;});SHOPEE_SALES_ID=state.profile;}return state;}catch(e){return null;}},
+  apply:function(){
+    if(this.reloading||!this.safe())return;
+    if(this.pendingUi){try{sessionStorage.setItem('meirista_update_resume',JSON.stringify(this.capture()));}catch(e){return;}this.reloading=true;if(window.RPM_BUILD_VERSION){var url=new URL(window.location.href);url.searchParams.set('_app',this.pendingUi);window.location.replace(url.toString());}else window.location.reload();return;}
+    if(this.pendingData&&App.me&&App.refreshData){this.pendingData=false;FastReadCache.clear();if(typeof SkuPicker!=='undefined')SkuPicker.clear();Promise.resolve(App.refreshData()).catch(function(){AppUpdate.pendingData=true;});}
+  },
+  check:function(){
+    if(this.busy||document.visibilityState==='hidden'||this.reloading)return Promise.resolve();this.busy=true;
+    var versions=window.RPM_BUILD_VERSION?fetch(new URL('version.json',window.location.href),{cache:'no-store'}).then(function(r){if(!r.ok)throw Error('version');return r.json();}).then(function(v){if(typeof v.version==='string'&&v.version&&v.version!==window.RPM_BUILD_VERSION)AppUpdate.pendingUi=v.version;return App.me?api('app.dataVersion',{}, {quiet:true,silent:true}):null;}):App.me?api('app.versions',{}, {quiet:true,silent:true}).then(function(v){if(v.ui&&v.ui!==window.RPM_NATIVE_VERSION)AppUpdate.pendingUi=v.ui;return v;}):Promise.resolve(null);
+    return versions.then(function(v){if(v){if(AppUpdate.dataVersion!==null&&AppUpdate.dataVersion!==v.data)AppUpdate.pendingData=true;AppUpdate.dataVersion=v.data;}}).catch(function(){}).finally(function(){AppUpdate.busy=false;AppUpdate.apply();});
+  },
+  start:function(){if(this.started)return;this.started=true;this.check();setInterval(function(){AppUpdate.check();},60000);setInterval(function(){AppUpdate.apply();},5000);window.addEventListener('focus',function(){AppUpdate.check();});document.addEventListener('visibilitychange',function(){if(document.visibilityState!=='hidden')AppUpdate.check();});['input','change'].forEach(function(event){document.addEventListener(event,function(e){AppUpdate.lastInput=Date.now();if(App.page!=='mapping'&&!e.target.closest('.filters,.toolbar')&&e.target.matches('input,textarea,select,[contenteditable]'))AppUpdate.dirty=true;},true);});}
+};
+</script>
