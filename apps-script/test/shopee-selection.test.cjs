@@ -34,11 +34,6 @@ test('API ekspor terpilih memeriksa status/master saat ini dan tidak mengikutkan
  result=ok(call(T,'shopee.exportSelected',{ids:[imported[0].id]}));assert.equal(result.rows.length,0);assert.equal(result.rejected.length,1,'master berubah setelah persetujuan dikecualikan');
  ok(call(T,'user.create',{email:'photo@local.test',fullName:'Foto',role:'photo_staff',password:'Password#2026'}));const photo=ok(call(null,'auth.login',{email:'photo@local.test',password:'Password#2026'})).token;assert.equal(call(photo,'shopee.exportSelected',{ids:[imported[0].id]}).error.code,'FORBIDDEN');
 });
-test('pengguna mapping dapat mengunggah Shopee di Import & Export tanpa akses form impor master',()=>{
- const c=browser(),nodes={'#iob':{innerHTML:''},'#ioShopeeImport':{}},main={innerHTML:''};
- Object.assign(c,{can:p=>p==='mapping.write'||p==='export.run',pageHead:()=>'',icon:()=>'',emptyBox:()=>'',App:{go(){}},$:s=>nodes[s]||null,$$:()=>[]});
- const source=fs.readFileSync(path.join(__dirname,'../src/Pages.html'),'utf8');
- vm.runInNewContext(source.slice(source.indexOf('Pages.io ='),source.indexOf('Pages.export =')),c);
- vm.runInNewContext(source.slice(source.indexOf('Pages.import ='),source.indexOf('Pages.users =')),c);
- c.Pages.io(main);assert.match(main.innerHTML,/data-t="import"/);assert.match(nodes['#iob'].innerHTML,/ioShopeeImport/);assert.ok(!nodes['#iob'].innerHTML.includes('id="fi"'));assert.equal(c.can('import.run'),false);
+test('rute Import & Export lama langsung menuju Shopee',()=>{
+ const c=browser();let destination;Object.assign(c,{App:{go:p=>destination=p}});const source=fs.readFileSync(path.join(__dirname,'../src/Pages.html'),'utf8');vm.runInNewContext(source.slice(source.indexOf('Pages.io ='),source.indexOf('Pages.export =')),c);c.Pages.io({innerHTML:''});assert.equal(destination,'mapping');
 });

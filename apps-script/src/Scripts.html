@@ -533,7 +533,7 @@ var NAV = [
   ['', [['dashboard', 'Dashboard', 'grid']]],
   ['KATALOG', [['products', 'Produk', 'package'], ['bundles', 'Paket Penjualan', 'boxes']]],
   ['KANAL PENJUALAN', [['mapping', 'Shopee', 'link']]],
-  ['DATA', [['io', 'Import & Export', 'upload', 'export.run']]],
+
   ['ADMINISTRASI', [['users', 'Pengguna & Hak Akses', 'users', 'user.manage'], ['settings', 'Pengaturan', 'sliders'], ['audit', 'Audit Log', 'activity', 'audit.read']]]
 ];
 /** Halaman yang tidak punya menu sendiri → menu induknya (untuk menu aktif & breadcrumb). */
@@ -719,6 +719,7 @@ var App = {
     if (App.onLeave) { try { App.onLeave(); } catch (e) {} App.onLeave = null; }
     // Staf Foto hanya punya halaman kerja foto (menu lain juga ditolak server)
     if (typeof isPhotoStaff === 'function' && isPhotoStaff() && !/^photo(Home|List|Shoot|Profile)$/.test(page)) page = 'photoHome';
+    if(page==='io')page='mapping';
     if (!Pages[page]) page = 'dashboard';
     App.track(page, arg, opts);
     App.page = page; App.pageArg = arg;

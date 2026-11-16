@@ -126,6 +126,8 @@ const ROUTES = {
   'mapping.action': { perm: 'mapping.write', write: true, fn: (u, p) => mappingAction_(u, p.id, p.action, p.note) },
   'mapping.summary': { perm: 'product.read', fn: () => mappingSummary_() },
   'shopee.list': { perm: 'product.read', fn: (u, p) => shopeeList_(p) },
+  'shopee.workspace': { perm: 'product.read', fn: (u, p) => shopeeWorkspace_(p) },
+  'shopee.exportPrepare': { perm: 'export.run', fn: (u,p) => shopeeExportPrepare_(p) },
   'shopee.get': { perm: 'product.read', fn: (u, p) => shopeeGet_(p.id) },
   'shopee.target': { perm: 'product.read', fn: (u, p) => shopeeTarget_(p.sku) },
   'shopee.packageResolve': { perm: 'product.read', fn: (u, p) => shopeePackageResolve_(p) },
@@ -277,7 +279,7 @@ function autoSchema_() {
 }
 
 /** Naikkan bila ensureData_ / DATA_JOBS_ membawa migrasi data baru (memicu pembaruan otomatis sekali). */
-const DATA_MIGRATION_VERSION_ = 22;
+const DATA_MIGRATION_VERSION_ = 23;
 
 /**
  * Import data sekali jalan (mis. katalog pemasok) lewat jalur import produk biasa: tercatat di Riwayat import & audit
@@ -310,6 +312,7 @@ const DATA_JOBS_ = [
   { id: 'job_shopee_baru2_2026', fileName: 'Listing Shopee tahap 2 — varian saudara (6 Nov 2026)', rows: () => SHOPEE_BARU2_ROWS_ },
   { id: 'job_shopee_review_20261112', run: (user) => shopeeSeed_(user) },
   { id: 'job_shopee_sales_20261116', run: (user) => shopeeSalesSeed_(user) },
+  { id: 'job_shopee_template_20261116', run: (user) => shopeeOriginalTemplateSeed_(user) },
 ];
 /** Mengembalikan false bila masih ada job yang belum selesai (batas waktu ±4 menit per eksekusi; dilanjutkan berikutnya). */
 function runDataJobs_() {

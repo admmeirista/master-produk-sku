@@ -69,7 +69,7 @@ if (process.env.PREVIEW_MASTER_XLSX) {
     ctx.ss_().getSheetByName(name).data = XLSX.utils.sheet_to_json(master.Sheets[name], { header: 1, defval: '' });
   }
   ctx.resetDbCache_(); ctx.bumpDataVersion_();
-  ctx.withLock_(() => ctx.shopeeSeed_({ email: 'admin@toko.local' }));
+  ctx.withLock_(() => {const user={email:'admin@toko.local'};ctx.shopeeSeed_(user);ctx.shopeeSalesSeed_(user);ctx.shopeeOriginalTemplateSeed_(user);});
   console.log('Pratinjau Shopee: snapshot lokal, akun development, tanpa akses tulis ke database produksi.');
 }
 // ----- HTML seperti HtmlService (include + scriptlet)

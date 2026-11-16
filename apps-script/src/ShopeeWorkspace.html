@@ -1,0 +1,10 @@
+<script>
+var ShopeeWorkspace={
+  page:function(data,f){
+    var q=String(f.search||'').trim().toLowerCase();
+    var all=data.rows.filter(function(r){var status=r.status==='approved'?'approved':r.target&&r.target.active?'verify':'unavailable';return (!f.status||status===f.status)&&(!q||[r.name,r.variationName,r.productId,r.variationId,r.sellerSku,r.parentSku,r.gtin,r.targetSku,r.target&&r.target.sku,r.target&&r.target.name,r.target&&r.target.gtin].join(' ').toLowerCase().indexOf(q)>=0);});
+    return {rows:all.slice((f.page-1)*f.pageSize,f.page*f.pageSize),total:all.length,page:f.page,pageSize:f.pageSize,summary:Object.assign({},data.summary),salesProfile:data.salesProfile,excludedNoSales:data.excludedNoSales};
+  },
+  update:function(data,updated){if(!data)return;data.rows=data.rows.map(function(r){return r.id===updated.id?updated:r;});var summary={all:data.rows.length,verify:0,approved:0,unavailable:0};data.rows.forEach(function(r){summary[r.status==='approved'?'approved':r.target&&r.target.active?'verify':'unavailable']++;});data.summary=summary;}
+};
+</script>

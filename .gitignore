@@ -4,3 +4,4 @@ node_modules/
 .claude/
 apps-script/src/DataShopeeReview.gs
 apps-script/src/DataShopeeSales2026.gs
+apps-script/src/DataShopeeOriginalTemplate.gs

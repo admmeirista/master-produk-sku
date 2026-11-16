@@ -120,7 +120,7 @@ Pages.dashboard = function (main) {
     var paneActivity =
       '<div class="dstack">' +
         P('Status import data', can('export.run') ? go2('io', 'Import') : '',
-          (d.imports || []).length ? '<ul class="imp-feed">' + d.imports.map(function (b) { return '<li><span class="dt-i ' + (b.errors ? 'err' : 'ok') + '">' + icon(b.errors ? 'alert' : 'check') + '</span><div class="grow" style="min-width:0"><b>' + esc(b.file || b.type) + '</b><div class="muted">' + fmtNum(b.total) + ' baris · ' + fmtNum(b.created) + ' diproses · ' + fmtNum(b.skipped) + ' dilewati · <span class="' + (b.errors ? 'tx-err' : '') + '">' + fmtNum(b.errors) + ' ditolak</span></div><div class="muted">' + esc(b.by) + ' · ' + fmtDate(b.at) + '</div></div></li>'; }).join('') + '</ul>' : '<div class="dempty">' + icon('upload') + '<div><b>Belum ada import</b><span>Data master dapat dimasukkan melalui Import & Export.</span></div></div>') +
+          (d.imports || []).length ? '<ul class="imp-feed">' + d.imports.map(function (b) { return '<li><span class="dt-i ' + (b.errors ? 'err' : 'ok') + '">' + icon(b.errors ? 'alert' : 'check') + '</span><div class="grow" style="min-width:0"><b>' + esc(b.file || b.type) + '</b><div class="muted">' + fmtNum(b.total) + ' baris · ' + fmtNum(b.created) + ' diproses · ' + fmtNum(b.skipped) + ' dilewati · <span class="' + (b.errors ? 'tx-err' : '') + '">' + fmtNum(b.errors) + ' ditolak</span></div><div class="muted">' + esc(b.by) + ' · ' + fmtDate(b.at) + '</div></div></li>'; }).join('') + '</ul>' : '<div class="dempty">' + icon('upload') + '<div><b>Belum ada import</b><span>Unggah template marketplace melalui tombol Impor di halaman Shopee.</span></div></div>') +
         P('Mapping marketplace', go2('mapping', 'Buka'),
           chRows ? '<div class="tablewrap"><table class="t"><thead><tr><th>Kanal</th><th class="num">Belum</th><th class="num">Dipetakan</th><th class="num">Terkirim</th><th class="num">Error</th></tr></thead><tbody>' + chRows + '</tbody></table></div>' : '<div class="dempty">' + icon('link') + '<div><b>Belum ada SKU Produk yang dipetakan</b><span>Import listing dari Seller Center atau petakan secara manual.</span></div></div>') +
       '</div>';
@@ -940,13 +940,7 @@ function barcodeHistory(code) {
 }
 
 /* ───────── Import & Export ───────── */
-Pages.io = function (main, arg) {
-  var tab = arg && arg.tab || (can('import.run') || can('mapping.write') ? 'import' : 'export');
-  main.innerHTML = pageHead('Sistem', 'Import & Export', '', 'Import data produk serta ekspor master untuk operasional. Pemeriksaan listing Shopee tersedia di Pemetaan SKU Shopee. Import Master Brand/Kategori ada di halaman masing-masing (Upload Excel).') +
-    '<div class="dtabs">' + (can('import.run') || can('mapping.write') ? '<a data-t="import" class="' + (tab === 'import' ? 'on' : '') + '">Import</a>' : '') + '<a data-t="export" class="' + (tab === 'export' ? 'on' : '') + '">Ekspor</a></div><div id="iob"></div>';
-  $$('[data-t]', main).forEach(function (a) { a.onclick = function () { App.go('io', { tab: a.getAttribute('data-t') }); }; });
-  (tab === 'import' ? Pages.import : Pages.export)($('#iob', main));
-};
+Pages.io = function () { App.go('mapping'); };
 Pages.export = function (main) {
   var item = function (kind, title, desc, extra) {
     return '<div class="panel"><div class="panel-h"><h3>' + title + '</h3></div><div class="muted" style="margin-bottom:12px">' + desc + '</div>' + (extra || '') +
