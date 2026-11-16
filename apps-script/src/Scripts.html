@@ -370,7 +370,7 @@ function busy(btn, promise) {
  * Di dalam Apps Script: google.script.run.api(token, action, payload).
  * Di luar (GitHub Pages): fetch POST ke URL Web App (doPost) — window.RPM_API_URL.
  * opts: silent (tanpa toast error), quiet (tanpa progress bar). Error: { code, message, details }. */
-var FastReadCache={m:{},pending:{},generation:0,prefix:'meirista_fast_v1:',ttl:120000,
+var FastReadCache={m:{},pending:{},generation:0,prefix:'meirista_fast_v2:',ttl:120000,
   key:function(action,p){return this.prefix+JSON.stringify([App.me&&((App.me.user||App.me).id||(App.me.user||App.me).email),App.me&&(App.me.user||App.me).role,action,p||{}]);},
   get:function(key){var v=this.m[key];try{if(!v)v=JSON.parse(sessionStorage.getItem(key)||'null');}catch(e){}return v&&Date.now()-v.at<this.ttl?JSON.parse(JSON.stringify(v.data)):null;},
   put:function(key,data){var v={at:Date.now(),data:data};this.m[key]=v;var keys=Object.keys(this.m);if(keys.length>12){var old=keys[0];delete this.m[old];try{sessionStorage.removeItem(old);}catch(e){}}try{sessionStorage.setItem(key,JSON.stringify(v));}catch(e){}},

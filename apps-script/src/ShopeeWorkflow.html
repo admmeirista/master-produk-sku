@@ -1,10 +1,11 @@
 <script>
 // Workbook aktif berasal dari template privat batch; dapat dimuat ulang setelah refresh.
 var SHOPEE_WORKFILE = null;
+var SHOPEE_SALES_ID = null;
 Pages.mapping = function (main, arg) {
   var f = { search: arg && arg.search || '', status: arg && arg.status || '', page: 1, pageSize: 30, batchId: arg&&Object.prototype.hasOwnProperty.call(arg,'batchId')?arg.batchId:Store.get(shopeeBatchPreference())||'' }, sequence = 0, w = can('mapping.write');
   main.innerHTML = pageHead('Kanal Penjualan', 'Pemetaan SKU Shopee', can('export.run') ? '<button class="btn pri" id="slExportSelected" disabled>'+icon('download')+'Ekspor terpilih (0)</button><button class="btn" id="slClearSelection" disabled>Bersihkan pilihan</button>' : '', 'Periksa pasangan SKU Shopee dan pilih variasi yang sudah disetujui untuk ekspor mass update.') +
-    '<div class="row" style="margin-bottom:12px"><label for="slBatch">Unggahan</label><select class="in" id="slBatch"><option value="">Semua unggahan</option></select><button class="btn sm" id="slOpenBatch" disabled>Buka template / lanjutkan impor</button></div><div id="slSummary" class="shopee-status-cards"></div><div class="toolbar shopee-filters"><div class="search">'+icon('search')+'<input class="in" id="slSearch" placeholder="Cari produk, variasi atau SKU" value="'+esc(f.search)+'"></div><select class="in" id="slStatus" aria-label="Status pemeriksaan"><option value="">Semua status</option><option value="verify">Perlu diverifikasi</option><option value="approved">Disetujui</option><option value="unavailable">Tidak tersedia</option></select></div><div id="slSelectionInfo" class="hint"></div><div id="slRows"></div>';
+    '<div class="row" style="margin-bottom:12px"><label for="slBatch">Unggahan</label><select class="in" id="slBatch"><option value="">Semua unggahan</option></select><button class="btn sm" id="slOpenBatch" disabled>Buka template / lanjutkan impor</button></div><div id="slSalesScope" class="hint" style="margin-bottom:12px"></div><div id="slSummary" class="shopee-status-cards"></div><div class="toolbar shopee-filters"><div class="search">'+icon('search')+'<input class="in" id="slSearch" placeholder="Cari produk, variasi atau SKU" value="'+esc(f.search)+'"></div><select class="in" id="slStatus" aria-label="Status pemeriksaan"><option value="">Semua status</option><option value="verify">Perlu diverifikasi</option><option value="approved">Disetujui</option><option value="unavailable">Tidak tersedia</option></select></div><div id="slSelectionInfo" class="hint"></div><div id="slRows"></div>';
   $('#slStatus',main).value=f.status;
   function selectionInfo(){var count=Object.keys(SHOPEE_SELECTED).length,button=$('#slExportSelected',main);if(button){button.disabled=!count;button.innerHTML=icon('download')+'Ekspor terpilih ('+count+')';}var clear=$('#slClearSelection',main);if(clear)clear.disabled=!count;var info=$('#slSelectionInfo',main);if(info)info.textContent=count?count+' variasi dipilih. Pilihan tetap tersimpan saat berpindah halaman atau filter.':'Centang variasi berstatus Disetujui untuk ekspor. Unggah template tersedia di Import & Export.';}
 
@@ -15,6 +16,9 @@ Pages.mapping = function (main, arg) {
     var request=cached?Promise.resolve(cached):null;
     function render(d) {
       if (mine !== sequence || !$('#slRows', main)) return;
+      var profileId=d.salesProfile&&d.salesProfile.id||'';
+      if(SHOPEE_SALES_ID!==profileId){SHOPEE_SELECTED=Object.create(null);SHOPEE_SALES_ID=profileId;}
+      $('#slSalesScope',main).textContent=d.salesProfile?'Fokus penjualan '+d.salesProfile.year+' · '+fmtNum(d.summary.all)+' variasi memiliki penjualan · '+fmtNum(d.excludedNoSales)+' variasi diabaikan. Sumber: '+d.salesProfile.source+'.':'';
       var s = d.summary;
       $('#slSummary',main).innerHTML=shopeeStatusCards(s,f.status);
       $$('[data-status-card]',main).forEach(function(button){button.onclick=function(){f.status=button.getAttribute('data-status-card');$('#slStatus',main).value=f.status;f.page=1;load();};});

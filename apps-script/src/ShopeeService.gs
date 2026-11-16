@@ -73,18 +73,21 @@ function shopeeDisplayStatus_(r, catalog) {
   return catalog[r.TargetSku] && catalog[r.TargetSku].active ? 'verify' : 'unavailable';
 }
 function shopeeList_(f) {
-  const cacheKey = 'sl5:' + dataVersion_() + ':' + shopeeSignature_(f || {});
+  const salesProfile=shopeeSalesProfile_();
+  const cacheKey = 'sl6:' + (salesProfile?salesProfile.id:'all') + ':' + dataVersion_() + ':' + shopeeSignature_(f || {});
   const cached = cacheGetBig_(cacheKey); if (cached) return cached;
   f = f || {}; const catalog = shopeeCatalog_(), q = String(f.search || '').toLowerCase(), summary = { all: 0, unmapped: 0, suggested: 0, needs_review: 0, approved: 0, mismatch: 0, ignored: 0 }, stores = new Set();
   let batchKeys=null,batchStore='';
   if(f.batchId){const batch=shopeeBatchRecord_(f.batchId);batchStore=batch.StoreAccount;batchKeys=new Set(shopeeBatchManifest_(batch).rows.map(r=>shopeeKey_(batchStore,r.productId,r.variationId)));}
   let all = db_('SHOPEE_LISTINGS').rows().filter((r) => { stores.add(r.StoreAccount); return (!f.store || r.StoreAccount === f.store)&&(!batchKeys||batchKeys.has(shopeeKey_(r.StoreAccount,r.ExternalProductId,r.ExternalVariationId))); });
+  const scoped=shopeeSalesScope_(all,db_('SHOPEE_LISTINGS').rows());all=scoped.rows;
   summary.verify = 0; summary.unavailable = 0;
   all.forEach((r) => { summary.all++; summary[shopeeStatus_(r, catalog)]++; const st = shopeeDisplayStatus_(r, catalog); if (st !== 'approved') summary[st]++; });
   if (['verify', 'unavailable'].includes(f.status)) { all = all.filter((r) => shopeeDisplayStatus_(r, catalog) === f.status); f = Object.assign({}, f, { status: '' }); }
   all = all.filter((r) => (!f.status || (f.status === 'pending' ? !['approved', 'suggested'].includes(shopeeStatus_(r, catalog)) : f.status === 'review' ? ['needs_review', 'mismatch'].includes(shopeeStatus_(r, catalog)) : shopeeStatus_(r, catalog) === f.status)) && (!f.kind || r.SaleType === f.kind) && (!f.withStock || Number(r.Stock) > 0) && (!q || [r.ListingName, r.VariationName, r.ExternalProductId, r.ExternalVariationId, r.ExternalSku, r.ExternalParentSku, r.ExternalGTIN, r.TargetSku, (catalog[r.TargetSku] || {}).name, (catalog[r.TargetSku] || {}).gtin].join(' ').toLowerCase().includes(q)));
   const page = paginate_(all, f.page, Math.min(Math.max(Number(f.pageSize) || 30, 1), 100));
   page.rows = page.rows.map((r) => shopeeView_(r, catalog)); page.summary = summary; page.stores = Array.from(stores).sort();
+  page.salesProfile=scoped.profile;page.excludedNoSales=scoped.excluded;
   cachePutBig_(cacheKey, page); return page;
 }
 function shopeeGet_(id) {
@@ -163,8 +166,8 @@ function shopeeExport_(p) {
 }
 function shopeeExportSelected_(p) {
   if(!Array.isArray(p.ids)||!p.ids.length||p.ids.length>200||p.ids.some((id)=>typeof id!=='string'||!id)||new Set(p.ids).size!==p.ids.length)throw new AppError('Pilih 1–200 identitas listing yang unik.');
-  const T=db_('SHOPEE_LISTINGS'),catalog=shopeeCatalog_(),rows=[],rejected=[];
-  p.ids.forEach((id)=>{const r=T.byId(id);if(!r||shopeeStatus_(r,catalog)!=='approved'){rejected.push({id,reason:r?'Status bukan Disetujui atau master telah berubah.':'Listing tidak ditemukan.'});return;}rows.push(shopeeView_(r,catalog));});
+  const T=db_('SHOPEE_LISTINGS'),catalog=shopeeCatalog_(),rows=[],rejected=[],allowed=new Set(shopeeSalesScope_(T.rows()).rows.map(r=>r.ListingID));
+  p.ids.forEach((id)=>{const r=T.byId(id);if(!r||!allowed.has(id)||shopeeStatus_(r,catalog)!=='approved'){rejected.push({id,reason:!allowed.has(id)?'Listing diabaikan sesuai profil penjualan.':r?'Status bukan Disetujui atau master telah berubah.':'Listing tidak ditemukan.'});return;}rows.push(shopeeView_(r,catalog));});
   return {rows,rejected};
 }
 function shopeeReview_(user, p) {

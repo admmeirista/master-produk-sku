@@ -3,3 +3,4 @@ node_modules/
 *.log
 .claude/
 apps-script/src/DataShopeeReview.gs
+apps-script/src/DataShopeeSales2026.gs
