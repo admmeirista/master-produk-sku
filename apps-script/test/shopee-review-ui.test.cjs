@@ -21,6 +21,19 @@ function ui(write = false) {
   return { context, modals, calls, elements };
 }
 
+test('Simpan untuk diverifikasi mengirim pilihan parsial dan qty, menunjukkan proses, dan mempertahankan form ketika gagal',async()=>{
+ const {context:c,elements,modals}=ui(true);let reject,requests=[];c.api=(action,p)=>{requests.push([action,p]);return new Promise((a,b)=>reject=b);};c.feList=e=>e.message;
+ c.shopeeOpenReview({id:'draft',version:1,name:'Produk',saleType:'bundle',expectedComponents:[{sku:'PRD000001-001',quantity:2}]},()=>{});
+ c.$('#svNote').value='';elements['#svReview'].onclick();elements['#svReview'].onclick();assert.equal(requests.length,1);assert.equal(requests[0][1].action,'needs_review');assert.equal(requests[0][1].draft.components[0].quantity,2);assert.equal(requests[0][1].note,'');assert.match(elements['#svSaveStatus'].textContent,/Menyimpan/);
+ reject(new Error('Jaringan terputus'));await new Promise(setImmediate);assert.equal(modals[0].isConnected,true);assert.match(elements['#svSaveStatus'].textContent,/Belum tersimpan/);assert.match(elements['#svError'].innerHTML,/Jaringan/);
+});
+
+test('retry setelah respons jaringan hilang memakai request key yang sama agar tidak menyimpan dua kali',async()=>{
+ const {context:c,elements,modals}=ui(true);let n=0,reject,resolve;const requests=[];c.uid=()=>String(++n);c.feList=e=>e.message;c.api=(action,p)=>{requests.push(p);return new Promise((a,b)=>{resolve=a;reject=b;});};
+ c.shopeeOpenReview({id:'retry',version:1,saleType:'bundle',expectedComponents:[{sku:'PRD000001-001',quantity:1}]},()=>{});c.$('#svNote').value='';elements['#svReview'].onclick();reject({code:'NETWORK',message:'Respons terputus'});await new Promise(setImmediate);assert.match(elements['#svSaveStatus'].textContent,/belum dapat dikonfirmasi/);
+ elements['#svReview'].onclick();assert.equal(requests.length,2);assert.equal(requests[0].requestKey,requests[1].requestKey);resolve({status:'needs_review'});await new Promise(setImmediate);assert.equal(modals[0].isConnected,false);
+});
+
 test('brand otomatis dapat diganti manual dan pilihan tetap bertahan saat jenis penjualan berubah; pratinjau terisi sebelum paket ditemukan',async()=>{
  const {context:c,elements}=ui(true);
  const rows=[{sku:'PRD000001-001',brandId:'p',brandName:'Purbasari',productName:'Gluta Hya',displayName:'Purbasari Gluta Hya',parentSku:'PRD000001'},{sku:'PRD000002-001',brandId:'v',brandName:'Viva'}];

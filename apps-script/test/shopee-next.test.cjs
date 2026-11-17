@@ -14,6 +14,7 @@ for(const status of ['', 'verify'])test('Setujui & berikutnya melintasi halaman 
  // Render attaches handlers to a separate query result, so retain those objects for click simulation.
  c.$$=(s,host)=>s==='[data-review]'?(buttons=[...host.innerHTML.matchAll(/data-review="([^"]+)"/g)].map(m=>({getAttribute:()=>m[1]}))):[];
  node('#slStatus').onchange({target:{value:status}});await flush();buttons[0].onclick();
- for(let i=0;i<31;i++){assert.equal(opened.at(-1),'r'+i);rows[i].status='approved';callback({...rows[i]},true);await flush();}
+ let resolveStale,background;const stale={rows:rows.map(r=>({...r})),summary:{all:31,verify:31,approved:0,unavailable:0}};const originalApi=c.api;c.api=(action,p)=>action==='shopee.workspace'?new Promise(resolve=>resolveStale=resolve):originalApi(action,p);
+ for(let i=0;i<31;i++){assert.equal(opened.at(-1),'r'+i);if(i===0)background=c.App.refreshData();rows[i].status='approved';callback({...rows[i]},true);await flush();if(i===0){resolveStale(stale);await background;await flush();assert.match(node('#slSummary').innerHTML,/shopee-stat-approved[^>]*>[\s\S]*?<strong>1<\/strong>/,'respons background lama tidak boleh mengembalikan status sebelumnya');}}
  assert.equal(new Set(opened).size,31);assert.equal(opened.length,31);assert.ok(notices.some(t=>t.includes('selesai')));assert.equal(fastRequests,1,'snapshot hanya diambil sekali');assert.equal(listRequests,0,'filter dan halaman berikutnya tidak memanggil server');
 });

@@ -73,15 +73,15 @@ function shopeeStatus_(r, catalog) {
 }
 function shopeeView_(r, catalog) {
   const t = catalog[r.TargetSku] || null, status = shopeeStatus_(r, catalog);
-  return { id: r.ListingID, store: r.StoreAccount, productId: r.ExternalProductId, variationId: r.ExternalVariationId || '', name: r.ListingName, variationName: r.VariationName || '', parentSku: r.ExternalParentSku || '', sellerSku: r.ExternalSku || '', gtin: r.ExternalGTIN || '', price: r.Price || 0, stock: r.Stock || 0, saleType: r.SaleType || 'unclear', quantity: r.SaleQuantity || '', expectedComponents: r.ExpectedComponents || [], targetSku: r.TargetSku || '', target: t, status, note: r.ReviewNote || '', reviewer: r.ReviewedBy || '', reviewedAt: r.ReviewedAt || '', version: Number(r.Version) || 1, source: r.SourceFile || '', sourceRow: r.SourceRow || '', importedAt: r.ImportedAt || '', skuMatches: !!t && r.ExternalSku === t.sku, gtinMatches: !!t && !!t.gtin && r.ExternalGTIN === t.gtin, issues: r.TargetSku ? shopeeValidateTarget_(r, t).concat(status === 'mismatch' && r.ReviewStatus === 'approved' ? ['Master berubah setelah persetujuan; periksa kembali.'] : []) : [] };
+  return { id: r.ListingID, store: r.StoreAccount, productId: r.ExternalProductId, variationId: r.ExternalVariationId || '', name: r.ListingName, variationName: r.VariationName || '', parentSku: r.ExternalParentSku || '', sellerSku: r.ExternalSku || '', gtin: r.ExternalGTIN || '', price: r.Price || 0, stock: r.Stock || 0, saleType: r.SaleType || 'unclear', quantity: r.SaleQuantity || '', expectedComponents: r.ExpectedComponents || [], targetSku: r.TargetSku || '', target: t, status, note: r.ReviewNote || '', reviewer: r.ReviewedBy || '', reviewedAt: r.ReviewedAt || '', reviewRequested:r.ReviewStatus==='needs_review'&&!!r.ReviewedAt, version: Number(r.Version) || 1, source: r.SourceFile || '', sourceRow: r.SourceRow || '', importedAt: r.ImportedAt || '', skuMatches: !!t && r.ExternalSku === t.sku, gtinMatches: !!t && !!t.gtin && r.ExternalGTIN === t.gtin, issues: r.TargetSku ? shopeeValidateTarget_(r, t).concat(status === 'mismatch' && r.ReviewStatus === 'approved' ? ['Master berubah setelah persetujuan; periksa kembali.'] : []) : [] };
 }
 function shopeeDisplayStatus_(r, catalog) {
   if (shopeeStatus_(r, catalog) === 'approved') return 'approved';
-  return catalog[r.TargetSku] && catalog[r.TargetSku].active ? 'verify' : 'unavailable';
+  return (r.ReviewStatus==='needs_review'&&!!r.ReviewedAt)||(catalog[r.TargetSku] && catalog[r.TargetSku].active) ? 'verify' : 'unavailable';
 }
 function shopeeList_(f) {
   const salesProfile=shopeeSalesProfile_();
-  const cacheKey = 'sl6:' + (salesProfile?salesProfile.id:'all') + ':' + dataVersion_() + ':' + shopeeSignature_(f || {});
+  const cacheKey = 'sl7:' + (salesProfile?salesProfile.id:'all') + ':' + dataVersion_() + ':' + shopeeSignature_(f || {});
   const cached = cacheGetBig_(cacheKey); if (cached) return cached;
   f = f || {}; const catalog = shopeeCatalog_(), q = String(f.search || '').toLowerCase(), summary = { all: 0, unmapped: 0, suggested: 0, needs_review: 0, approved: 0, mismatch: 0, ignored: 0 }, stores = new Set();
   let batchKeys=null,batchStore='';
@@ -99,7 +99,7 @@ function shopeeList_(f) {
 }
 function shopeeGet_(id) {
   const r = db_('SHOPEE_LISTINGS').byId(id); if (!r) throw new AppError('Listing Shopee tidak ditemukan.');
-  return shopeeView_(r, shopeeCatalog_());
+  return shopeeView_(r, shopeeCatalog_([r.TargetSku]));
 }
 function shopeeInferSale_(name, variation) {
   const s = (String(name || '') + ' ' + String(variation || '')).toLowerCase();
@@ -220,7 +220,22 @@ function shopeeReview_(user, p) {
     reviewedTarget=target;
     shopeeUpsertMapping_(user, r, target, note);
   } else {
-    if (note.length < 3) throw new AppError('Alasan pemeriksaan wajib diisi.');
+    if (action==='ignored'&&note.length < 3) throw new AppError('Alasan pemeriksaan wajib diisi.');
+    if(action==='needs_review'&&p.draft){
+      const draft=p.draft,type=draft.saleType;
+      if(!['single','multipack','bundle','unclear'].includes(type))throw new AppError('Jenis penjualan tidak valid.');
+      const components=Array.isArray(draft.components)&&!draft.components.length?[]:shopeeComponents_(draft.components);
+      if(components.some(c=>c.quantity>1000))throw new AppError('Jumlah per SKU maksimal 1.000.');
+      const catalog=shopeeCatalog_(components.map(c=>c.sku).concat(draft.targetSku?[draft.targetSku]:[]));
+      if(components.some(c=>!catalog[c.sku]||catalog[c.sku].kind!=='single'||!catalog[c.sku].active))throw new AppError('SKU barang yang dipilih tidak aktif atau tidak ditemukan.');
+      Object.assign(patch,{SaleType:type,SaleQuantity:components.length?components.reduce((n,c)=>n+c.quantity,0):'',ExpectedComponents:components,TargetSku:''});
+      if(draft.targetSku){
+        const target=catalog[draft.targetSku];
+        if(!target||target.signature!==draft.targetSignature)throw new AppError('Master berubah. Periksa kembali pasangan SKU.',[],'CONFLICT');
+        const errors=shopeeValidateTarget_(Object.assign({},r,patch),target);if(errors.length)throw new AppError(errors.join(' '),[],'VALIDATION_FAILED');
+        patch.TargetSku=target.sku;reviewedTarget=target;
+      }
+    }
     Object.assign(patch, { ReviewStatus: action, ReviewedTargetSignature: '' }); shopeeDisableMapping_(r);
   }
   const before = { targetSku: r.TargetSku, status: r.ReviewStatus };
@@ -233,7 +248,7 @@ function shopeeBarcodeSame_(target,input){const mode=target.gtin?'gtin':target.i
 function shopeePackageResolve_(p) {
   const saleType = p.saleType;
   if (!['single', 'multipack', 'bundle'].includes(saleType)) throw new AppError('Pilih Satuan, MP, atau BD.');
-  const components = shopeeComponents_(p.components), catalog = shopeeCatalog_();
+  const components = shopeeComponents_(p.components), catalog = shopeeCatalog_(p.components.map(c=>c.sku));
   if (components.some((c) => !catalog[c.sku] || catalog[c.sku].kind !== 'single' || !catalog[c.sku].active)) throw new AppError('Pilih SKU barang aktif untuk seluruh baris.');
   if (components.some((c) => c.quantity > 1000)) throw new AppError('Jumlah per SKU maksimal 1.000.');
   if (saleType === 'single' && (components.length !== 1 || components[0].quantity !== 1)) throw new AppError('Satuan memakai satu SKU barang dengan jumlah 1.');
@@ -242,8 +257,12 @@ function shopeePackageResolve_(p) {
   const quantity = components.reduce((n, c) => n + c.quantity, 0);
   const signature = shopeeSignature_([saleType, components.map((c) => [c.sku, c.quantity, catalog[c.sku].signature])]);
   if (saleType === 'single') return { saleType, components, quantity, signature, target: catalog[components[0].sku], name: catalog[components[0].sku].name, blocked: '' };
-  const key = shopeeCompositionKey_(components);
-  const matches = Object.keys(catalog).map((sku) => catalog[sku]).filter((t) => { if (t.kind !== saleType || t.status === STATUS.ARCHIVED || t.bundleType === 'REQUEST_MIX' || !t.components.length) return false; try { return shopeeCompositionKey_(t.components) === key; } catch (e) { return false; } }).sort((a, b) => a.sku.localeCompare(b.sku));
+  const bomKey=cs=>JSON.stringify(cs.map(c=>[c.variantId,Number(c.quantity)]).sort((a,b)=>String(a[0]).localeCompare(String(b[0]))));
+  const key=bomKey(components.map(c=>({variantId:catalog[c.sku].variantId,quantity:c.quantity}))),byBundle={};
+  db_('BUNDLE_COMPONENTS').rows().filter(c=>c.Status===STATUS.ACTIVE).forEach(c=>(byBundle[c.BundleID]=byBundle[c.BundleID]||[]).push({variantId:c.VariantID,quantity:c.Quantity}));
+  const candidates=db_('BUNDLE_MASTERS').rows().filter(b=>![STATUS.DELETED,STATUS.ARCHIVED].includes(b.Status)&&b.BundleType!=='REQUEST_MIX'&&(b.BundleType==='MULTIPACK'?'multipack':'bundle')===saleType&&byBundle[b.BundleID]&&bomKey(byBundle[b.BundleID])===key);
+  const targets=shopeeCatalog_(candidates.map(b=>b.BundleSKU));
+  const matches=candidates.map(b=>targets[b.BundleSKU]).filter(Boolean).sort((a,b)=>a.sku.localeCompare(b.sku));
   const active = matches.filter((t) => t.active), target = active.find((t) => t.sku === p.preferredSku) || active[0] || null;
   // MP nonaktif/draf dengan komposisi sama tidak boleh digandakan (aturan master paket).
   const blocked = !target && matches.length ? 'Paket yang sama sudah ada tetapi belum aktif: ' + matches[0].sku + '. Aktifkan paket tersebut sebelum digunakan.' : '';

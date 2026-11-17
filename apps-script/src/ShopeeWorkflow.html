@@ -3,8 +3,10 @@
 var SHOPEE_WORKFILE = null;
 var SHOPEE_SALES_ID = null;
 Pages.mapping = function (main, arg) {
+  var pageToken={};App.shopeeViewToken=pageToken;
+  function currentView(){return main.isConnected!==false&&App.shopeeViewToken===pageToken&&(!App.page||App.page==='mapping');}
   if(typeof SkuPicker!=='undefined')SkuPicker.load().catch(function(){});
-  var f = { search: arg && arg.search || '', status: arg && arg.status || '', page: arg&&arg.page||1, pageSize: 30, batchId: arg&&Object.prototype.hasOwnProperty.call(arg,'batchId')?arg.batchId:Store.get(shopeeBatchPreference())||'' }, sequence = 0, snapshot=null, batchesLoaded=[], w = can('mapping.write');
+  var f = { search: arg && arg.search || '', status: arg && arg.status || '', page: arg&&arg.page||1, pageSize: 30, batchId: arg&&Object.prototype.hasOwnProperty.call(arg,'batchId')?arg.batchId:Store.get(shopeeBatchPreference())||'' }, sequence = 0, snapshot=null, snapshotRevision=0, refreshSequence=0, batchesLoaded=[], w = can('mapping.write');
   main.innerHTML = pageHead('Kanal Penjualan', 'Pemetaan SKU Shopee', (w?'<button class="btn" id="slImport">'+icon('upload')+'Impor template</button>':'')+(can('export.run')?'<button class="btn" id="slSelectApproved" disabled>Pilih semua disetujui</button><button class="btn pri" id="slExportSelected" disabled>'+icon('download')+'Ekspor terpilih (0)</button><button class="btn" id="slClearSelection" disabled>Bersihkan pilihan</button>':'')+'<button class="btn" id="slRefresh">'+icon('refresh')+'Muat ulang</button>', 'Impor template Shopee, periksa pasangan SKU, lalu ekspor variasi yang sudah disetujui.') +
     '<div class="row" style="margin-bottom:12px"><label for="slBatch">Unggahan</label><select class="in" id="slBatch"><option value="">Semua unggahan</option></select><button class="btn sm" id="slOpenBatch" class="hidden" disabled>Lanjutkan impor</button></div><div id="slSalesScope" class="hint" style="margin-bottom:12px"></div><div id="slSummary" class="shopee-status-cards"></div><div class="toolbar shopee-filters"><div class="search">'+icon('search')+'<input class="in" id="slSearch" placeholder="Cari produk, variasi atau SKU" value="'+esc(f.search)+'"></div><select class="in" id="slStatus" aria-label="Status pemeriksaan"><option value="">Semua status</option><option value="verify">Perlu diverifikasi</option><option value="approved">Disetujui</option><option value="unavailable">Tidak tersedia</option></select></div><div id="slSelectionInfo" class="hint"></div><div id="slRows"></div>';
   $('#slStatus',main).value=f.status;
@@ -12,13 +14,13 @@ Pages.mapping = function (main, arg) {
   function selectionInfo(){var count=Object.keys(SHOPEE_SELECTED).length,button=$('#slExportSelected',main);if(button){button.disabled=!count;button.innerHTML=icon('download')+'Ekspor terpilih ('+count+')';}var clear=$('#slClearSelection',main);if(clear)clear.disabled=!count;var info=$('#slSelectionInfo',main);if(info)info.textContent=count?count+' variasi dipilih. Pilihan tetap tersimpan saat berpindah halaman atau filter.':'Centang variasi berstatus Disetujui untuk ekspor. Gunakan tombol Impor template untuk menambah unggahan.';}
 
   function load(cached,openId,force) {
-    App.shopeeState=Object.assign({},f);
+    if(!currentView())return;App.shopeeState=Object.assign({},f);
     var mine = ++sequence, box = $('#slRows', main);
     if (!box) return;
     if(!snapshot)box.innerHTML=loadingBox('Memuat daftar kerja sekali…');
     var request=snapshot?Promise.resolve(ShopeeWorkspace.page(snapshot,f)):null;
     function render(d) {
-      if (mine !== sequence || !$('#slRows', main)) return;
+      if (mine !== sequence || !currentView() || !$('#slRows', main)) return;
       var profileId=d.salesProfile&&d.salesProfile.id||'';
       if(SHOPEE_SALES_ID!==profileId){var valid=new Set(ShopeeWorkspace.approvedIds(snapshot));Object.keys(SHOPEE_SELECTED).forEach(function(id){if(!valid.has(id))delete SHOPEE_SELECTED[id];});SHOPEE_SALES_ID=profileId;}
       $('#slSalesScope',main).textContent=d.salesProfile?'Fokus penjualan '+d.salesProfile.year+' · '+fmtNum(d.summary.all)+' variasi memiliki penjualan · '+fmtNum(d.excludedNoSales)+' variasi diabaikan. Sumber: '+d.salesProfile.source+' · Sheet3: nilai penjualan per produk, sama untuk variasi dari produk tersebut.':'';
@@ -42,17 +44,18 @@ Pages.mapping = function (main, arg) {
         shopeeReviewDialog(before, function (updated,advance) {
           if (!updated) return;
           if(updated.status!=='approved')delete SHOPEE_SELECTED[updated.id];
+          snapshotRevision++;
           ShopeeWorkspace.update(snapshot,updated);
           d.rows=d.rows.map(function(r){return r.id===updated.id?updated:r;});
           if(f.status&&shopeeDisplayStatus(updated)!==f.status)d.rows=d.rows.filter(function(r){return r.id!==updated.id;});
-          FastReadCache.put(FastReadCache.key('shopee.workspace',{batchId:f.batchId}),snapshot);
+          FastReadCache.put(FastReadCache.key('shopee.workspace',{batchId:f.batchId,viewSchema:2}),snapshot);
           load();
           if(advance){
             if(following.length)openReview(following[0]);
             else {
               var nextFilter=Object.assign({},f,{page:f.status&&shopeeDisplayStatus(updated)!==f.status?f.page:f.page+1});
               function findNext(){return Promise.resolve(ShopeeWorkspace.page(snapshot,nextFilter)).then(function(next){
-                if(!main.isConnected)return;
+                if(!currentView())return;
                 var row=next.rows.find(function(r){return r.status!=='approved';});
                 if(row){f.page=nextFilter.page;load(null,row.id);}
                 else if(next.rows.length&&nextFilter.page*nextFilter.pageSize<next.total){nextFilter.page++;return findNext();}
@@ -66,19 +69,19 @@ Pages.mapping = function (main, arg) {
       if(openId){var nextRow=d.rows.find(function(r){return r.id===openId;});openId=null;if(nextRow)openReview(nextRow);}
     }
     if(request)request.then(render).catch(function(e){if(mine===sequence)box.innerHTML=errBox(e.message);});
-    else {var params={batchId:f.batchId};var accept=function(data){if(mine!==sequence)return;snapshot=data;render(ShopeeWorkspace.page(data,f));};var fetch=force?api('shopee.workspace',params).then(function(data){FastReadCache.put(FastReadCache.key('shopee.workspace',params),data);accept(data);}):fastRead('shopee.workspace',params,accept);fetch.catch(function(e){if(mine===sequence&&$('#slRows',main))box.innerHTML=errBox(e.message);});}
+    else {var params={batchId:f.batchId,viewSchema:2};var accept=function(data){if(mine!==sequence||!currentView())return;snapshot=data;render(ShopeeWorkspace.page(data,f));};var fetch=force?api('shopee.workspace',params).then(function(data){if(mine!==sequence||!currentView())return;FastReadCache.put(FastReadCache.key('shopee.workspace',params),data);accept(data);}):fastRead('shopee.workspace',params,accept);fetch.catch(function(e){if(mine===sequence&&$('#slRows',main))box.innerHTML=errBox(e.message);});}
   }
   if($('#slImport',main))$('#slImport',main).onclick=function(){shopeeImportDialog(function(){App.go('mapping',{batchId:SHOPEE_BATCH_ID});});};
-  $('#slRefresh',main).onclick=function(){snapshot=null;load(null,null,true);};
+  $('#slRefresh',main).onclick=function(){refreshSequence++;snapshot=null;load(null,null,true);};
   $('#slSearch', main).oninput = debounce(function (e) { f.search = e.target.value; f.page = 1; load(); }, 80);
   $('#slStatus', main).onchange = function (e) { f.status = e.target.value; f.page = 1; load(); };
   if($('#slSelectApproved',main))$('#slSelectApproved',main).onclick=function(){if(!snapshot)return;SHOPEE_SELECTED=Object.create(null);ShopeeWorkspace.approvedIds(snapshot).forEach(function(id){SHOPEE_SELECTED[id]=true;});load();};
   if($('#slExportSelected',main))$('#slExportSelected',main).onclick=function(){shopeeSelectedDownloadDialog(selectionInfo);};
   if($('#slClearSelection',main))$('#slClearSelection',main).onclick=function(){SHOPEE_SELECTED=Object.create(null);load();};
-  api('shopee.batchList',{}, {silent:true}).then(function(batches){if(!$('#slBatch',main))return;batchesLoaded=batches;var saved=arg&&Object.prototype.hasOwnProperty.call(arg,'batchId')?arg.batchId:Store.get(shopeeBatchPreference());var previousBatch=f.batchId;f.batchId=batches.some(function(b){return b.id===saved;})?saved:'';$('#slBatch',main).innerHTML='<option value="">Semua unggahan</option>'+batches.map(function(b){return '<option value="'+esc(b.id)+'">'+esc(b.store+' · '+b.name)+' · '+b.imported+'/'+b.total+'</option>';}).join('');$('#slBatch',main).value=f.batchId;shopeeBatchRemember(f.batchId);batchAction();if(previousBatch!==f.batchId){snapshot=null;load();}}).catch(function(e){if($('#slRows',main))$('#slRows',main).innerHTML=errBox(e.message);});
-  $('#slBatch',main).onchange=function(){snapshot=null;f.batchId=this.value;shopeeBatchRemember(f.batchId);SHOPEE_WORKFILE=null;SHOPEE_SELECTED=Object.create(null);f.page=1;$('#slOpenBatch',main).disabled=!f.batchId;load();};
-  $('#slOpenBatch',main).onclick=function(){if(f.batchId)shopeeResumeBatch(f.batchId,function(){snapshot=null;load();});};
-  App.refreshData=function(){var currentBatch=f.batchId;return api('shopee.workspace',{batchId:currentBatch},{silent:true,quiet:true}).then(function(data){if(!main.isConnected||f.batchId!==currentBatch)return;snapshot=data;FastReadCache.put(FastReadCache.key('shopee.workspace',{batchId:currentBatch}),data);var valid=new Set(ShopeeWorkspace.approvedIds(data));Object.keys(SHOPEE_SELECTED).forEach(function(id){if(!valid.has(id))delete SHOPEE_SELECTED[id];});load();});};
+  api('shopee.batchList',{}, {silent:true}).then(function(batches){if(!currentView()||!$('#slBatch',main))return;batchesLoaded=batches;var saved=arg&&Object.prototype.hasOwnProperty.call(arg,'batchId')?arg.batchId:Store.get(shopeeBatchPreference());var previousBatch=f.batchId;f.batchId=batches.some(function(b){return b.id===saved;})?saved:'';$('#slBatch',main).innerHTML='<option value="">Semua unggahan</option>'+batches.map(function(b){return '<option value="'+esc(b.id)+'">'+esc(b.store+' · '+b.name)+' · '+b.imported+'/'+b.total+'</option>';}).join('');$('#slBatch',main).value=f.batchId;shopeeBatchRemember(f.batchId);batchAction();if(previousBatch!==f.batchId){refreshSequence++;snapshot=null;load();}}).catch(function(e){if(currentView()&&$('#slRows',main))$('#slRows',main).innerHTML=errBox(e.message);});
+  $('#slBatch',main).onchange=function(){refreshSequence++;snapshot=null;f.batchId=this.value;shopeeBatchRemember(f.batchId);SHOPEE_WORKFILE=null;SHOPEE_SELECTED=Object.create(null);f.page=1;$('#slOpenBatch',main).disabled=!f.batchId;load();};
+  $('#slOpenBatch',main).onclick=function(){if(f.batchId)shopeeResumeBatch(f.batchId,function(){refreshSequence++;snapshot=null;load();});};
+  App.refreshData=function(){var currentBatch=f.batchId,revision=snapshotRevision,request=++refreshSequence;return api('shopee.workspace',{batchId:currentBatch,viewSchema:2},{silent:true,quiet:true}).then(function(data){if(!currentView()||f.batchId!==currentBatch||revision!==snapshotRevision||request!==refreshSequence)return;snapshot=data;FastReadCache.put(FastReadCache.key('shopee.workspace',{batchId:currentBatch,viewSchema:2}),data);var valid=new Set(ShopeeWorkspace.approvedIds(data));Object.keys(SHOPEE_SELECTED).forEach(function(id){if(!valid.has(id))delete SHOPEE_SELECTED[id];});load();});};
   load();
 };
 

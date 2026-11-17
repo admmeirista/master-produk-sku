@@ -1,7 +1,7 @@
 <script>
 var SHOPEE_STATUS = { unmapped: 'Tidak tersedia', suggested: 'Perlu diverifikasi', needs_review: 'Perlu diverifikasi', approved: 'Disetujui', mismatch: 'Perlu diverifikasi', ignored: 'Tidak tersedia', verify: 'Perlu diverifikasi', unavailable: 'Tidak tersedia' };
 var SHOPEE_KIND = { single: 'Satuan', multipack: 'Paket produk sama (MP)', bundle: 'Paket kombinasi (BD)', unclear: 'Isi belum pasti' };
-function shopeeDisplayStatus(r) { return r.status === 'approved' ? 'approved' : r.target && r.target.active ? 'verify' : 'unavailable'; }
+function shopeeDisplayStatus(r) { return r.status === 'approved' ? 'approved' : (r.reviewRequested || r.target && r.target.active) ? 'verify' : 'unavailable'; }
 function shopeeBadge(st) { return '<span class="badge shopee-status-' + st + '">' + esc(SHOPEE_STATUS[st] || st) + '</span>'; }
 function shopeeFields(items) { return '<dl class="shopee-fields">' + items.map(function (x) { return '<div><dt>' + esc(x[0]) + '</dt><dd>' + esc(x[1] || '—') + '</dd></div>'; }).join('') + '</dl>'; }
 function shopeeBom(cs) { return (cs || []).map(function (c) { return '<div><b>' + esc(c.quantity) + ' × <span class="sku">' + esc(c.sku) + '</span></b><small class="shopee-sub">' + esc(c.name || '') + (c.gtin ? ' · GTIN ' + esc(c.gtin) : '') + '</small></div>'; }).join(''); }
