@@ -1,4 +1,20 @@
 <script>
+// Antrean per akun: popup ditutup segera, status final menunggu konfirmasi server.
+var ShopeeReviewJobs={account:null,jobs:[],running:false,onChange:null,
+  key:function(){return 'meirista_shopee_reviews:'+((typeof App!=='undefined'&&App.me&&App.me.user&&(App.me.user.id||App.me.user.email))||'session');},
+  init:function(){var key=this.key();if(this.account===key)return;this.account=key;this.jobs=[];this.running=false;try{this.jobs=JSON.parse(sessionStorage.getItem(key)||'[]');if(!Array.isArray(this.jobs))this.jobs=[];this.jobs.forEach(function(j){j.account=key;j.state='error';j.error={code:'NETWORK',message:'Penyimpanan sebelumnya belum dikonfirmasi. Klik Coba lagi untuk memeriksa hasilnya.'};});}catch(e){}},
+  persist:function(){try{sessionStorage.setItem(this.account,JSON.stringify(this.jobs.filter(function(j){return j.state!=='saved';})));}catch(e){}},
+  get:function(id){this.init();return this.jobs.find(function(j){return j.row.id===id&&j.state!=='saved';});},
+  pending:function(){this.init();return this.jobs.some(function(j){return j.state==='saving'||j.state==='queued';});},
+  decorate:function(data){if(!data)return;this.init();var saved={},pending={},changed=false;this.jobs.forEach(function(j){if(j.state==='saved'&&j.updated){if(!saved[j.updated.id]||Number(saved[j.updated.id].version)<Number(j.updated.version))saved[j.updated.id]=j.updated;}else pending[j.row.id]=j.state;});data.rows=data.rows.map(function(r){var updated=saved[r.id];if(updated&&(Number(r.version)||0)<Number(updated.version)){r=Object.assign({},r,updated);changed=true;}r.reviewJobState=pending[r.id]||'';return r;});if(changed)ShopeeWorkspace.update(data,{});},
+  emit:function(job){if(job.account!==this.account)return;this.persist();if(this.onChange)this.onChange(job);},
+  enqueue:function(row,p,resume){this.init();if(this.get(row.id))return false;var job={account:this.account,row:row,payload:p,resume:resume,state:'queued'};this.jobs.push(job);if(this.running)this.emit(job);else{this.persist();this.pump();}return true;},
+  retry:function(job){if(job.state!=='error')return;job.state='queued';job.error=null;this.emit(job);this.pump();},
+  discard:function(job){if(job.state!=='error')return false;this.jobs=this.jobs.filter(function(j){return j!==job;});this.emit(job);return true;},
+  pump:function(){var self=this;if(this.running)return;var job=this.jobs.find(function(j){return j.state==='queued';});if(!job)return;this.running=true;job.state='saving';this.emit(job);
+    api('shopee.review',job.payload,{silent:true,quiet:true}).then(function(updated){job.state='saved';job.updated=updated;self.emit(job);toast(updated.packageCreated?'Paket tersimpan dan pemetaan disetujui.':updated.status==='approved'?'Pasangan SKU disetujui.':'Pemetaan tersimpan untuk diverifikasi.','ok');}).catch(function(e){job.state='error';job.error=e;self.emit(job);toast('Pemetaan '+job.row.name+' belum dikonfirmasi. Lihat antrean penyimpanan.','err');}).finally(function(){if(self.account===job.account){self.running=false;self.pump();}});
+  }
+};
 function shopeeSelectionKey(type, lines) {
   return JSON.stringify([type, lines.map(function (c) { return [c.sku, Number(c.quantity)]; }).sort(function (a,b) { return a[0].localeCompare(b[0]); })]);
 }
@@ -38,7 +54,7 @@ function shopeeOpenReview(r, done) {
     $('#svReview',m).disabled = saving;
   }
   function accept(result,key) {
-    resolved = result; resolved.key = key; target = result.target; barcodeForm.set(target||{},type==='single'); drawTarget();
+    resolved = result; resolved.key = key; target = result.target; barcodeForm.set(r.pendingBarcode||target||{},type==='single');r.pendingBarcode=null; drawTarget();
     $('#svResolution',m).textContent = result.blocked || (target ? 'Menggunakan SKU yang sudah ada: '+target.sku+' · Total '+result.quantity+' unit per pembelian.' : 'Paket belum ada. '+(can('product.write')?'Buat dan setujui langsung; paket akan tersimpan di Paket Penjualan.':'Akun ini belum memiliki izin membuat paket.'));
     buttons();
   }
@@ -71,6 +87,7 @@ function shopeeOpenReview(r, done) {
   if(target && target.active && shopeeSelectionValid(type,lines) && shopeeSelectionKey(type,lines)===shopeeSelectionKey(target.kind,target.components)) {
     resolved={target:target,key:shopeeSelectionKey(type,lines),signature:null};buttons();
   } else changed();
+  if(r.pendingBarcode&&resolved){barcodeForm.set(r.pendingBarcode,type==='single');r.pendingBarcode=null;}
   function save(action,create,btn,advance) {
     if(saving)return;
     if(action==='approve' && (!resolved || resolved.key!==shopeeSelectionKey(type,lines) || resolved.blocked))return;
@@ -82,8 +99,10 @@ function shopeeOpenReview(r, done) {
     }
     if(action==='needs_review')p.draft={saleType:type,components:lines.filter(function(c){return !!c.sku;}).map(function(c){return {sku:c.sku,quantity:Number(c.quantity)};}),targetSku:target&&target.sku||'',targetSignature:target&&target.signature||''};
     var requestSignature=JSON.stringify(Object.assign({},p,{requestKey:''}));if(lastRequest&&lastRequest.signature===requestSignature)p.requestKey=lastRequest.key;else lastRequest={signature:requestSignature,key:p.requestKey};
-    var previousLabel=btn.textContent;++seq;saving=true;$('#svSaveStatus',m).textContent='Menyimpan pemetaan…';buttons();btn.textContent='Menyimpan…';$('#svType',m).disabled=true;$('#svBrand',m).disabled=true;$$('#svLines input, #svLines button, #svAdd',m).forEach(function(el){el.disabled=true;});$('#svError',m).innerHTML='';
-    busy(btn,api('shopee.review',p,{silent:true})).then(function(updated){m.close();toast(updated.packageCreated?'Paket baru tersimpan di Paket Penjualan dan pemetaan disetujui.':action==='approve'?'Pasangan SKU disetujui.':'Pemetaan tersimpan sebagai Perlu diverifikasi. Klik Setujui agar dapat diekspor.','ok');done(updated,!!advance);}).catch(function(e){saving=false;btn.textContent=previousLabel;$('#svSaveStatus',m).textContent=e.code==='NETWORK'?'Penyimpanan belum dapat dikonfirmasi. Coba lagi untuk memeriksa hasilnya.':'Belum tersimpan. Perbaiki pesan di formulir, lalu coba lagi.';$('#svType',m).disabled=false;$('#svBrand',m).disabled=false;drawLines();buttons();$('#svError',m).innerHTML=feList(e);if($('#svError',m).scrollIntoView)$('#svError',m).scrollIntoView({block:'nearest'});});
+    ++seq;saving=true;buttons();
+    var resume=Object.assign({},r,{saleType:type,expectedComponents:selection().components,target:target,targetSku:target&&target.sku||'',note:p.note,pendingBarcode:p.barcode||null});
+    if(ShopeeReviewJobs.get(r.id)){saving=false;buttons();return toast('Produk ini masih berada di antrean penyimpanan.','warn');}
+    m.close();ShopeeReviewJobs.enqueue(r,p,resume);done(r,!!advance,'pending');
   }
   $('#svApprove',m).onclick=function(){save('approve',false,this);};
   $('#svApproveNext',m).onclick=function(){save('approve',!!(resolved&&!resolved.target),this,true);};

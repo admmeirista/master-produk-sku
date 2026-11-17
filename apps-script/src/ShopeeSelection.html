@@ -41,7 +41,7 @@ function shopeeSelectedPlan(file,rows){
 }
 var SHOPEE_EXPORTING=false;
 function shopeeSelectedDownloadDialog(done){
-  var ids=Object.keys(SHOPEE_SELECTED);if(!ids.length)return toast('Pilih variasi Disetujui terlebih dahulu.','warn');if(SHOPEE_EXPORTING)return toast('File sedang disiapkan.','warn');
+  var ids=Object.keys(SHOPEE_SELECTED);if(typeof ShopeeReviewJobs!=='undefined'&&ids.some(function(id){return !!ShopeeReviewJobs.get(id);}))return toast('Tunggu penyimpanan SKU terpilih selesai sebelum ekspor.','warn');if(!ids.length)return toast('Pilih variasi Disetujui terlebih dahulu.','warn');if(SHOPEE_EXPORTING)return toast('File sedang disiapkan.','warn');
   var m=modal('<h3>Menyiapkan Excel Shopee</h3><p>'+ids.length+' variasi terpilih. File langsung diunduh setelah SKU dan format template diperiksa.</p><div id="sxInfo" class="hint" role="status">Memeriksa SKU dan mengambil template asli…</div><div id="sxError"></div><div class="row"><button class="btn pri hidden" id="sxRetry">Coba lagi</button><button class="btn hidden" id="sxReference">Pilih template asli</button><button class="btn" data-close>Tutup</button></div>');
   function run(){
     if(SHOPEE_EXPORTING)return;SHOPEE_EXPORTING=true;var file=SHOPEE_WORKFILE;

@@ -366,9 +366,7 @@ function importShopeeMultipacks_(user, deadline, rows) {
     try { p = assertUsableVariant_(v, sku); } catch (e) { rep.errors.push(sku + ': ' + e.message); continue; }
     let name = cleanText('Paket ' + qty + ' ' + (p.BaseUnit || 'PCS') + ' ' + (v.ProductSKUName || p.ProductName + ' ' + v.VariantName)).slice(0, 120);
     if (names[masterNameKey(name)]) name = cleanText(name.slice(0, 105) + ' ' + sku);
-    let code;
-    do code = padCode_(MULTIPACK_PREFIX, nextSeq_('multipack_no'));
-    while (used[code]);
+    const code = bundleAllocateSku_('MULTIPACK');
     used[code] = 1;
     const ts = now_();
     const b = B.insert({ BundleID: uuid_(), BundleSKU: code, BundleType: 'MULTIPACK', BundleName: name, NameKey: masterNameKey(name), StockMode: 'VIRTUAL', Stockable: 'NON_STOCKABLE', PickQuantity: null, Status: STATUS.ACTIVE,

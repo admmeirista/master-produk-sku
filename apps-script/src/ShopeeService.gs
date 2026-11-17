@@ -195,7 +195,7 @@ function shopeeReview_(user, p) {
       if (!target) {
         if (p.createPackage !== true) throw new AppError('Paket belum ada. Gunakan tombol Buat paket baru & setujui.');
         assertPerm_(user, 'product.write');
-        const catalog = shopeeCatalog_();
+        const catalog = shopeeCatalog_(resolved.components.map(c=>c.sku));
         const nameBase = resolved.name.slice(0, 120); let name = nameBase, suffix = 1;
         while (db_('BUNDLE_MASTERS').find((b) => b.Status !== STATUS.ARCHIVED && b.NameKey === masterNameKey(name))) name = nameBase.slice(0, 108) + ' (' + (++suffix) + ')';
         const saved = bundleSave_(user, { type: resolved.saleType === 'multipack' ? 'MULTIPACK' : 'MIXED', name, stockMode: 'VIRTUAL', components: resolved.components.map((c) => ({ variantId: catalog[c.sku].variantId, quantity: c.quantity })), barcode:p.barcode, description: 'Dibuat saat pemetaan listing Shopee ' + r.ExternalProductId });
@@ -213,7 +213,8 @@ function shopeeReview_(user, p) {
     if (p.barcode && target.kind !== 'single' && !shopeeBarcodeSame_(target,p.barcode)) {
       assertPerm_(user,'product.write');
       const b=db_('BUNDLE_MASTERS').byId(target.bundleId);
-      bundleSave_(user,{id:b.BundleID,version:b.Version,name:b.BundleName,stockMode:b.StockMode,components:target.components.map((c)=>({variantId:shopeeCatalog_()[c.sku].variantId,quantity:c.quantity})),barcode:p.barcode,barcodeChangeReason:note||'Diperbarui melalui pemetaan Shopee'});
+      const componentCatalog=shopeeCatalog_(target.components.map(c=>c.sku));
+      bundleSave_(user,{id:b.BundleID,version:b.Version,name:b.BundleName,stockMode:b.StockMode,components:target.components.map((c)=>({variantId:componentCatalog[c.sku].variantId,quantity:c.quantity})),barcode:p.barcode,barcodeChangeReason:note||'Diperbarui melalui pemetaan Shopee'});
       delete db_('PRODUCT_VARIANTS')._shopeeCatalog;target=shopeeTarget_(target.sku);
     }
     Object.assign(patch, { ReviewStatus: 'approved', ReviewedTargetSignature: target.signature });

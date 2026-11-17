@@ -2,7 +2,7 @@
  * Multipack & Bundle (Bill of Materials).
  *   Type A — konversi kemasan (UNIT_CONVERSIONS): BUKAN bundle, tidak wajib SKU baru.
  *   Type B — MULTIPACK  : 1 Child SKU × N dijual dengan identitas sendiri (SKU MP000001).
- *   Type C — MIXED      : beberapa Child SKU berbeda (SKU BDL000001).
+ *   Type C — MIXED      : beberapa Child SKU berbeda (SKU BD000001).
  *          — REQUEST_MIX: customer memilih isi dari daftar komponen; komposisi AKTUAL dipilih saat pemenuhan pesanan.
  * StockMode VIRTUAL  → non-stockable: tidak punya saldo sendiri, stok dihitung dari komponen (tanpa double counting).
  * StockMode PREASSEMBLED → stockable: benar-benar dirakit & disimpan sebagai barang terpisah; perakitan dijalankan
@@ -11,6 +11,17 @@
  */
 
 const BUNDLE_TYPES = { MULTIPACK: 'Paket Produk Sama', MIXED: 'Paket Kombinasi', REQUEST_MIX: 'Paket Pilih Sendiri' };
+/** Semua jalur registrasi memakai namespace dan lebar yang sama, di dalam transaksi terkunci. */
+function bundleAllocateSku_(type) {
+  if(!['MULTIPACK','MIXED','REQUEST_MIX'].includes(type))throw new AppError('Jenis paket tidak valid.');
+  const prefix=type==='MULTIPACK'?MULTIPACK_PREFIX:BUNDLE_PREFIX,counter=type==='MULTIPACK'?'multipack_no':'bundle_no';
+  const pattern=new RegExp('^'+prefix+'(\\d+)$','i');
+  const max=db_('BUNDLE_MASTERS').rows().reduce((n,b)=>{const m=String(b.BundleSKU||'').match(pattern);return m?Math.max(n,Number(m[1])):n;},0);
+  if(nextSeq_(counter,0)<=max)setSeq_(counter,max+1);
+  const number=nextSeq_(counter);
+  if(!Number.isSafeInteger(number)||number<1||number>999999)throw new AppError('Nomor '+prefix+' enam digit sudah penuh.');
+  return padCode_(prefix,number);
+}
 function bundleListCached_(f){const key='bl3:'+dataVersion_()+':'+shopeeSignature_(f||{}),cached=cacheGetBig_(key);if(cached)return cached;const result=bundleList_(f);cachePutBig_(key,result);return result;}
 
 function bundleView_(b, ctx) {
@@ -117,12 +128,7 @@ function bundleSave_(user, input, opts) {
     b = existing;
     T.update(b, Object.assign(fields, { Version: (b.Version || 1) + 1 }));
   } else {
-    const prefix = type === 'MULTIPACK' ? MULTIPACK_PREFIX : BUNDLE_PREFIX;
-    const used = {};
-    T.rows().forEach((x) => (used[x.BundleSKU] = 1));
-    let sku;
-    do sku = padCode_(prefix, nextSeq_(type === 'MULTIPACK' ? 'multipack_no' : 'bundle_no'));
-    while (used[sku]);
+    const sku = bundleAllocateSku_(type);
     const status = input.saveAsDraft ? STATUS.DRAFT : STATUS.ACTIVE;
     b = T.insert(Object.assign({ BundleID: uuid_(), BundleSKU: sku, BundleType: type, Status: status, CreatedBy: user.email, CreatedAt: ts, Version: 1 }, fields));
     recordLifecycle_(user, 'bundle', b.BundleID, '', '', status, 'Registrasi bundle');
@@ -214,11 +220,7 @@ function ensureMultipack_(user, variantId, qty, ts) {
   if (ex) return ex.BundleID;
   const v = db_('PRODUCT_VARIANTS').byId(variantId);
   const p = db_('MASTER_PRODUCTS').byId(v.ProductID);
-  const used = {};
-  db_('BUNDLE_MASTERS').rows().forEach((x) => (used[x.BundleSKU] = 1));
-  let sku;
-  do sku = padCode_(MULTIPACK_PREFIX, nextSeq_('multipack_no'));
-  while (used[sku]);
+  const sku = bundleAllocateSku_('MULTIPACK');
   let name = cleanText(p.ProductName + (v.IsDefault ? '' : ' ' + v.VariantName) + ' - Paket ' + qty + ' ' + p.BaseUnit).slice(0, 120);
   if (db_('BUNDLE_MASTERS').find((x) => x.NameKey === masterNameKey(name))) name = (name.slice(0, 110) + ' ' + sku).trim();
   const b = db_('BUNDLE_MASTERS').insert({ BundleID: uuid_(), BundleSKU: sku, BundleType: 'MULTIPACK', BundleName: name, NameKey: masterNameKey(name), StockMode: 'VIRTUAL', Stockable: 'NON_STOCKABLE', PickQuantity: null, Status: STATUS.ACTIVE, Description: 'Paket jual dari data lama', CreatedBy: user.email || user, CreatedAt: ts, UpdatedBy: user.email || user, UpdatedAt: ts, Version: 1 });

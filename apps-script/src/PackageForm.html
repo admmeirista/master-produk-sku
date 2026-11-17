@@ -10,7 +10,7 @@ function packageLines(host, options) {
 }
 function packageBarcode(host, initial, writable) {
   var state,original,locked=false,prefix='pb'+uid().replace(/[^a-z0-9]/gi,'');
-  function set(value,readOnly){original=value||{};state={mode:original.gtin?'gtin':original.internalBarcode?'internal':'none',code:original.gtin||original.internalBarcode||''};locked=!!readOnly;draw();}
+  function set(value,readOnly){original=value||{};state={mode:original.mode||(original.gtin?'gtin':original.internalBarcode?'internal':'none'),code:original.code||original.gtin||original.internalBarcode||''};locked=!!readOnly;draw();}
   function draw(){host.innerHTML='<label class="f">Barcode paket</label><select class="in w100" data-package-barcode aria-label="Barcode paket"'+(!writable||locked?' disabled':'')+'><option value="none">Tanpa barcode</option><option value="gtin">GTIN</option><option value="internal">Barcode internal</option></select><div data-package-code class="'+(state.mode==='gtin'?'':'hidden')+'"><label class="f" for="'+prefix+'Code">GTIN paket</label><input class="in w100 code" id="'+prefix+'Code" placeholder="GTIN paket dari produsen" value="'+esc(state.mode==='gtin'?state.code:'')+'"'+(!writable||locked?' readonly':'')+'></div><div class="hint" data-package-barcode-hint></div>';
     $('[data-package-barcode]',host).value=state.mode;
     $('[data-package-barcode-hint]',host).textContent=locked?'Barcode satuan mengikuti master barang.':state.mode==='internal'?(state.code?'Barcode internal: '+state.code:'Barcode internal dibuat otomatis saat disimpan.'):'GTIN paket tidak diambil dari GTIN barang komponennya.';

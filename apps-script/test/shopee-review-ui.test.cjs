@@ -21,17 +21,25 @@ function ui(write = false) {
   return { context, modals, calls, elements };
 }
 
-test('Simpan untuk diverifikasi mengirim pilihan parsial dan qty, menunjukkan proses, dan mempertahankan form ketika gagal',async()=>{
- const {context:c,elements,modals}=ui(true);let reject,requests=[];c.api=(action,p)=>{requests.push([action,p]);return new Promise((a,b)=>reject=b);};c.feList=e=>e.message;
- c.shopeeOpenReview({id:'draft',version:1,name:'Produk',saleType:'bundle',expectedComponents:[{sku:'PRD000001-001',quantity:2}]},()=>{});
- c.$('#svNote').value='';elements['#svReview'].onclick();elements['#svReview'].onclick();assert.equal(requests.length,1);assert.equal(requests[0][1].action,'needs_review');assert.equal(requests[0][1].draft.components[0].quantity,2);assert.equal(requests[0][1].note,'');assert.match(elements['#svSaveStatus'].textContent,/Menyimpan/);
- reject(new Error('Jaringan terputus'));await new Promise(setImmediate);assert.equal(modals[0].isConnected,true);assert.match(elements['#svSaveStatus'].textContent,/Belum tersimpan/);assert.match(elements['#svError'].innerHTML,/Jaringan/);
+test('Simpan untuk diverifikasi langsung menutup popup, menyimpan pilihan di antrean, dan menampilkan kegagalan tanpa menganggap berhasil',async()=>{
+ const {context:c,elements,modals}=ui(true);let reject,requests=[],done=[];c.api=(action,p)=>{requests.push([action,p]);return new Promise((a,b)=>reject=b);};
+ c.shopeeOpenReview({id:'draft',version:1,name:'Produk',saleType:'bundle',expectedComponents:[{sku:'PRD000001-001',quantity:2}]},(...args)=>done.push(args));
+ c.$('#svNote').value='';elements['#svReview'].onclick();elements['#svReview'].onclick();assert.equal(requests.length,1);assert.equal(requests[0][1].draft.components[0].quantity,2);assert.equal(requests[0][1].note,'');assert.equal(modals[0].isConnected,false);assert.equal(done[0][2],'pending');
+ reject(new Error('Jaringan terputus'));await new Promise(setImmediate);assert.equal(c.ShopeeReviewJobs.get('draft').state,'error');assert.match(c.ShopeeReviewJobs.get('draft').error.message,/Jaringan/);assert.equal(done.length,1);
 });
 
-test('retry setelah respons jaringan hilang memakai request key yang sama agar tidak menyimpan dua kali',async()=>{
- const {context:c,elements,modals}=ui(true);let n=0,reject,resolve;const requests=[];c.uid=()=>String(++n);c.feList=e=>e.message;c.api=(action,p)=>{requests.push(p);return new Promise((a,b)=>{resolve=a;reject=b;});};
- c.shopeeOpenReview({id:'retry',version:1,saleType:'bundle',expectedComponents:[{sku:'PRD000001-001',quantity:1}]},()=>{});c.$('#svNote').value='';elements['#svReview'].onclick();reject({code:'NETWORK',message:'Respons terputus'});await new Promise(setImmediate);assert.match(elements['#svSaveStatus'].textContent,/belum dapat dikonfirmasi/);
- elements['#svReview'].onclick();assert.equal(requests.length,2);assert.equal(requests[0].requestKey,requests[1].requestKey);resolve({status:'needs_review'});await new Promise(setImmediate);assert.equal(modals[0].isConnected,false);
+test('retry antrean memakai request key yang sama dan status disetujui baru diterapkan setelah server berhasil',async()=>{
+ const {context:c,elements}=ui(true);let n=0,reject,resolve;const requests=[],events=[];c.uid=()=>String(++n);c.api=(action,p)=>{requests.push(p);return new Promise((a,b)=>{resolve=a;reject=b;});};c.ShopeeReviewJobs.onChange=j=>events.push(j.state);
+ c.shopeeOpenReview({id:'retry',version:1,saleType:'bundle',expectedComponents:[{sku:'PRD000001-001',quantity:1}]},()=>{});c.$('#svNote').value='';elements['#svReview'].onclick();reject({code:'NETWORK',message:'Respons terputus'});await new Promise(setImmediate);
+ const job=c.ShopeeReviewJobs.get('retry');assert.equal(job.state,'error');c.ShopeeReviewJobs.retry(job);assert.equal(requests.length,2);assert.equal(requests[0].requestKey,requests[1].requestKey);resolve({id:'retry',status:'needs_review',version:2});await new Promise(setImmediate);assert.equal(job.state,'saved');assert.equal(job.updated.status,'needs_review');assert.equal(events.at(-1),'saved');
+});
+
+test('antrean dipulihkan setelah refresh dengan pilihan yang sama dan terpisah per akun',()=>{
+ const {context:c}=ui(true),memory={};c.sessionStorage={getItem:k=>memory[k]||null,setItem:(k,v)=>memory[k]=v};c.App={me:{user:{id:'akun-a'}}};
+ const row={id:'listing-a',version:1,name:'Produk A'};
+ c.ShopeeReviewJobs.enqueue(row,{id:row.id,requestKey:'tetap'},{...row,expectedComponents:[{sku:'PRD000001-001',quantity:3}],pendingBarcode:{mode:'internal',code:''}});
+ c.ShopeeReviewJobs.account=null;c.ShopeeReviewJobs.init();const restored=c.ShopeeReviewJobs.get(row.id);assert.equal(restored.state,'error');assert.equal(restored.payload.requestKey,'tetap');assert.equal(restored.resume.expectedComponents[0].quantity,3);assert.equal(restored.resume.pendingBarcode.mode,'internal');
+ c.App.me.user.id='akun-b';assert.equal(c.ShopeeReviewJobs.get(row.id),undefined);c.App.me.user.id='akun-a';assert.equal(c.ShopeeReviewJobs.get(row.id).payload.requestKey,'tetap');
 });
 
 test('brand otomatis dapat diganti manual dan pilihan tetap bertahan saat jenis penjualan berubah; pratinjau terisi sebelum paket ditemukan',async()=>{
@@ -43,14 +51,14 @@ test('brand otomatis dapat diganti manual dan pilihan tetap bertahan saat jenis 
  elements['#svBrand'].value='v';elements['#svBrand'].onchange();elements['#svType'].value='multipack';elements['#svType'].onchange();assert.equal(elements['#svBrand'].value,'v');
 });
 
-test('Setujui & berikutnya hanya melanjutkan sesudah penyimpanan berhasil; gagal tetap di popup',async()=>{
- const {context,elements,modals}=ui(true);let resolve,reject,saved=[],advance=[];
- context.api=(action,p)=>{saved.push(p);return new Promise((a,b)=>{resolve=a;reject=b;});};context.feList=e=>e.message;
+test('Setujui & berikutnya langsung menutup popup dan membuka berikutnya; gagal tidak memberi status disetujui',async()=>{
+ const {context:c,elements,modals}=ui(true);let resolve,reject,saved=[],advance=[];
+ c.api=(action,p)=>{saved.push(p);return new Promise((a,b)=>{resolve=a;reject=b;});};
  const row={id:'next-1',version:1,saleType:'single',quantity:1,expectedComponents:[{sku:'PRD000001-001',quantity:1}],target:{kind:'single',sku:'PRD000001-001',active:true,components:[{sku:'PRD000001-001',quantity:1}]}};
- context.shopeeReviewDialog(row,(r,next)=>advance.push([r,next]));
- elements['#svApproveNext'].onclick();elements['#svApproveNext'].onclick();assert.equal(saved.length,1);assert.equal(advance.length,0);
- reject(new Error('Konflik versi'));await new Promise(setImmediate);assert.equal(advance.length,0);assert.equal(modals[0].isConnected,true);
- elements['#svApproveNext'].onclick();resolve({...row,status:'approved'});await new Promise(setImmediate);assert.equal(advance.length,1);assert.equal(advance[0][1],true);assert.equal(modals[0].isConnected,false);
+ c.shopeeReviewDialog(row,(r,next,phase)=>advance.push([r,next,phase]));
+ elements['#svApproveNext'].onclick();elements['#svApproveNext'].onclick();assert.equal(saved.length,1);assert.equal(saved[0].action,'approve');assert.equal(advance.length,1);assert.equal(advance[0][1],true);assert.equal(advance[0][2],'pending');assert.equal(modals[0].isConnected,false);assert.notEqual(row.status,'approved');
+ reject(new Error('Konflik versi'));await new Promise(setImmediate);const job=c.ShopeeReviewJobs.get(row.id);assert.equal(job.state,'error');assert.equal(advance.length,1);
+ c.ShopeeReviewJobs.retry(job);resolve({...row,status:'approved',version:2});await new Promise(setImmediate);assert.equal(job.updated.status,'approved');assert.equal(advance.length,1,'hasil server tidak memindah produk untuk kedua kalinya');
 });
 
 test('Periksa membuka detail tabel secara sinkron tanpa menunggu atau memanggil API tambahan', () => {
@@ -74,7 +82,7 @@ test('popup menampilkan urutan kolom pembanding dan menyetujui sekali tanpa cekl
   context.$('#svType').value='multipack';context.$('#svQty').value='3';context.$('#svNote').value='';
   elements['#svApprove'].onclick();elements['#svApprove'].onclick();elements['#svReview'].onclick();
   assert.equal(calls.length,1);assert.equal(calls[0][0],'shopee.review');assert.equal('acknowledged' in calls[0][1],false);
-  assert.equal(elements['#svReview'].disabled,true);assert.equal(modals[0].isConnected,true,'belum dianggap berhasil sebelum server menyimpan');
+  assert.equal(elements['#svReview'].disabled,true);assert.equal(modals[0].isConnected,false,'popup langsung ditutup, hasil masih menunggu konfirmasi server');assert.equal(context.ShopeeReviewJobs.get(row.id).state,'saving');
 });
 
 test('Esc menutup hanya popup paling atas dan membersihkan listener setelah seluruh popup ditutup',()=>{
