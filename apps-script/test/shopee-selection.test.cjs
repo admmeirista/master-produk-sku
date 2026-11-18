@@ -1,6 +1,6 @@
 const test=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs'),path=require('node:path');
 const {createGas}=require('./harness.cjs');
-function browser(){const c={Pages:{},esc:v=>String(v??''),fmtNum:v=>String(v)};for(const name of ['Shopee','ShopeeWorkflow','ShopeeSelection','ShopeeBatch'])vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../src/'+name+'.html'),'utf8').replace(/^<script>\s*/,'').replace(/<\/script>\s*$/,''),c);return c;}
+function browser(){const c={Pages:{},esc:v=>String(v??''),fmtNum:v=>String(v)};for(const name of ['ShopeePlacement','Shopee','ShopeeWorkflow','ShopeeSelection','ShopeeBatch'])vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../src/'+name+'.html'),'utf8').replace(/^<script>\s*/,'').replace(/<\/script>\s*$/,''),c);return c;}
 test('kartu jumlah dan persentase status: total nol tidak menghasilkan NaN; pencarian tetap memakai denominator total',()=>{
  const c=browser();let html=c.shopeeStatusCards({all:10,verify:3,approved:6,unavailable:1},'approved');
  assert.match(html,/30% dari total/);assert.match(html,/60% dari total/);assert.match(html,/10% dari total/);assert.match(html,/shopee-stat-approved on/);
@@ -11,7 +11,7 @@ test('rencana ekspor terpilih hanya menerapkan baris pilihan yang disetujui dan 
  const raw={productId:'123',variationId:'1',name:'Produk satu',variationName:'30 gr',sellerSku:'lama',gtin:'',parentSku:'',sourceRow:7};
  const file={store:'Meirista',aoa:[header],rows:[raw,{...raw,variationId:'2',sourceRow:8}]};
  const current={...raw,id:'a',store:'Meirista',status:'approved',target:{active:true,sku:'MP000243',parentSku:'PRD000168',gtin:''}};
- const plan=c.shopeeSelectedPlan(file,[current]);assert.equal(plan.eligible,1);assert.deepEqual([...plan.selectedRows],[7]);assert.ok(plan.changes.every(x=>x.row===7));assert.ok(!plan.changes.some(x=>x.col===4),'SKU induk tidak diubah jika variasi lain tidak ikut disetujui');
+ const plan=c.shopeeSelectedPlan(file,[current]);assert.equal(plan.eligible,1);assert.deepEqual([...plan.selectedRows],[7]);assert.ok(plan.changes.every(x=>x.row===7));assert.equal(plan.changes.find(x=>x.col===4).value,'SHP123','kode grup stabil dihitung dari template lengkap walau ekspor hanya satu variasi');
  assert.throws(()=>c.shopeeSelectedPlan(file,[{...current,status:'suggested'}]),/belum disetujui/);
  assert.throws(()=>c.shopeeSelectedPlan(file,[{...current,variationId:'missing'}]),/tidak ada/);
  assert.throws(()=>c.shopeeSelectedPlan(file,[{...current,name:'Produk lain'}]),/berbeda/);

@@ -99,7 +99,7 @@ function shopeeList_(f) {
 }
 function shopeeGet_(id) {
   const r = db_('SHOPEE_LISTINGS').byId(id); if (!r) throw new AppError('Listing Shopee tidak ditemukan.');
-  return shopeeView_(r, shopeeCatalog_([r.TargetSku]));
+  return shopeeAttachShapes_([shopeeView_(r, shopeeCatalog_([r.TargetSku]))])[0];
 }
 function shopeeInferSale_(name, variation) {
   const s = (String(name || '') + ' ' + String(variation || '')).toLowerCase();
@@ -129,10 +129,13 @@ function shopeeImport_(user, p) {
     prepared.push({ key, values: { StoreAccount: store, ExternalProductId: pid, ExternalVariationId: vid, ListingName: cleanText(x.name).slice(0, 1500), VariationName: cleanText(x.variationName).slice(0, 500), ExternalParentSku: String(x.parentSku || '').trim().slice(0, 100), ExternalSku: String(x.sellerSku || '').trim().slice(0, 100), ExternalGTIN: String(x.gtin || '').trim().slice(0, 50), Price: price, Stock: stock, SourceFile: cleanText(p.fileName || 'Import Shopee').slice(0, 200), SourceRow: Number(x.sourceRow) || '', ImportedAt: now_(), UpdatedAt: now_() } });
   });
   const rep = { created: 0, updated: 0 };
+  const importShapes=batch?shopeeBatchShapes_(batch).shapes:{};
   prepared.forEach((entry) => {
     const old = index[entry.key], v = entry.values;
     if (old) {
-      const identityChanged = old.ListingName !== v.ListingName || (old.VariationName || '') !== v.VariationName || ((old.ExternalGTIN || '') !== v.ExternalGTIN && (!catalog[old.TargetSku] || v.ExternalGTIN !== catalog[old.TargetSku].gtin)) || ((old.ExternalSku || '') !== v.ExternalSku && v.ExternalSku !== old.TargetSku);
+      const singleListing=importShapes[v.ExternalProductId]&&importShapes[v.ExternalProductId].kind==='single';
+      const skuChanged=singleListing?((old.ExternalParentSku||'')!==v.ExternalParentSku||(old.ExternalSku||'')!==v.ExternalSku)&&v.ExternalParentSku!==old.TargetSku:(old.ExternalSku||'')!==v.ExternalSku&&v.ExternalSku!==old.TargetSku;
+      const identityChanged = old.ListingName !== v.ListingName || (old.VariationName || '') !== v.VariationName || ((old.ExternalGTIN || '') !== v.ExternalGTIN && (!catalog[old.TargetSku] || v.ExternalGTIN !== catalog[old.TargetSku].gtin)) || skuChanged;
       if (identityChanged) { shopeeDisableMapping_(old); Object.assign(v, { ReviewStatus: 'needs_review', ReviewNote: 'Data Shopee berubah sejak pemeriksaan sebelumnya; periksa ulang nama, variasi, dan komposisi.', ReviewedBy: '', ReviewedAt: '', ReviewedTargetSignature: '' }); }
       else db_('EXTERNAL_SKU_MAPPINGS').filter((m) => m.System === 'shopee' && m.IsActive && shopeeKey_(m.StoreAccount, m.ExternalProductId, m.ExternalVariationId) === entry.key).forEach((m) => db_('EXTERNAL_SKU_MAPPINGS').update(m, { ExternalSku: v.ExternalSku, ExternalParentSku: v.ExternalParentSku, ListingName: v.ListingName, UpdatedAt: now_() }));
       T.update(old, Object.assign(v, { Version: Number(old.Version || 1) + 1 })); rep.updated++;

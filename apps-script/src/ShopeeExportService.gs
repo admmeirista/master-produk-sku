@@ -22,6 +22,8 @@ function shopeeExportPrepare_(p){
     if(selection.rows.some(r=>r.store!==batch.StoreAccount))continue;
     const source=shopeeBatchManifest_(batch),index={};source.rows.forEach(r=>index[JSON.stringify([String(r.productId),String(r.variationId||'')])]=r);
     if(!selection.rows.every(r=>{const s=index[JSON.stringify([r.productId,r.variationId])];return s&&shopeeSourceMatches_(s,r);}))continue;
+    const shapes=ShopeePlacement.inspect(source.rows);
+    selection.rows.forEach(r=>{r.listingShape=shapes[r.productId];r.exportPreview=ShopeePlacement.preview(r.listingShape,r.target);if(!r.exportPreview.ready)throw new AppError('Bentuk variasi listing '+r.productId+' belum pasti. '+r.exportPreview.reason);});
     const template=batch.BatchID===p.loadedTemplateId?shopeeBatchView_(batch):shopeeBatchGet_({id:batch.BatchID});
     return {rows:selection.rows,template};
   }

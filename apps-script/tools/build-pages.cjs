@@ -8,6 +8,8 @@ const crypto = require('node:crypto');
 const path = require('node:path');
 
 const SRC = path.join(__dirname, '../src');
+// Aturan penempatan SKU yang sama persis untuk server dan browser.
+fs.writeFileSync(path.join(SRC,'ShopeePlacement.html'),'<script>\n'+fs.readFileSync(path.join(SRC,'ShopeePlacementCore.gs'),'utf8').replace(/\r\n/g,'\n')+'\n</script>\n');
 const out = path.resolve(process.argv[2] || '_site');
 const apiUrl = String(process.env.APPS_SCRIPT_URL || '').trim();
 if (!/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(apiUrl) && !/^http:\/\/localhost:\d+\//.test(apiUrl)) {

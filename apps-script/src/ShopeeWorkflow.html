@@ -21,7 +21,7 @@ Pages.mapping = function (main, arg) {
     $$('[data-save-retry]',box).forEach(function(b){b.onclick=function(){ShopeeReviewJobs.retry(jobs[Number(b.getAttribute('data-save-retry'))]);};});
     $$('[data-save-edit]',box).forEach(function(b){b.onclick=function(){var job=jobs[Number(b.getAttribute('data-save-edit'))];if(job.error&&job.error.code==='NETWORK')return toast('Klik Coba lagi dahulu untuk memastikan hasil permintaan sebelumnya.','warn');var draft=job.resume;api('shopee.get',{id:job.row.id},{silent:true}).then(function(fresh){draft=Object.assign({},fresh,draft,{version:fresh.version,target:null});if(!ShopeeReviewJobs.discard(job))return;shopeeReviewDialog(draft,function(){load();});}).catch(function(e){toast(e.message,'err');});};});
   }
-  if(typeof ShopeeReviewJobs!=='undefined')ShopeeReviewJobs.onChange=function(job){if(!currentView())return;snapshotRevision++;refreshSequence++;if(snapshot){if(job.state==='saved')ShopeeWorkspace.update(snapshot,job.updated);ShopeeReviewJobs.decorate(snapshot);if(job.state==='saved')FastReadCache.put(FastReadCache.key('shopee.workspace',{batchId:f.batchId,viewSchema:2}),snapshot);}load();};
+  if(typeof ShopeeReviewJobs!=='undefined')ShopeeReviewJobs.onChange=function(job){if(!currentView())return;snapshotRevision++;refreshSequence++;if(snapshot){if(job.state==='saved')ShopeeWorkspace.update(snapshot,job.updated);ShopeeReviewJobs.decorate(snapshot);if(job.state==='saved')FastReadCache.put(FastReadCache.key('shopee.workspace',{batchId:f.batchId,viewSchema:3}),snapshot);}load();};
   function load(cached,openId,force) {
     if(!currentView())return;if(typeof ShopeeReviewJobs!=='undefined')ShopeeReviewJobs.decorate(snapshot);renderJobs();App.shopeeState=Object.assign({},f);
     var mine = ++sequence, box = $('#slRows', main);
@@ -37,8 +37,8 @@ Pages.mapping = function (main, arg) {
       $('#slSummary',main).innerHTML=shopeeStatusCards(s,f.status);
       $$('[data-status-card]',main).forEach(function(button){button.onclick=function(){f.status=button.getAttribute('data-status-card');$('#slStatus',main).value=f.status;f.page=1;load();};});
       d.rows.forEach(function(r){if(r.status!=='approved'||r.reviewJobState)delete SHOPEE_SELECTED[r.id];});
-      box.innerHTML = d.rows.length ? '<div class="tablewrap shopee-simple"><table class="t"><thead><tr><th class="shopee-selection"><input type="checkbox" id="slSelectPage" aria-label="Pilih semua variasi disetujui pada halaman ini"></th><th class="sh-source shopee-product">Produk Shopee</th><th class="sh-source">Variasi</th><th class="sh-source">SKU Shopee</th><th class="sh-source shopee-sales-cell">Penjualan produk 2026 (Rp) ↓</th><th class="sh-master">SKU sistem</th><th>Status</th><th></th></tr></thead><tbody>' + d.rows.map(function (r) {
-        return '<tr><td class="shopee-selection"><input type="checkbox" data-select-listing="'+esc(r.id)+'" aria-label="Pilih '+esc(r.name)+' '+esc(r.variationName||'')+'"'+(r.status!=='approved'||r.reviewJobState||!can('export.run')?' disabled':'')+(SHOPEE_SELECTED[r.id]?' checked':'')+'></td><td class="sh-source shopee-product"><b>' + esc(r.name) + '</b></td><td class="sh-source shopee-variation-cell">' + esc(r.variationName || '—') + '</td><td class="sh-source shopee-seller-sku sku">' + esc(r.sellerSku || '—') + '</td><td class="sh-source shopee-sales-cell">' + (typeof r.productSales==='number'?r.productSales.toLocaleString('id-ID'):'—') + '</td><td class="sh-master">' + (r.target ? '<b class="sku">' + esc(r.target.sku) + '</b><small class="shopee-sub">' + esc(r.target.name) + '</small>' : '<span class="muted">Tidak tersedia</span>') + '</td><td>' + (r.reviewJobState?shopeeBadge(r.reviewJobState==='error'?'save_error':'saving'):shopeeBadge(shopeeDisplayStatus(r))) + '</td><td><button class="btn sm" data-review="' + esc(r.id) + '">' + (w ? 'Periksa' : 'Lihat') + '</button></td></tr>';
+      box.innerHTML = d.rows.length ? '<div class="tablewrap shopee-simple"><table class="t"><thead><tr><th class="shopee-selection"><input type="checkbox" id="slSelectPage" aria-label="Pilih semua variasi disetujui pada halaman ini"></th><th class="sh-source shopee-product">Produk Shopee</th><th class="sh-source">Variasi</th><th class="sh-source">SKU Shopee</th><th class="sh-source shopee-sales-cell">Penjualan produk 2026 (Rp) ↓</th><th class="sh-master">SKU sistem</th><th class="sh-source">Preview ekspor Shopee</th><th>Status</th><th></th></tr></thead><tbody>' + d.rows.map(function (r) {
+        return '<tr><td class="shopee-selection"><input type="checkbox" data-select-listing="'+esc(r.id)+'" aria-label="Pilih '+esc(r.name)+' '+esc(r.variationName||'')+'"'+(r.status!=='approved'||r.reviewJobState||!can('export.run')?' disabled':'')+(SHOPEE_SELECTED[r.id]?' checked':'')+'></td><td class="sh-source shopee-product"><b>' + esc(r.name) + '</b></td><td class="sh-source shopee-variation-cell">' + esc(r.variationName || '—') + '</td><td class="sh-source shopee-seller-sku sku">' + esc(r.sellerSku || '—') + '</td><td class="sh-source shopee-sales-cell">' + (typeof r.productSales==='number'?r.productSales.toLocaleString('id-ID'):'—') + '</td><td class="sh-master">' + (r.target ? '<b class="sku">' + esc(r.target.sku) + '</b><small class="shopee-sub">' + esc(r.target.name) + '</small>' : '<span class="muted">Tidak tersedia</span>') + '</td><td class="sh-source">'+shopeePlacementPreview(r,r.target)+'</td><td>' + (r.reviewJobState?shopeeBadge(r.reviewJobState==='error'?'save_error':'saving'):shopeeBadge(shopeeDisplayStatus(r))) + '</td><td><button class="btn sm" data-review="' + esc(r.id) + '">' + (w ? 'Periksa' : 'Lihat') + '</button></td></tr>';
       }).join('') + '</tbody></table></div>' + pager(d, function (p) { f.page = p; load(); }) : emptyBox('Tidak ada produk', 'Ubah pencarian atau gunakan tombol Impor template.', 'search');
       $$('[data-select-listing]',box).forEach(function(input){input.onchange=function(){var id=input.getAttribute('data-select-listing'),row=d.rows.find(function(r){return r.id===id;});if(this.checked&&row&&row.status==='approved'&&!row.reviewJobState)SHOPEE_SELECTED[id]=true;else delete SHOPEE_SELECTED[id];selectionInfo();};});
       var selectPage=$('#slSelectPage',box),eligible=d.rows.filter(function(r){return r.status==='approved'&&!r.reviewJobState;});
@@ -57,7 +57,7 @@ Pages.mapping = function (main, arg) {
           if(phase!=='pending')ShopeeWorkspace.update(snapshot,updated);
           if(typeof ShopeeReviewJobs!=='undefined')ShopeeReviewJobs.decorate(snapshot);
           if(updated.status!=='approved'||phase==='pending')delete SHOPEE_SELECTED[updated.id];
-          if(phase!=='pending')FastReadCache.put(FastReadCache.key('shopee.workspace',{batchId:f.batchId,viewSchema:2}),snapshot);
+          if(phase!=='pending')FastReadCache.put(FastReadCache.key('shopee.workspace',{batchId:f.batchId,viewSchema:3}),snapshot);
           load();
           if(advance){
             var all=ShopeeWorkspace.page(snapshot,Object.assign({},f,{page:1,pageSize:snapshot.rows.length})).rows;
@@ -70,7 +70,7 @@ Pages.mapping = function (main, arg) {
       if(openId){var nextRow=d.rows.find(function(r){return r.id===openId;});openId=null;if(nextRow)openReview(nextRow);}
     }
     if(request)request.then(render).catch(function(e){if(mine===sequence)box.innerHTML=errBox(e.message);});
-    else {var params={batchId:f.batchId,viewSchema:2};var accept=function(data){if(mine!==sequence||!currentView())return;snapshot=data;if(typeof ShopeeReviewJobs!=='undefined')ShopeeReviewJobs.decorate(snapshot);render(ShopeeWorkspace.page(data,f));renderJobs();};var fetch=force?api('shopee.workspace',params).then(function(data){if(mine!==sequence||!currentView())return;FastReadCache.put(FastReadCache.key('shopee.workspace',params),data);accept(data);}):fastRead('shopee.workspace',params,accept);fetch.catch(function(e){if(mine===sequence&&$('#slRows',main))box.innerHTML=errBox(e.message);});}
+    else {var params={batchId:f.batchId,viewSchema:3};var accept=function(data){if(mine!==sequence||!currentView())return;snapshot=data;if(typeof ShopeeReviewJobs!=='undefined')ShopeeReviewJobs.decorate(snapshot);render(ShopeeWorkspace.page(data,f));renderJobs();};var fetch=force?api('shopee.workspace',params).then(function(data){if(mine!==sequence||!currentView())return;FastReadCache.put(FastReadCache.key('shopee.workspace',params),data);accept(data);}):fastRead('shopee.workspace',params,accept);fetch.catch(function(e){if(mine===sequence&&$('#slRows',main))box.innerHTML=errBox(e.message);});}
   }
   if($('#slImport',main))$('#slImport',main).onclick=function(){shopeeImportDialog(function(){App.go('mapping',{batchId:SHOPEE_BATCH_ID});});};
   $('#slRefresh',main).onclick=function(){refreshSequence++;snapshot=null;load(null,null,true);};
@@ -82,7 +82,7 @@ Pages.mapping = function (main, arg) {
   api('shopee.batchList',{}, {silent:true}).then(function(batches){if(!currentView()||!$('#slBatch',main))return;batchesLoaded=batches;var saved=arg&&Object.prototype.hasOwnProperty.call(arg,'batchId')?arg.batchId:Store.get(shopeeBatchPreference());var previousBatch=f.batchId;f.batchId=batches.some(function(b){return b.id===saved;})?saved:'';$('#slBatch',main).innerHTML='<option value="">Semua unggahan</option>'+batches.map(function(b){return '<option value="'+esc(b.id)+'">'+esc(b.store+' · '+b.name)+' · '+b.imported+'/'+b.total+'</option>';}).join('');$('#slBatch',main).value=f.batchId;shopeeBatchRemember(f.batchId);batchAction();if(previousBatch!==f.batchId){refreshSequence++;snapshot=null;load();}}).catch(function(e){if(currentView()&&$('#slRows',main))$('#slRows',main).innerHTML=errBox(e.message);});
   $('#slBatch',main).onchange=function(){refreshSequence++;snapshot=null;f.batchId=this.value;shopeeBatchRemember(f.batchId);SHOPEE_WORKFILE=null;SHOPEE_SELECTED=Object.create(null);f.page=1;$('#slOpenBatch',main).disabled=!f.batchId;load();};
   $('#slOpenBatch',main).onclick=function(){if(f.batchId)shopeeResumeBatch(f.batchId,function(){refreshSequence++;snapshot=null;load();});};
-  App.refreshData=function(){var currentBatch=f.batchId,revision=snapshotRevision,request=++refreshSequence;return api('shopee.workspace',{batchId:currentBatch,viewSchema:2},{silent:true,quiet:true}).then(function(data){if(!currentView()||f.batchId!==currentBatch||revision!==snapshotRevision||request!==refreshSequence)return;snapshot=data;FastReadCache.put(FastReadCache.key('shopee.workspace',{batchId:currentBatch,viewSchema:2}),data);var valid=new Set(ShopeeWorkspace.approvedIds(data));Object.keys(SHOPEE_SELECTED).forEach(function(id){if(!valid.has(id))delete SHOPEE_SELECTED[id];});load();});};
+  App.refreshData=function(){var currentBatch=f.batchId,revision=snapshotRevision,request=++refreshSequence;return api('shopee.workspace',{batchId:currentBatch,viewSchema:3},{silent:true,quiet:true}).then(function(data){if(!currentView()||f.batchId!==currentBatch||revision!==snapshotRevision||request!==refreshSequence)return;snapshot=data;FastReadCache.put(FastReadCache.key('shopee.workspace',{batchId:currentBatch,viewSchema:3}),data);var valid=new Set(ShopeeWorkspace.approvedIds(data));Object.keys(SHOPEE_SELECTED).forEach(function(id){if(!valid.has(id))delete SHOPEE_SELECTED[id];});load();});};
   load();
 };
 
@@ -112,23 +112,23 @@ function shopeeImportDialog(done) {
   };
 }
 
-// Hanya kolom terotorisasi yang diubah. SKU induk diisi bila SELURUH variasi produk
-// dalam file sudah disetujui dan mengarah ke satu parent yang sama.
+// Hanya kolom SKU/GTIN diubah; struktur listing dihitung dari seluruh template asli.
 function shopeeExportChanges(file, results) {
   var header;
   // Petunjuk Shopee dapat berada di antara header dan baris data pertama.
   header = file.aoa.slice(0, 20).find(function (r) { return r.some(function (v) { return String(v).trim().toLowerCase() === 'kode produk'; }) && r.some(function (v) { return String(v).trim().toLowerCase() === 'nama produk'; }); });
-  var cols = header.map(function (v) { return String(v || '').trim().toLowerCase(); }), index = {}, groups = {}, changes = [];
-  results.forEach(function (r) { index[JSON.stringify([String(r.productId), String(r.variationId || '')])] = r; });
-  file.rows.forEach(function (r) { (groups[r.productId] = groups[r.productId] || []).push(index[JSON.stringify([r.productId, r.variationId])] || { eligible: false }); });
-  function put(row, name, value) { var col = cols.indexOf(name); if (col >= 0) changes.push({ row: row.sourceRow, col: col, value: String(value || '') }); }
-  var eligible = 0;
-  file.rows.forEach(function (r) {
-    var x = index[JSON.stringify([r.productId, r.variationId])]; if (!x || !x.eligible) return; eligible++;
-    put(r, 'sku', x.sku); put(r, 'gtin', x.gtin);
-    var group = groups[r.productId]; if (x.parentSku && group.every(function (g) { return g.eligible && g.parentSku === x.parentSku; })) put(r, 'sku induk', x.parentSku);
+  var cols=header.map(function(v){return String(v||'').trim().toLowerCase();}),index={},changes=[],previews=[],shapes=ShopeePlacement.inspect(file.rows);
+  results.forEach(function(r){index[JSON.stringify([String(r.productId),String(r.variationId||'')])]=r;});
+  function put(row,name,value){var col=cols.indexOf(name);if(col>=0)changes.push({row:row.sourceRow,col:col,value:String(value||'')});}
+  var eligible=0;
+  file.rows.forEach(function(r){
+    var x=index[JSON.stringify([String(r.productId),String(r.variationId||'')])];if(!x||!x.eligible)return;
+    var preview=ShopeePlacement.preview(shapes[r.productId],{sku:x.sku,gtin:x.gtin,active:true});
+    if(!preview.ready)throw new Error('Bentuk variasi listing '+r.productId+' belum pasti. '+preview.reason);
+    eligible++;put(r,'sku induk',preview.parentSku);put(r,'sku',preview.sku);put(r,'gtin',preview.gtin);
+    previews.push({productId:r.productId,variationId:r.variationId,kind:preview.kind,parentSku:preview.parentSku,sku:preview.sku,gtin:preview.gtin});
   });
-  return { changes: changes, eligible: eligible, unchanged: file.rows.length - eligible };
+  return {changes:changes,previews:previews,eligible:eligible,unchanged:file.rows.length-eligible};
 }
 
 /** Patch XML di dalam ZIP asli, bukan membangun ulang workbook dengan konversi tabel. */

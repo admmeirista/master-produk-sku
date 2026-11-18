@@ -104,18 +104,19 @@ test('unduhan hanya menerapkan persetujuan yang cocok dengan identitas file dan 
 
 test('rencana unduhan menjaga baris belum disetujui dan parent produk dengan campuran pasangan',()=>{
   const context={Pages:{}};
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../src/ShopeePlacementCore.gs'),'utf8'),context);
   vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../src/ShopeeWorkflow.html'),'utf8').replace(/^<script>\s*/,'').replace(/<\/script>\s*$/,''),context);
   const header=['Kode Produk','Nama Produk','Kode Variasi','Nama Variasi','SKU Induk','SKU','Harga','GTIN','Stok'];
-  const rows=[{productId:'123',variationId:'1',sourceRow:7},{productId:'123',variationId:'2',sourceRow:8},{productId:'456',variationId:'3',sourceRow:9}];
+  const rows=[{productId:'123',variationId:'1',sourceRow:7},{productId:'123',variationId:'2',sourceRow:8},{productId:'456',variationId:'3',variationName:'',sourceRow:9}];
   const file={rows,aoa:[['metadata'],header,['petunjuk']]};
   const results=[{productId:'123',variationId:'1',eligible:true,sku:'MP000243',parentSku:'PRD000168',gtin:''},{productId:'123',variationId:'2',eligible:false},{productId:'456',variationId:'3',eligible:true,sku:'PRD000001-001',parentSku:'PRD000001',gtin:'0012345678901'}];
   let plan=context.shopeeExportChanges(file,results);assert.equal(plan.eligible,2);assert.equal(plan.unchanged,1);
-  assert.ok(!plan.changes.some(c=>c.row===8));assert.ok(!plan.changes.some(c=>c.row===7&&c.col===4),'parent ditahan bila variasi lain belum disetujui');
+  assert.ok(!plan.changes.some(c=>c.row===8));assert.equal(plan.changes.find(c=>c.row===7&&c.col===4).value,'SHP123','kode grup tetap sama saat ekspor sebagian variasi');
   assert.equal(plan.changes.find(c=>c.row===7&&c.col===7).value,'');assert.equal(plan.changes.find(c=>c.row===9&&c.col===7).value,'0012345678901');
   assert.ok(plan.changes.every(c=>[4,5,7].includes(c.col)),'harga/stok/ID/nama tetap');
   results[1]={productId:'123',variationId:'2',eligible:true,sku:'PRD000168-003',parentSku:'PRD000168',gtin:''};
   plan=context.shopeeExportChanges(file,results);assert.equal(plan.changes.filter(c=>c.col===4).length,3);
-  results[1].parentSku='PRD000999';plan=context.shopeeExportChanges(file,results);assert.equal(plan.changes.filter(c=>c.col===4).length,1);
+  results[1].parentSku='PRD000999';plan=context.shopeeExportChanges(file,results);assert.equal(plan.changes.filter(c=>c.col===4).length,3,'SKU Parent master tidak menentukan grup listing Shopee');
 });
 test('import perubahan harga mempertahankan persetujuan; perubahan identitas mencabut mapping; kode yang diperbarui mengikuti snapshot',()=>{
   let r=list({store:'Meirista',search:'1001'}).rows[0];ok(call(A,'shopee.review',approval(r,single)));
