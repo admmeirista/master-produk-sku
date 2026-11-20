@@ -2,7 +2,7 @@
 var AppUpdate={
   started:false,busy:false,pendingUi:false,pendingData:false,dataVersion:null,dirty:false,reloading:false,lastInput:0,
   account:function(){return App.me&&App.me.user&&App.me.user.id||'';},
-  safe:function(){return Date.now()-this.lastInput>1500&&!this.dirty&&!App.leaveGuard&&!document.querySelector('.modal,.cam-bg')&&!(typeof SHOPEE_EXPORTING!=='undefined'&&SHOPEE_EXPORTING)&&!Net.pending&&!(typeof ShopeeReviewJobs!=='undefined'&&ShopeeReviewJobs.pending());},
+  safe:function(){return Date.now()-this.lastInput>1500&&!this.dirty&&!App.leaveGuard&&!document.querySelector('.modal,.cam-bg,.auth-loading')&&!(typeof SHOPEE_EXPORTING!=='undefined'&&SHOPEE_EXPORTING)&&!Net.pending&&!(typeof ShopeeReviewJobs!=='undefined'&&ShopeeReviewJobs.pending());},
   capture:function(){return {account:this.account(),page:App.page,arg:App.page==='mapping'?App.shopeeState:App.pageArg,selected:typeof SHOPEE_SELECTED!=='undefined'?Object.keys(SHOPEE_SELECTED):[],profile:typeof SHOPEE_SALES_ID!=='undefined'?SHOPEE_SALES_ID:null,at:Date.now()};},
   restore:function(){try{var raw=sessionStorage.getItem('meirista_update_resume');if(!raw)return null;var state=JSON.parse(raw);sessionStorage.removeItem('meirista_update_resume');if(state.account!==this.account()||Date.now()-state.at>3600000)return null;if(typeof SHOPEE_SELECTED!=='undefined'){SHOPEE_SELECTED=Object.create(null);(state.selected||[]).forEach(function(id){SHOPEE_SELECTED[id]=true;});SHOPEE_SALES_ID=state.profile;}return state;}catch(e){return null;}},
   apply:function(){

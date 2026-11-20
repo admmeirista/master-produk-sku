@@ -616,28 +616,30 @@ var App = {
     var cached = null;
     try { cached = JSON.parse(Store.get('rpm_me') || 'null'); } catch (e) { cached = null; }
     if (cached && cached.user) App.enter(cached);
-    else $app().innerHTML = '<div class="loading" style="justify-content:center;min-height:100vh"><span class="spinner"></span>Memuat ruang kerja…</div>';
+    else AuthLoading.show('Memeriksa sesi Anda…');
     api('auth.me', {}, { silent: true, quiet: !!cached }).then(function (me) {
       var changed = !cached || cached.user.role !== me.user.role;
       App.remember(me);
       if (changed) App.enter(me);
+      if(!cached)AuthLoading.finish();
     }).catch(function (e) { if (e.code !== 'UNAUTHENTICATED' && !cached) App.showLogin(e.message); });
   },
   remember: function (me) { App.me = me; Store.set('rpm_me', JSON.stringify(me)); },
   forget: function () { App.refreshData=null;if(typeof AppUpdate!=='undefined'){AppUpdate.pendingData=false;AppUpdate.dataVersion=null;AppUpdate.dirty=false;}  if(typeof SkuPicker!=='undefined')SkuPicker.clear(); if(typeof SHOPEE_BATCH_ID!=='undefined')SHOPEE_BATCH_ID=''; if(typeof SHOPEE_SELECTED!=='undefined')SHOPEE_SELECTED=Object.create(null);if(typeof SHOPEE_WORKFILE!=='undefined')SHOPEE_WORKFILE=null;FastReadCache.clear(); App.token = null; App.me = null; Store.del('rpm_token'); Store.del('rpm_me'); Ref.data = {}; },
 
   authShell: function (formHtml) {
-    var flow = [['camera', 'Scan barcode', 'Kamera HP langsung mengenali SKU'], ['plus', 'Registrasi SKU', 'Barcode terisi otomatis, tanpa ketik ulang'],
-      ['package', 'Master data', 'SKU Parent, SKU Produk, brand & kategori'], ['shield', 'Aman & tercatat', 'Anti duplikat, setiap perubahan masuk audit']];
+    var flow = [['package', 'Data produk', 'SKU, variasi, barcode, dan kategori produk.'], ['boxes', 'Paket penjualan', 'Komposisi dan jumlah barang dalam MP atau BD.'],
+      ['link', 'Pemetaan kanal', 'Pemeriksaan SKU marketplace dan ekspor template.']];
     $app().innerHTML = '<div class="auth"><section class="auth-art"><div class="art-top">' + brand() + '</div>' +
       '<div class="art-mid"><div class="eyebrow eb">SKU Management System</div>' +
-      '<h1>Scan, daftar,<br>SKU <em>pasti.</em></h1>' +
-      '<p class="lead">Kelola produk kosmetik dengan rapi — dari brand hingga kemasan karton — siap dipakai di Shopee dan operasional toko.</p>' +
-      '<ol class="flow">' + flow.map(function (f, i) { return '<li><div class="node">' + icon(f[0]) + '</div><div><div class="k">Tahap ' + (i + 1) + '</div><div class="v">' + f[1] + '</div><div class="d">' + f[2] + '</div></div></li>'; }).join('') + '</ol></div>' +
-      '<div class="foot"><span>© ' + new Date().getFullYear() + ' Meirista</span><span class="sep"></span>' + icon('lock') + '<span>Akses individual · tercatat di audit trail</span></div></section>' +
+      '<h1>Pengelolaan data<br>produk &amp; SKU.</h1>' +
+      '<p class="lead">Kelola identitas produk, susun paket penjualan, dan periksa pemetaan SKU untuk operasional Meirista.</p>' +
+      '<ol class="flow">' + flow.map(function (f) { return '<li><div class="node">' + icon(f[0]) + '</div><div><div class="v">' + f[1] + '</div><div class="d">' + f[2] + '</div></div></li>'; }).join('') + '</ol></div>' +
+      '<div class="foot"><span>© ' + new Date().getFullYear() + ' Meirista</span><span class="sep"></span>' + icon('lock') + '<span>Sistem internal · Akses sesuai peran</span></div></section>' +
       '<section class="auth-form"><div class="box"><div class="auth-logo">' + brandLogo() + '</div>' + formHtml + '</div><div class="auth-tag">' + APP_NAME.toUpperCase() + '</div></section></div>';
   },
   showLogin: function (msg) {
+    AuthLoading.hide();
     App.page = null;
     App.authShell('<form id="lf" autocomplete="on"><div class="mobile-brand">' + brand('dark') + '</div><div class="eyebrow">Selamat datang</div><h2>Masuk ke akun Anda</h2><div class="sub">Gunakan email dan password yang diberikan administrator.</div>' +
       '<label class="f">Username</label><input class="in" name="email" type="text" placeholder="mis. adm.meirista" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" required>' +
@@ -650,15 +652,17 @@ var App = {
     f.email.focus();
     f.onsubmit = function (ev) {
       ev.preventDefault();
-      var b = $('.cta', f); b.classList.add('busy'); b.disabled = true;
+      var b = $('.cta', f);if(b.disabled)return;b.classList.add('busy'); b.disabled = true;
       $('#lerr').innerHTML = '';
+      AuthLoading.show('Memeriksa akun Anda…');
       api('auth.login', { email: f.email.value, password: f.password.value }, { silent: true })
         .then(function (r) {
           App.token = r.token; Store.set('rpm_token', r.token);
+          AuthLoading.message('Memuat akses akun…');
           return api('auth.me', {}, { silent: true });
         })
-        .then(function (me) { App.remember(me); App.enter(me); })
-        .catch(function (e) { $('#lerr').innerHTML = errBox(e.message); b.classList.remove('busy'); b.disabled = false; f.password.value = ''; f.password.focus(); });
+        .then(function (me) { App.remember(me); App.enter(me);AuthLoading.finish(); })
+        .catch(function (e) {AuthLoading.hide();if(document.getElementById('lf')!==f)return App.showLogin(e.message);$('#lerr').innerHTML = errBox(e.message); b.classList.remove('busy'); b.disabled = false; f.password.value = ''; f.password.focus(); });
     };
   },
   bindEye: function (root) {

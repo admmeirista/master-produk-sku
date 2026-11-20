@@ -1,0 +1,23 @@
+<script>
+var AuthLoading={
+  observer:null,timer:null,
+  show:function(message){
+    this.hide();var overlay=document.createElement('div');overlay.id='auth-loading';overlay.className='auth-loading';overlay.setAttribute('role','status');overlay.setAttribute('aria-live','polite');
+    overlay.innerHTML='<div class="auth-loading-content"><div class="auth-loading-mark">'+brandLogo()+'</div><div class="auth-loading-label">MEIRISTA</div><h1>SKU Master</h1><p id="auth-loading-message">'+esc(message||'Memeriksa akun Anda…')+'</p><div class="auth-loading-track" aria-hidden="true"><i></i></div><div class="auth-loading-caption">Produk · Paket Penjualan · Kanal Penjualan</div></div><div class="auth-loading-footer">SKU Management System</div>';
+    document.body.appendChild(overlay);var root=document.getElementById('app');if(root){root.inert=true;root.setAttribute('aria-busy','true');}
+  },
+  message:function(message){var node=document.getElementById('auth-loading-message');if(node)node.textContent=message;},
+  finish:function(){
+    var self=this,main=document.getElementById('main');this.message('Menyiapkan ruang kerja…');
+    function ready(){if(!main||!main.querySelector('.loading')){self.hide();return true;}return false;}
+    if(ready())return;
+    this.observer=new MutationObserver(ready);this.observer.observe(main,{childList:true,subtree:true});
+    // Bila data awal masih menunggu server, tampilkan halaman beserta indikator datanya.
+    this.timer=setTimeout(function(){self.hide();},12000);
+  },
+  hide:function(){
+    if(this.observer){this.observer.disconnect();this.observer=null;}if(this.timer){clearTimeout(this.timer);this.timer=null;}
+    var overlay=document.getElementById('auth-loading');if(overlay)overlay.remove();var root=document.getElementById('app');if(root){root.inert=false;root.removeAttribute('aria-busy');}
+  }
+};
+</script>
