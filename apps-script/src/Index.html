@@ -10,8 +10,9 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.6/JsBarcode.all.min.js" defer></script>
   </head>
   <body>
-    <div id="app"><div class="auth-startup" role="status" aria-live="polite"><div class="auth-startup-symbol" aria-hidden="true">SKU</div><div class="auth-loading-label">MEIRISTA</div><h1>SKU Master</h1><p>Memuat aplikasi…</p><div class="auth-loading-track" aria-hidden="true"><i></i></div></div></div>
+    <div id="app"><div class="auth-startup" role="status" aria-live="polite"><div class="auth-loading-mark"><img id="auth-startup-logo" alt="Logo SKU Master Meirista" width="104" height="104"></div><div class="auth-loading-label">MEIRISTA</div><h1>SKU Master</h1><p>Memuat aplikasi…</p><div class="auth-loading-track" aria-hidden="true"><i></i></div></div></div>
     <?!= include('Logo'); ?>
+    <script>document.getElementById('auth-startup-logo').src=BRAND_LOGO;</script>
     <?!= include('AuthLoading'); ?>
     <?!= include('Scripts'); ?>
     <?!= include('Pages'); ?>

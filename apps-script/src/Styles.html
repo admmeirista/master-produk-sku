@@ -1517,4 +1517,34 @@ body[data-page="mapping"] .ph{align-items:flex-start;margin-bottom:12px;gap:8px}
 body[data-page="mapping"] .shopee-status-cards{gap:9px;margin-bottom:10px}body[data-page="mapping"] .shopee-stat{padding:9px 12px;display:grid;grid-template-columns:1fr auto;grid-template-areas:'label value' 'meta value' 'bar bar';gap:2px 8px;border-radius:10px}body[data-page="mapping"] .shopee-stat span{grid-area:label;font-size:11px}body[data-page="mapping"] .shopee-stat strong{grid-area:value;font-size:24px;margin:0;align-self:center}body[data-page="mapping"] .shopee-stat small{grid-area:meta;font-size:10px}body[data-page="mapping"] .shopee-stat i{grid-area:bar;height:3px;margin-top:5px}body[data-page="mapping"] .shopee-filters{margin-bottom:4px;gap:8px}body[data-page="mapping"] #slSelectionInfo{font-size:11px;margin:0 0 0 auto;max-width:300px}body[data-page="mapping"] .shopee-filters .search{flex:1;min-width:200px;max-width:none}body[data-page="mapping"] .shopee-filters{align-items:center;margin-bottom:10px}body[data-page="mapping"] #slReviewJobs{max-height:120px;overflow:auto;flex-shrink:0}body[data-page="mapping"] .shopee-simple td{padding-top:10px;padding-bottom:10px}body[data-page="mapping"] #slRows>.pager{flex-shrink:0;padding-top:8px;padding-bottom:0}
 @media(min-width:1000px) and (min-height:650px){body[data-page="mapping"] .main{height:100dvh;display:flex;flex-direction:column;overflow:hidden;padding:20px 24px 16px}body[data-page="mapping"] .main> :not(#slRows){flex-shrink:0}body[data-page="mapping"] #slRows{flex:1;min-height:0;display:flex;flex-direction:column}body[data-page="mapping"] #slRows>.tablewrap{flex:1;min-height:0;max-height:none}}
 @media(max-width:999px),(max-height:649px){body[data-page="mapping"] #slRows>.tablewrap{max-height:none;height:65dvh;min-height:300px}.shopee-selection-actions{flex-wrap:wrap}.shopee-batch-toolbar #slBatch{max-width:100%}}
+/* Seluruh kolom Shopee muat dalam lebar area kerja. */
+body[data-page="mapping"] .shopee-simple table{table-layout:fixed;width:100%;min-width:0;font-size:11px}
+body[data-page="mapping"] .shopee-simple th,body[data-page="mapping"] .shopee-simple td{min-width:0!important;width:auto;padding:8px 6px;overflow-wrap:anywhere;white-space:normal}
+body[data-page="mapping"] .shopee-simple td{font-size:11px;line-height:1.5}body[data-page="mapping"] .shopee-simple .sku{font-size:10px}
+body[data-page="mapping"] .shopee-simple th{font-size:9px;line-height:1.45;letter-spacing:0;text-transform:none}
+.sl-col-select{width:3.5%}.sl-col-product{width:20.5%}.sl-col-variation{width:7%}.sl-col-source{width:10%}.sl-col-sales{width:9%}.sl-col-master{width:12%}.sl-col-preview{width:17%}.sl-col-status{width:12%}.sl-col-action{width:9%}
+body[data-page="mapping"] .shopee-simple .shopee-product,body[data-page="mapping"] .shopee-simple .shopee-variation-cell,body[data-page="mapping"] .shopee-simple .sh-master,body[data-page="mapping"] .shopee-simple .shopee-selection{width:auto;min-width:0}
+body[data-page="mapping"] .shopee-simple .shopee-selection{padding:8px 3px}body[data-page="mapping"] .shopee-selection input{width:14px;height:14px}
+body[data-page="mapping"] .shopee-simple .shopee-sales-cell{white-space:normal!important;font-size:10px}
+body[data-page="mapping"] .shopee-simple .shopee-export-preview{min-width:0;font-size:10px;line-height:1.55}
+body[data-page="mapping"] .shopee-simple .shopee-sub{font-size:10px;line-height:1.5}
+body[data-page="mapping"] .shopee-simple .badge{font-size:9px;white-space:normal;padding:3px 6px;max-width:100%;line-height:1.4}
+body[data-page="mapping"] .shopee-simple .badge:before{width:5px;height:5px;flex-shrink:0}
+body[data-page="mapping"] .shopee-action-cell .btn{font-size:10px;height:29px;padding:0 7px;max-width:100%}
+.shopee-mobile-meta{display:none}
+@media(max-width:999px){
+ body[data-page="mapping"] .shopee-simple table,body[data-page="mapping"] .shopee-simple tbody{display:block;width:100%}
+ body[data-page="mapping"] .shopee-simple colgroup,body[data-page="mapping"] .shopee-simple thead{display:none}
+ body[data-page="mapping"] .shopee-simple tr{display:grid;grid-template-columns:24px minmax(0,1fr) 94px;gap:0;border-bottom:1px solid var(--line)}
+ body[data-page="mapping"] .shopee-simple td{display:block;border:0!important;padding:8px 10px}
+ body[data-page="mapping"] .shopee-simple td:nth-child(1){grid-column:1;grid-row:1}
+ body[data-page="mapping"] .shopee-simple td:nth-child(2){grid-column:2/4;grid-row:1}
+ body[data-page="mapping"] .shopee-simple td:nth-child(3),body[data-page="mapping"] .shopee-simple td:nth-child(4),body[data-page="mapping"] .shopee-simple td:nth-child(5){display:none}
+ body[data-page="mapping"] .shopee-simple td:nth-child(6){grid-column:2/4;grid-row:2}
+ body[data-page="mapping"] .shopee-simple td:nth-child(6):before{content:'SKU sistem';display:block;color:var(--muted);font-size:9px;margin-bottom:3px}
+ body[data-page="mapping"] .shopee-simple td:nth-child(7){grid-column:2/4;grid-row:3}
+ body[data-page="mapping"] .shopee-status-cell{grid-column:2;grid-row:4;background:var(--card)}
+ body[data-page="mapping"] .shopee-action-cell{grid-column:3;grid-row:4;text-align:right;background:var(--card)}
+ .shopee-mobile-meta{display:block;margin-top:5px;font-size:10px;color:var(--muted);line-height:1.6;overflow-wrap:anywhere}
+}
 </style>
