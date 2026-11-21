@@ -124,3 +124,9 @@ Pemeriksaan browser dengan kode sumber yang panjang: lebar gulir sama dengan leb
 - Minimum loading login dinaikkan dari 2 menjadi 3,5 detik sejak tampil. Sesi tersimpan juga menampilkan overlay animasi sehingga masuk kembali tidak melewati logo terlalu cepat.
 - Data/sesi tetap dimuat bersamaan; respons lebih lambat dari minimum tidak mendapat tambahan jeda. Kesalahan login tetap ditampilkan segera.
 - 12 tes terkait auth, cache, dan parse frontend/backend lolos, termasuk regresi sesi tersimpan.
+
+### 22 November 2026 — Sambutan logo dan gerbang login
+- Pembentukan logo diperlambat menjadi 2,65 detik per bagian dengan stagger hingga 0,4 detik, easing masuk/keluar halus dan rotasi lebih kecil. Penyatuan final/bingkai selesai sekitar 3,4 detik.
+- Pembukaan tanpa sesi sekarang menampilkan sambutan logo yang tidak berpindah otomatis. Tombol Masuk ke halaman login aktif setelah 3,5 detik dan membuka form hanya lewat klik pengguna.
+- Timer sambutan dibersihkan ketika ditutup; klik ganda/tombol lama tidak mengganggu login berikutnya. Sesi tersimpan mengikuti alur pemuatan yang sudah ada.
+- 12 pengujian auth, gerbang tombol, pembatalan timer, dan parse frontend/backend lolos.

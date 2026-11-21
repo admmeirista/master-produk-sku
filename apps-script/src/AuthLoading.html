@@ -10,6 +10,17 @@ var AuthLoading={
     overlay.innerHTML='<div class="auth-loading-content"><div class="auth-loading-mark">'+this.logoMotion()+'</div><div class="auth-loading-label">MEIRISTA</div><h1>SKU Master</h1><p id="auth-loading-message">'+esc(message||'Memeriksa akun Anda…')+'</p><div class="auth-loading-track" aria-hidden="true"><i></i></div><div class="auth-loading-caption">Produk · Paket Penjualan · Kanal Penjualan</div></div><div class="auth-loading-footer">SKU Management System</div>';
     document.body.appendChild(overlay);var root=document.getElementById('app');if(root){root.inert=true;root.setAttribute('aria-busy','true');}
   },
+  welcome:function(onContinue){
+    this.show('Menyiapkan halaman masuk…');
+    var self=this,overlay=document.getElementById('auth-loading'),button=document.createElement('button');
+    button.type='button';button.className='btn pri auth-welcome-action';button.textContent='Masuk ke halaman login';button.disabled=true;
+    overlay.querySelector('.auth-loading-content').appendChild(button);
+    this.minimumTimer=setTimeout(function(){
+      if(document.getElementById('auth-loading')!==overlay)return;
+      self.minimumTimer=null;button.disabled=false;self.message('Silakan masuk untuk melanjutkan.');
+    },this.minimumDuration);
+    button.onclick=function(){if(button.disabled||document.getElementById('auth-loading')!==overlay)return;self.hide();onContinue();};
+  },
   message:function(message){var node=document.getElementById('auth-loading-message');if(node)node.textContent=message;},
   finish:function(){
     var self=this,main=document.getElementById('main');this.message('Menyiapkan ruang kerja…');

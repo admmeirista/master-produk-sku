@@ -1,7 +1,7 @@
 const test=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs');
 function loading(){
  const nodes={},root={inert:false,setAttribute(k,v){this[k]=v;},removeAttribute(k){delete this[k];}},main={busy:true,querySelector(){return this.busy?{}:null;}};nodes.app=root;nodes.main=main;nodes['auth-loading-message']={};let changed,disconnected=0,now=0,serial=0;const timers=new Map();function advance(ms){const end=now+ms;while(true){const next=[...timers.entries()].filter(([,t])=>t.at<=end).sort((a,b)=>a[1].at-b[1].at)[0];if(!next)break;now=next[1].at;timers.delete(next[0]);next[1].fn();}now=end;}
- const c={Date:{now:()=>now},brandLogo:()=>'<img>',esc:String,document:{getElementById:id=>nodes[id],createElement:()=>({setAttribute(){},remove(){delete nodes[this.id];}}),body:{appendChild:el=>nodes[el.id]=el}},MutationObserver:class{constructor(fn){changed=fn;}observe(){}disconnect(){disconnected++;}},setTimeout:(fn,ms)=>{const id=++serial;timers.set(id,{fn,at:now+ms});return id;},clearTimeout:id=>timers.delete(id)};
+ const c={Date:{now:()=>now},brandLogo:()=>'<img>',esc:String,document:{getElementById:id=>nodes[id],createElement:()=>({querySelector(){return {appendChild:el=>nodes.welcomeButton=el};},setAttribute(){},remove(){delete nodes[this.id];}}),body:{appendChild:el=>nodes[el.id]=el}},MutationObserver:class{constructor(fn){changed=fn;}observe(){}disconnect(){disconnected++;}},setTimeout:(fn,ms)=>{const id=++serial;timers.set(id,{fn,at:now+ms});return id;},clearTimeout:id=>timers.delete(id)};
  vm.runInNewContext(fs.readFileSync('apps-script/src/AuthLoading.html','utf8').replace(/^<script>\s*/,'').replace(/<\/script>\s*$/,''),c);
  return {c,nodes,root,main,change:()=>changed(),advance,timeout:()=>advance(12000),disconnected:()=>disconnected};
 }
@@ -32,4 +32,17 @@ test('sesi tersimpan tetap menampilkan animasi minimum saat masuk kembali',()=>{
  const events=[],source=fs.readFileSync('apps-script/src/Scripts.html','utf8'),start=source.indexOf('  start: function () {',source.indexOf('var App =')),end=source.indexOf('  remember:',start);
  const c={Store:{get:()=>JSON.stringify({user:{id:'cached'}})},AuthLoading:{show:()=>events.push('show'),finish:()=>events.push('finish')},api:()=>new Promise(()=>{})};
  vm.runInNewContext('var App={token:"saved",'+source.slice(start,end)+'};',c);c.App.enter=()=>events.push('enter');c.App.start();assert.deepEqual(events,['show','enter','finish']);
+});
+
+test('layar sambutan menunggu animasi dan klik eksplisit sebelum membuka form login',()=>{
+ const {c,nodes,advance,root}=loading();let calls=0;c.AuthLoading.welcome(()=>calls++);const button=nodes.welcomeButton;
+ assert.equal(button.disabled,true);button.onclick();assert.equal(calls,0);advance(3499);assert.equal(button.disabled,true);advance(1);assert.equal(button.disabled,false);advance(10000);assert.ok(nodes['auth-loading'],'tidak pindah otomatis setelah animasi');assert.equal(calls,0);
+ button.onclick();assert.equal(calls,1);assert.equal(nodes['auth-loading'],undefined);assert.equal(root.inert,false);button.onclick();assert.equal(calls,1,'klik berulang tidak membuka form lagi');
+});
+test('timer sambutan yang dibatalkan tidak mengganggu pemuatan login berikutnya',()=>{
+ const {c,nodes,advance}=loading();let calls=0;c.AuthLoading.welcome(()=>calls++);const old=nodes.welcomeButton;c.AuthLoading.hide();c.AuthLoading.show();advance(4000);old.onclick();assert.equal(calls,0);assert.ok(nodes['auth-loading']);
+});
+test('tanpa sesi: tombol sambutan menjadi gerbang ke form login',()=>{
+ const events=[],source=fs.readFileSync('apps-script/src/Scripts.html','utf8'),start=source.indexOf('  start: function () {',source.indexOf('var App =')),end=source.indexOf('  remember:',start);let next;
+ const c={AuthLoading:{welcome:fn=>{events.push('welcome');next=fn;}},api:()=>Promise.resolve({})};vm.runInNewContext('var App={token:null,'+source.slice(start,end)+'};',c);c.App.showLogin=()=>events.push('login');c.App.start();assert.deepEqual(events,['welcome']);next();assert.deepEqual(events,['welcome','login']);
 });
