@@ -1,6 +1,6 @@
 <script>
 var AuthLoading={
-  observer:null,timer:null,minimumTimer:null,startedAt:0,minimumDuration:2000,
+  observer:null,timer:null,minimumTimer:null,startedAt:0,minimumDuration:3500,
   logoMotion:function(){
     var logo=typeof BRAND_LOGO==='string'?'<img src="'+BRAND_LOGO+'" alt="Logo Meirista" width="120" height="120">':brandLogo();
     return '<div class="auth-logo-motion"><div class="auth-logo-pieces" aria-hidden="true">'+[0,1,2,3,4,5].map(function(i){return '<span class="auth-logo-piece auth-logo-piece-'+i+'">'+logo+'</span>';}).join('')+'</div><div class="auth-logo-complete">'+logo+'</div><svg class="auth-logo-outline" viewBox="0 0 144 144" fill="none" aria-hidden="true"><rect x="5" y="5" width="134" height="134" rx="31" pathLength="1"/></svg></div>';

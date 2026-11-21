@@ -615,7 +615,7 @@ var App = {
     if (!App.token) { api('ping', {}, { silent: true, quiet: true }).catch(function () {}); return App.showLogin(); }
     var cached = null;
     try { cached = JSON.parse(Store.get('rpm_me') || 'null'); } catch (e) { cached = null; }
-    if (cached && cached.user) App.enter(cached);
+    if (cached && cached.user) { AuthLoading.show('Menyiapkan ruang kerja…');App.enter(cached);AuthLoading.finish(); }
     else AuthLoading.show('Memeriksa sesi Anda…');
     api('auth.me', {}, { silent: true, quiet: !!cached }).then(function (me) {
       var changed = !cached || cached.user.role !== me.user.role;

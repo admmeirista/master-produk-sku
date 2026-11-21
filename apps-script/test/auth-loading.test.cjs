@@ -6,13 +6,13 @@ function loading(){
  return {c,nodes,root,main,change:()=>changed(),advance,timeout:()=>advance(12000),disconnected:()=>disconnected};
 }
 test('layar pemuatan mengunci form, mengikuti pemuatan halaman, dan membersihkan observer setelah halaman siap',()=>{
- const {c,nodes,root,main,change,advance,disconnected}=loading();c.AuthLoading.show('Memeriksa akun');assert.ok(nodes['auth-loading']);assert.equal(root.inert,true);assert.equal(root['aria-busy'],'true');c.AuthLoading.finish();assert.equal(nodes['auth-loading-message'].textContent,'Menyiapkan ruang kerja…');assert.ok(nodes['auth-loading']);main.busy=false;change();assert.ok(nodes['auth-loading']);advance(1999);assert.ok(nodes['auth-loading']);advance(1);assert.equal(nodes['auth-loading'],undefined);assert.equal(root.inert,false);assert.equal(root['aria-busy'],undefined);assert.equal(disconnected(),1);
+ const {c,nodes,root,main,change,advance,disconnected}=loading();c.AuthLoading.show('Memeriksa akun');assert.ok(nodes['auth-loading']);assert.equal(root.inert,true);assert.equal(root['aria-busy'],'true');c.AuthLoading.finish();assert.equal(nodes['auth-loading-message'].textContent,'Menyiapkan ruang kerja…');assert.ok(nodes['auth-loading']);main.busy=false;change();assert.ok(nodes['auth-loading']);advance(3499);assert.ok(nodes['auth-loading']);advance(1);assert.equal(nodes['auth-loading'],undefined);assert.equal(root.inert,false);assert.equal(root['aria-busy'],undefined);assert.equal(disconnected(),1);
 });
 test('pemuatan data yang lambat tidak membuat pengguna terkunci; hide pada kegagalan selalu mengembalikan form',()=>{
  const {c,nodes,root,timeout}=loading();c.AuthLoading.show();c.AuthLoading.finish();timeout();assert.equal(nodes['auth-loading'],undefined);assert.equal(root.inert,false);c.AuthLoading.show();c.AuthLoading.hide();assert.equal(root.inert,false);assert.equal(nodes['auth-loading'],undefined);
 });
 test('durasi minimum dihitung sejak layar muncul; respons lambat tidak ditambah jeda, dan kegagalan membatalkan timer',()=>{
- const {c,nodes,main,change,advance}=loading();c.AuthLoading.show();c.AuthLoading.finish();advance(3000);main.busy=false;change();assert.equal(nodes['auth-loading'],undefined,'halaman siap setelah 3 detik langsung ditampilkan');
+ const {c,nodes,main,change,advance}=loading();c.AuthLoading.show();c.AuthLoading.finish();advance(4000);main.busy=false;change();assert.equal(nodes['auth-loading'],undefined,'halaman siap setelah 4 detik langsung ditampilkan');
  c.AuthLoading.show();main.busy=false;c.AuthLoading.finish();advance(500);c.AuthLoading.hide();assert.equal(nodes['auth-loading'],undefined,'pesan gagal tidak ditunda');c.AuthLoading.show();advance(1500);assert.ok(nodes['auth-loading'],'timer lama tidak boleh menutup percobaan berikutnya');c.AuthLoading.hide();
 });
 function login(){
@@ -26,4 +26,10 @@ test('login menampilkan layar pemuatan, menolak klik ganda, dan menyiapkan ruang
 });
 test('login gagal menutup layar pemuatan dan menampilkan pesan kesalahan pada form yang dapat dipakai ulang',async()=>{
  const {events,requests,form,button,error}=login();form.onsubmit({preventDefault(){}});requests[0].reject({message:'Username atau password salah'});await flush();assert.equal(events.at(-1),'hide');assert.equal(button.disabled,false);assert.equal(form.password.value,'');assert.equal(form.email.value,'user@local.test');assert.match(error.innerHTML,/Username atau password salah/);
+});
+
+test('sesi tersimpan tetap menampilkan animasi minimum saat masuk kembali',()=>{
+ const events=[],source=fs.readFileSync('apps-script/src/Scripts.html','utf8'),start=source.indexOf('  start: function () {',source.indexOf('var App =')),end=source.indexOf('  remember:',start);
+ const c={Store:{get:()=>JSON.stringify({user:{id:'cached'}})},AuthLoading:{show:()=>events.push('show'),finish:()=>events.push('finish')},api:()=>new Promise(()=>{})};
+ vm.runInNewContext('var App={token:"saved",'+source.slice(start,end)+'};',c);c.App.enter=()=>events.push('enter');c.App.start();assert.deepEqual(events,['show','enter','finish']);
 });

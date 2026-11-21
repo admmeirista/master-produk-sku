@@ -119,3 +119,8 @@ Pemeriksaan browser dengan kode sumber yang panjang: lebar gulir sama dengan leb
 - Loading login dan startup membentuk logo Meirista asli dari enam bagian dengan gerakan masuk halus, bingkai tergambar, lalu menyatu menjadi logo utuh. Berjalan sekali dan selesai dalam durasi minimum loading 2 detik yang sudah ada.
 - Logo tetap lokal/inline, tanpa library animasi atau permintaan jaringan tambahan. Preferensi reduced motion menampilkan logo utuh tanpa animasi.
 - Uji login tetap mencakup respons cepat/lambat, kegagalan, dan pembersihan timer; seluruh 164 tes lolos dan 24 skrip build terkompilasi.
+
+### 22 November 2026 — Durasi layar logo
+- Minimum loading login dinaikkan dari 2 menjadi 3,5 detik sejak tampil. Sesi tersimpan juga menampilkan overlay animasi sehingga masuk kembali tidak melewati logo terlalu cepat.
+- Data/sesi tetap dimuat bersamaan; respons lebih lambat dari minimum tidak mendapat tambahan jeda. Kesalahan login tetap ditampilkan segera.
+- 12 tes terkait auth, cache, dan parse frontend/backend lolos, termasuk regresi sesi tersimpan.
