@@ -1,5 +1,5 @@
 function shopeeBatchShapes_(batch){
-  const key='sbshape1:'+batch.BatchID,hit=cacheGetBig_(key);
+  const key='sbshape2:'+batch.BatchID,hit=cacheGetBig_(key);
   const manifest=shopeeBatchManifest_(batch),shapes=hit||ShopeePlacement.inspect(manifest.rows);if(!hit)cachePutBig_(key,shapes);
   const sources={};manifest.rows.forEach(r=>sources[shopeeKey_(batch.StoreAccount,r.productId,r.variationId)]=r);
   return {shapes,sources};
@@ -16,4 +16,14 @@ function shopeeAttachShapes_(views,batchId){
   }
   views.forEach(r=>{r.effectiveSku=r.listingShape.kind==='single'?r.parentSku:r.listingShape.kind==='variants'?r.sellerSku:'';r.skuMatches=!!r.target&&!!r.effectiveSku&&r.effectiveSku===r.target.sku;});
   return views;
+}
+
+/** Audit seluruh persetujuan, termasuk di luar filter penjualan dan halaman aktif. */
+function shopeeApprovedPlacementAudit_(universe){
+  const records=(universe||db_('SHOPEE_LISTINGS').rows()).filter(r=>r.ReviewStatus==='approved');
+  const catalog=shopeeCatalog_(records.map(r=>r.TargetSku)),views=records.map(r=>shopeeView_(r,catalog));
+  shopeeAttachShapes_(views);
+  const groups={};views.forEach(r=>{if(r.listingShape.kind!=='variants'||!r.target)return;const k=JSON.stringify([r.store,r.productId]);(groups[k]=groups[k]||new Set()).add(r.target.parentSku||'');});
+  views.forEach(r=>{const parents=groups[JSON.stringify([r.store,r.productId])];if(parents&&parents.size>1)r.listingShape.parentConflict=true;r.exportPreview=ShopeePlacement.preview(r.listingShape,r.target);});
+  return {total:views.length,ready:views.filter(r=>r.status==='approved'&&r.exportPreview.ready).length,issues:views.filter(r=>r.status!=='approved'||!r.exportPreview.ready).map(r=>({id:r.id,productId:r.productId,name:r.name,variationName:r.variationName,reason:r.status!=='approved'?'Master berubah setelah persetujuan; periksa ulang.':r.exportPreview.reason})),rows:views};
 }

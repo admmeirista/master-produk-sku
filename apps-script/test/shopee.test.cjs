@@ -111,7 +111,7 @@ test('rencana unduhan menjaga baris belum disetujui dan parent produk dengan cam
   const file={rows,aoa:[['metadata'],header,['petunjuk']]};
   const results=[{productId:'123',variationId:'1',eligible:true,sku:'MP000243',parentSku:'PRD000168',gtin:''},{productId:'123',variationId:'2',eligible:false},{productId:'456',variationId:'3',eligible:true,sku:'PRD000001-001',parentSku:'PRD000001',gtin:'0012345678901'}];
   let plan=context.shopeeExportChanges(file,results);assert.equal(plan.eligible,2);assert.equal(plan.unchanged,1);
-  assert.ok(!plan.changes.some(c=>c.row===8));assert.equal(plan.changes.find(c=>c.row===7&&c.col===4).value,'SHP123','kode grup tetap sama saat ekspor sebagian variasi');
+  assert.ok(!plan.changes.some(c=>c.row===8));assert.equal(plan.changes.find(c=>c.row===7&&c.col===4).value,'PRD000168','kode grup tetap sama saat ekspor sebagian variasi');
   assert.equal(plan.changes.find(c=>c.row===7&&c.col===7).value,'');assert.equal(plan.changes.find(c=>c.row===9&&c.col===7).value,'0012345678901');
   assert.ok(plan.changes.every(c=>[4,5,7].includes(c.col)),'harga/stok/ID/nama tetap');
   results[1]={productId:'123',variationId:'2',eligible:true,sku:'PRD000168-003',parentSku:'PRD000168',gtin:''};

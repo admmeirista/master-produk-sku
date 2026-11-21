@@ -7,7 +7,7 @@ function shopeeFields(items) { return '<dl class="shopee-fields">' + items.map(f
 function shopeePlacementPreview(row,target){
   var shape=row.listingShape,preview=typeof ShopeePlacement!=='undefined'?ShopeePlacement.preview(shape,target):{kind:'unknown',reason:'Template asli belum tersedia.'};
   var label=preview.kind==='single'?'Tanpa variasi':preview.kind==='variants'?'Dengan variasi':'Bentuk listing belum pasti';
-  return '<div class="shopee-export-preview"><b>'+label+'</b><div>SKU Induk: <span class="sku">'+esc(preview.parentSku||'—')+'</span></div><div>SKU: <span class="sku">'+esc(preview.sku||(preview.kind==='single'?'Kosong (tanpa variasi)':'—'))+'</span></div>'+(!preview.ready?'<small>'+esc(preview.kind==='unknown'?preview.reason:'Pilih SKU master untuk melengkapi preview.')+'</small>':'')+(preview.generatedParent?'<small>Kode grup listing Shopee; bukan SKU barang.</small>':'')+'</div>';
+  return '<div class="shopee-export-preview"><b>'+label+'</b><div>SKU Induk: <span class="sku">'+esc(preview.parentSku||'—')+'</span></div><div>SKU: <span class="sku">'+esc(preview.sku||(preview.kind==='single'?'Kosong (tanpa variasi)':'—'))+'</span></div>'+(!preview.ready?'<small>'+esc(preview.reason||'Pilih SKU master untuk melengkapi preview.')+'</small>':'')+'</div>';
 }
 function shopeeBom(cs) { return (cs || []).map(function (c) { return '<div><b>' + esc(c.quantity) + ' × <span class="sku">' + esc(c.sku) + '</span></b><small class="shopee-sub">' + esc(c.name || '') + (c.gtin ? ' · GTIN ' + esc(c.gtin) : '') + '</small></div>'; }).join(''); }
 

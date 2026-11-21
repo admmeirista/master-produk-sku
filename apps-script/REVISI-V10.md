@@ -108,3 +108,9 @@ Kanal Penjualan memakai tindakan utama di header (Impor, Ekspor terpilih, Muat u
 Tabel menggunakan table-layout fixed dan colgroup dengan porsi untuk sembilan kolom, termasuk Status dan Aksi. Lebar minimum lama pada judul, master, kode dan preview dinonaktifkan; teks panjang dibungkus, bukan disembunyikan. Teks isi 11 px, kode/preview 10 px, dan header 9 px. Pada layar di bawah 1000 px, baris menjadi rincian per produk: variasi, SKU Shopee dan penjualan tetap tersedia di bagian produk; SKU master, preview, status dan tombol Periksa ditata dalam baris yang sama tanpa gulir horizontal.
 
 Pemeriksaan browser dengan kode sumber yang panjang: lebar gulir sama dengan lebar area tabel pada viewport 1280 (983 px), 1024 (727 px), dan 390 (347 px). Status dan Periksa berada di dalam viewport. Periksa berhasil membuka popup dan Esc menutupnya. Layar startup kini juga memakai logo SKU Master asli dari aset inline yang sama dengan logo login, menggantikan monogram teks SKU; layar autentikasi tetap memakai logo dan minimum 2 detik.
+
+### 22 November 2026 — SKU Induk dari master
+- Variasi memakai parent master target; tanpa variasi tetap SKU target di SKU Induk, SKU kosong. Kode SHP tidak lagi dibentuk, parent lama pada template tidak dipakai untuk hasil ekspor.
+- Preview, ekspor server, dan patch Excel memakai aturan yang sama. Parent kosong atau berbeda antarvariasi menahan ekspor.
+- Audit seluruh record yang pernah disetujui saat workspace dimuat, mencakup di luar filter penjualan/batch; ringkasan dan alasan pemeriksaan tampil di atas tabel. Cache workspace dan listing dinaikkan versinya.
+- Validasi: 164 tes lolos, 23 skrip frontend terkompilasi, 10 baris snapshot 18 November diuji patch lalu dibaca kembali: preview sama dengan Excel dan tanpa kode SHP. Pembacaan live 22 November terhalang 403 izin file Google; snapshot lama tidak diklaim sebagai audit live.

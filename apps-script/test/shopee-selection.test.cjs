@@ -11,7 +11,7 @@ test('rencana ekspor terpilih hanya menerapkan baris pilihan yang disetujui dan 
  const raw={productId:'123',variationId:'1',name:'Produk satu',variationName:'30 gr',sellerSku:'lama',gtin:'',parentSku:'',sourceRow:7};
  const file={store:'Meirista',aoa:[header],rows:[raw,{...raw,variationId:'2',sourceRow:8}]};
  const current={...raw,id:'a',store:'Meirista',status:'approved',target:{active:true,sku:'MP000243',parentSku:'PRD000168',gtin:''}};
- const plan=c.shopeeSelectedPlan(file,[current]);assert.equal(plan.eligible,1);assert.deepEqual([...plan.selectedRows],[7]);assert.ok(plan.changes.every(x=>x.row===7));assert.equal(plan.changes.find(x=>x.col===4).value,'SHP123','kode grup stabil dihitung dari template lengkap walau ekspor hanya satu variasi');
+ const plan=c.shopeeSelectedPlan(file,[current]);assert.equal(plan.eligible,1);assert.deepEqual([...plan.selectedRows],[7]);assert.ok(plan.changes.every(x=>x.row===7));assert.equal(plan.changes.find(x=>x.col===4).value,'PRD000168','kode grup stabil dihitung dari template lengkap walau ekspor hanya satu variasi');
  assert.throws(()=>c.shopeeSelectedPlan(file,[{...current,status:'suggested'}]),/belum disetujui/);
  assert.throws(()=>c.shopeeSelectedPlan(file,[{...current,variationId:'missing'}]),/tidak ada/);
  assert.throws(()=>c.shopeeSelectedPlan(file,[{...current,name:'Produk lain'}]),/berbeda/);

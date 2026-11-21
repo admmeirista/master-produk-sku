@@ -16,6 +16,8 @@ function shopeeSourceMatches_(source,row){
 function shopeeExportPrepare_(p){
   const selection=shopeeExportSelected_(p,15000);
   if(selection.rejected.length)throw new AppError(selection.rejected.length+' variasi tidak lagi disetujui, diabaikan, atau master berubah. Muat ulang daftar dan periksa pilihan.');
+  const audit=shopeeApprovedPlacementAudit_(),selected=new Set(selection.rows.map(r=>r.id)),blocked=audit.issues.filter(r=>selected.has(r.id));
+  if(blocked.length)throw new AppError('Periksa pemetaan sebelum ekspor: '+blocked.map(r=>r.productId+' / '+r.variationName+': '+r.reason).join('; '));
   if(p.localReference)return {rows:selection.rows,template:null};
   const batches=db_('SHOPEE_BATCHES').rows().filter(r=>r.Status==='ready').sort((a,b)=>(a.BatchID===p.batchId?-1:b.BatchID===p.batchId?1:String(b.CreatedAt).localeCompare(String(a.CreatedAt))));
   for(const batch of batches){

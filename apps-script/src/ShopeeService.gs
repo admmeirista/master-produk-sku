@@ -81,7 +81,7 @@ function shopeeDisplayStatus_(r, catalog) {
 }
 function shopeeList_(f) {
   const salesProfile=shopeeSalesProfile_();
-  const cacheKey = 'sl7:' + (salesProfile?salesProfile.id:'all') + ':' + dataVersion_() + ':' + shopeeSignature_(f || {});
+  const cacheKey = 'sl8:' + (salesProfile?salesProfile.id:'all') + ':' + dataVersion_() + ':' + shopeeSignature_(f || {});
   const cached = cacheGetBig_(cacheKey); if (cached) return cached;
   f = f || {}; const catalog = shopeeCatalog_(), q = String(f.search || '').toLowerCase(), summary = { all: 0, unmapped: 0, suggested: 0, needs_review: 0, approved: 0, mismatch: 0, ignored: 0 }, stores = new Set();
   let batchKeys=null,batchStore='';
