@@ -114,3 +114,8 @@ Pemeriksaan browser dengan kode sumber yang panjang: lebar gulir sama dengan leb
 - Preview, ekspor server, dan patch Excel memakai aturan yang sama. Parent kosong atau berbeda antarvariasi menahan ekspor.
 - Audit seluruh record yang pernah disetujui saat workspace dimuat, mencakup di luar filter penjualan/batch; ringkasan dan alasan pemeriksaan tampil di atas tabel. Cache workspace dan listing dinaikkan versinya.
 - Validasi: 164 tes lolos, 23 skrip frontend terkompilasi, 10 baris snapshot 18 November diuji patch lalu dibaca kembali: preview sama dengan Excel dan tanpa kode SHP. Pembacaan live 22 November terhalang 403 izin file Google; snapshot lama tidak diklaim sebagai audit live.
+
+### 22 November 2026 — Motion logo saat login
+- Loading login dan startup membentuk logo Meirista asli dari enam bagian dengan gerakan masuk halus, bingkai tergambar, lalu menyatu menjadi logo utuh. Berjalan sekali dan selesai dalam durasi minimum loading 2 detik yang sudah ada.
+- Logo tetap lokal/inline, tanpa library animasi atau permintaan jaringan tambahan. Preferensi reduced motion menampilkan logo utuh tanpa animasi.
+- Uji login tetap mencakup respons cepat/lambat, kegagalan, dan pembersihan timer; seluruh 164 tes lolos dan 24 skrip build terkompilasi.

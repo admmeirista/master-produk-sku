@@ -1547,4 +1547,27 @@ body[data-page="mapping"] .shopee-action-cell .btn{font-size:10px;height:29px;pa
  body[data-page="mapping"] .shopee-action-cell{grid-column:3;grid-row:4;text-align:right;background:var(--card)}
  .shopee-mobile-meta{display:block;margin-top:5px;font-size:10px;color:var(--muted);line-height:1.6;overflow-wrap:anywhere}
 }
+
+/* Logo asli menyatu sekali saat login; selesai sebelum durasi minimum loading. */
+.auth-logo-motion{position:relative;width:120px;height:120px;margin:auto;isolation:isolate}
+.auth-loading-mark .auth-logo-motion img{display:block;width:120px;height:120px;border-radius:27px;box-shadow:none;object-fit:contain}
+.auth-logo-pieces,.auth-logo-piece,.auth-logo-complete{position:absolute;inset:0}
+.auth-logo-pieces{pointer-events:none;animation:auth-pieces-away .15s linear 1.65s both}
+.auth-logo-piece{opacity:0;animation:auth-logo-assemble 1.15s cubic-bezier(.22,.75,.25,1) both;will-change:transform,opacity;filter:drop-shadow(0 3px 7px #72503d15)}
+.auth-logo-piece-0{clip-path:inset(0 66.66% 50% 0);--lx:-24px;--ly:-21px;--lr:-12deg;animation-delay:.06s}
+.auth-logo-piece-1{clip-path:inset(0 33.33% 50% 33.33%);--lx:0px;--ly:-31px;--lr:5deg;animation-delay:.16s}
+.auth-logo-piece-2{clip-path:inset(0 0 50% 66.66%);--lx:24px;--ly:-21px;--lr:12deg;animation-delay:.26s}
+.auth-logo-piece-3{clip-path:inset(50% 66.66% 0 0);--lx:-24px;--ly:21px;--lr:-9deg;animation-delay:.23s}
+.auth-logo-piece-4{clip-path:inset(50% 33.33% 0 33.33%);--lx:0px;--ly:31px;--lr:-5deg;animation-delay:.33s}
+.auth-logo-piece-5{clip-path:inset(50% 0 0 66.66%);--lx:24px;--ly:21px;--lr:9deg;animation-delay:.4s}
+.auth-logo-complete{opacity:0;animation:auth-logo-resolve .35s ease-out 1.3s both;border-radius:27px;box-shadow:0 14px 34px #70513f16}
+.auth-logo-outline{position:absolute;inset:-12px;width:144px;height:144px;overflow:visible;pointer-events:none;transform:rotate(-90deg)}
+.auth-logo-outline rect{stroke:#b68b6a;stroke-width:1;stroke-dasharray:1;stroke-dashoffset:1;animation:auth-logo-outline 1.65s cubic-bezier(.4,0,.2,1) .12s both}
+.auth-loading-content>.auth-loading-label,.auth-loading-content>h1,.auth-startup>.auth-loading-label,.auth-startup>h1{animation:auth-brand-arrive .65s ease-out .8s both}
+@keyframes auth-logo-assemble{0%{opacity:0;transform:translate(var(--lx),var(--ly)) rotate(var(--lr)) scale(.92)}35%{opacity:1}100%{opacity:1;transform:translate(0,0) rotate(0) scale(1)}}
+@keyframes auth-logo-resolve{to{opacity:1}}
+@keyframes auth-pieces-away{to{opacity:0}}
+@keyframes auth-logo-outline{0%{stroke-dashoffset:1;opacity:0}15%{opacity:.6}100%{stroke-dashoffset:0;opacity:.4}}
+@keyframes auth-brand-arrive{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
+@media(prefers-reduced-motion:reduce){.auth-logo-piece,.auth-logo-pieces,.auth-logo-complete,.auth-logo-outline rect,.auth-loading-content>.auth-loading-label,.auth-loading-content>h1,.auth-startup>.auth-loading-label,.auth-startup>h1{animation:none;will-change:auto}.auth-logo-pieces{display:none}.auth-logo-complete{opacity:1}.auth-logo-outline rect{stroke-dashoffset:0;opacity:.35}}
 </style>
