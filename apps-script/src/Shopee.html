@@ -3,6 +3,7 @@ var SHOPEE_STATUS = { saving:'Menyimpan…', save_error:'Belum tersimpan', unmap
 var SHOPEE_KIND = { single: 'Satuan', multipack: 'Paket produk sama (MP)', bundle: 'Paket kombinasi (BD)', unclear: 'Isi belum pasti' };
 function shopeeDisplayStatus(r) { return r.status === 'approved' ? 'approved' : (r.reviewRequested || r.target && r.target.active) ? 'verify' : 'unavailable'; }
 function shopeeBadge(st) { return '<span class="badge shopee-status-' + st + '">' + esc(SHOPEE_STATUS[st] || st) + '</span>'; }
+function shopeeMatchScore(row){var m=row.match;if(!m||typeof m.score!=='number'||(row.target&&m.candidateSku!==row.target.sku))return '<span class="muted">—</span>';return '<span class="shopee-match-score" title="'+esc('Skor kecocokan, bukan probabilitas. '+(m.candidateSku?m.candidateSku+' · ':'')+(m.reason||''))+'">'+m.score+'%</span>';}
 function shopeeFields(items) { return '<dl class="shopee-fields">' + items.map(function (x) { return '<div><dt>' + esc(x[0]) + '</dt><dd>' + esc(x[1] || '—') + '</dd></div>'; }).join('') + '</dl>'; }
 function shopeePlacementPreview(row,target){
   var shape=row.listingShape,preview=typeof ShopeePlacement!=='undefined'?ShopeePlacement.preview(shape,target):{kind:'unknown',reason:'Template asli belum tersedia.'};

@@ -14,7 +14,7 @@ function shopeeComponents_(rows) {
 function shopeeCompositionKey_(rows) { return JSON.stringify(shopeeComponents_(rows)); }
 
 /** Cache hanya pada objek Table per permintaan; tidak menyimpan GTIN/BOM lama antar permintaan. */
-function shopeeCatalog_(onlySkus) {
+function shopeeCatalog_(onlySkus, lightweight) {
   const V = db_('PRODUCT_VARIANTS');
   if (V._shopeeCatalog) return V._shopeeCatalog;
   const limited=Array.isArray(onlySkus),wanted=new Set((onlySkus||[]).map(s=>String(s||'').trim().toUpperCase()));
@@ -29,10 +29,10 @@ function shopeeCatalog_(onlySkus) {
     if(limited&&!wanted.has(v.SKU)&&!neededVariants.has(v.VariantID))return;
     const p = P[v.ProductID]; if (!p || !v.SKU || v.Status === STATUS.DELETED || p.Status === STATUS.DELETED) return;
     const active = v.Status === STATUS.ACTIVE && p.Status === STATUS.ACTIVE;
-    const t = { sku: v.SKU, kind: 'single', name: variantDisplayName_(v) || cleanText((B[p.BrandID] || {}).BrandName + ' ' + p.ProductName + ' ' + (v.IsDefault ? '' : v.VariantName)), parentSku: p.ProductCode, gtin: v.GTIN || '', internalBarcode: v.InternalBarcode || '', active, productId: p.ProductID, variantId: v.VariantID, bundleId: '', unit: v.BaseUnit || p.BaseUnit, components: [{ sku: v.SKU, quantity: 1, name: variantDisplayName_(v), gtin: v.GTIN || '' }] };
+    const t = { sku: v.SKU, brandId:p.BrandID||'',brandName:(B[p.BrandID]||{}).BrandName||'', kind: 'single', name: variantDisplayName_(v) || cleanText((B[p.BrandID] || {}).BrandName + ' ' + p.ProductName + ' ' + (v.IsDefault ? '' : v.VariantName)), parentSku: p.ProductCode, gtin: v.GTIN || '', internalBarcode: v.InternalBarcode || '', active, productId: p.ProductID, variantId: v.VariantID, bundleId: '', unit: v.BaseUnit || p.BaseUnit, components: [{ sku: v.SKU, quantity: 1, name: variantDisplayName_(v), gtin: v.GTIN || '' }] };
     t.productName = p.ProductName || t.name;
     t.variationName = v.IsDefault ? '' : v.VariantName || '';
-    t.signature = shopeeSignature_([t.sku, t.name, t.gtin, t.active, t.components]); bySku[t.sku] = byId[v.VariantID] = t;
+    if(!lightweight)t.signature = shopeeSignature_([t.sku, t.name, t.gtin, t.active, t.components]); bySku[t.sku] = byId[v.VariantID] = t;
   });
   componentRows.forEach((c) => { (comps[c.BundleID] = comps[c.BundleID] || []).push(c); });
   bundleRows.forEach((b) => {
@@ -45,7 +45,7 @@ function shopeeCatalog_(onlySkus) {
     t.variationName = Array.from(new Set(raw.map((c) => (byId[c.VariantID] || {}).variationName).filter(Boolean))).join(' + ');
     t.signature = shopeeSignature_([t.sku, t.name, t.gtin, t.active, b.BundleType, cs].concat(t.internalBarcode ? [t.internalBarcode] : [])); bySku[t.sku] = t;
   });
-  if(!limited)V._shopeeCatalog = bySku; return bySku;
+  if(!limited&&!lightweight)V._shopeeCatalog = bySku; return bySku;
 }
 function shopeeTarget_(sku) {
   const t = shopeeCatalog_([sku])[String(sku || '').trim().toUpperCase()];
