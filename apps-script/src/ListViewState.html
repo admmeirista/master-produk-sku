@@ -1,0 +1,16 @@
+<script>
+/** Filter daftar per akun; tidak menyimpan data produk atau hasil pencarian. */
+var ListViewState={
+  memory:{},
+  key:function(page){var user=typeof App!=='undefined'&&App.me&&App.me.user;return 'rpm_list_filters_v1:'+((user&&(user.id||user.email))||'session')+':'+page;},
+  restore:function(page,defaults,arg){
+    var key=this.key(page),saved=this.memory[key];
+    if(!saved)try{saved=JSON.parse(sessionStorage.getItem(key)||'null');}catch(e){}
+    var out=Object.assign({},defaults);
+    Object.keys(defaults).forEach(function(k){if(saved&&Object.prototype.hasOwnProperty.call(saved,k)&&typeof saved[k]===typeof defaults[k])out[k]=saved[k];if(arg&&Object.prototype.hasOwnProperty.call(arg,k)&&typeof arg[k]===typeof defaults[k])out[k]=arg[k];});
+    if('page' in out)out.page=Math.max(1,Math.floor(Number(out.page)||1));return out;
+  },
+  save:function(page,filters){var key=this.key(page),copy=JSON.parse(JSON.stringify(filters));this.memory[key]=copy;try{sessionStorage.setItem(key,JSON.stringify(copy));}catch(e){}},
+  capture:function(page,filters,input){if(input&&input.value!==filters.search){filters.search=input.value;filters.page=1;}this.save(page,filters);}
+};
+</script>

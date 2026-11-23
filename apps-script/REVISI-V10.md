@@ -136,3 +136,9 @@ Pemeriksaan browser dengan kode sumber yang panjang: lebar gulir sama dengan leb
 - Form pemetaan di bawah tabel, filter jenis/brand berdampingan, komposisi master dapat dibuka bila perlu. Header nama produk dan tombol tindakan tetap terlihat saat konten digulir.
 - Field Catatan Pemeriksaan dan kartu preview terpisah dihapus. Catatan lama tetap dipertahankan pada penyimpanan berikutnya.
 - 168 tes suite lolos; satu regresi tambahan tabel Viva Air Mawar juga lolos bersama 16 tes pemetaan/UI. Pemeriksaan meliputi MP tanpa variasi di SKU Induk, SKU kosong, GTIN paket, dan perubahan pilihan master.
+
+### 23 November 2026 — Label paket dan filter daftar tersimpan
+- Paket Penjualan memakai label SKU Paket, Komposisi SKU Barang, dan Parent Produk (di bawah SKU Paket). API komponen menambahkan parentSku dari master produk tanpa mengubah identitas atau komposisi paket.
+- Kolom Master Sistem menamai parent sebagai Parent Produk, MP/BD sebagai SKU Paket, dan satuan sebagai SKU Barang. Komposisi SKU Barang tampil langsung pada baris tersendiri; SKU Induk/SKU di kolom Shopee dan hasil ekspor tetap mengikuti template.
+- Filter Produk, Paket Penjualan (termasuk tab konversi), dan Shopee disimpan per akun di sessionStorage dengan fallback memori. Pencarian, status, brand/kategori, urutan dan halaman dipulihkan saat kembali. Teks terbaru ikut ditangkap ketika keluar sebelum debounce; callback daftar lama diabaikan setelah meninggalkan halaman.
+- 174 tes lolos, termasuk navigasi kembali pada ketiga menu, pencarian sebelum debounce, penyimpanan per akun, argumen eksplisit, dan pemulihan setelah refresh.

@@ -34,8 +34,8 @@ Pages.quality = function (main) {
 
 /* ───────── Packaging & Bundle ───────── */
 Pages.bundles = function (main, arg) {
-  var w = can('product.write');
-  var tab = arg && arg.tab || 'bundle';
+  var w = can('product.write'),listActive=true;App.onLeave=function(){listActive=false;};
+  var remembered=ListViewState.restore('bundles',{tab:'bundle'});var tab=arg&&arg.tab||remembered.tab;ListViewState.save('bundles',{tab:tab});
   main.innerHTML = pageHead('Katalog', 'Paket Penjualan', w ? '<button class="btn pri" id="nb">' + icon('plus') + 'Buat paket</button>' : '',
     '') +
     '<div class="dtabs"><a data-t="bundle" class="' + (tab === 'bundle' ? 'on' : '') + '">Paket</a><a data-t="pack" class="' + (tab === 'pack' ? 'on' : '') + '">Konversi kemasan</a></div><div id="bb"></div>';
@@ -45,6 +45,7 @@ Pages.bundles = function (main, arg) {
   if (tab === 'pack') {
     box.innerHTML = loadingBox();
     return api('export.data', { kind: 'conversions' }).then(function (d) {
+      if(!listActive)return;
       var rows = d.rows.filter(function (r) { return r[10] !== 'Satuan dasar'; });
       box.innerHTML = '<div class="toolbar"><div class="search">' + icon('search') + '<input class="in" id="pq" placeholder="Cari produk / SKU / satuan…"></div><span class="muted right">' + rows.length + ' konfigurasi kemasan</span></div><div id="pt"></div>';
       var draw = function (q) {
@@ -54,15 +55,16 @@ Pages.bundles = function (main, arg) {
         }).join('') + '</tbody></table></div>' : '<div class="tablewrap">' + emptyBox('Belum ada konfigurasi kemasan', 'Atur BOX/KARTON di Edit produk → Kemasan.', 'boxes') + '</div>';
       };
       $('#pq', box).oninput = debounce(function (e) { draw(e.target.value); }, 200);
-      draw('');
+      var pack=ListViewState.restore('bundle-conversions',{search:''});$('#pq',box).value=pack.search;App.onLeave=function(){pack.search=$('#pq',box).value;ListViewState.save('bundle-conversions',pack);listActive=false;};draw(pack.search);
     }).catch(function (e) { box.innerHTML = errBox(e.message); });
   }
-  var f = { search: '', type: '', status: '', page: 1 }, listSequence=0;
+  var f = ListViewState.restore('bundle-list',{ search: '', type: '', status: '', page: 1,viewSchema:2 },arg), listSequence=0;
   box.innerHTML = '<div class="filters"><div class="search">' + icon('search') + '<input class="in" id="bq" placeholder="Cari kode paket, nama, isi…"></div><select class="in" id="bt"><option value="">Semua jenis</option><option value="MULTIPACK">Paket Produk Sama</option><option value="MIXED">Paket Kombinasi</option></select><select class="in" id="bs"><option value="">Aktif & draft</option><option value="ACTIVE">Aktif</option><option value="INACTIVE">Nonaktif</option><option value="DISCONTINUED">Discontinued</option><option value="all">Semua</option></select></div><div id="bl"></div>';
+  $('#bq',box).value=f.search;$('#bt',box).value=f.type;$('#bs',box).value=f.status;App.onLeave=function(){ListViewState.capture('bundle-list',f,$('#bq',box));listActive=false;};
   var load = function () {
-    var mine=++listSequence, bl = $('#bl', box); bl.innerHTML = loadingBox();
+    if(!listActive)return;ListViewState.save('bundle-list',f);var mine=++listSequence, bl = $('#bl', box); bl.innerHTML = loadingBox();
     fastRead('bundle.list', f, function (d) {
-      if(mine!==listSequence||!bl.isConnected)return;
+      if(!listActive||mine!==listSequence||!bl.isConnected)return;
       bl.innerHTML = bundleRowsHtml(d) + pager(d, function(p){f.page=p;load();});
       $$('[data-e]',bl).forEach(function(button){button.onclick=function(){var id=button.getAttribute('data-e');bundleEditor(id,load,d.rows.find(function(b){return b.id===id;}));};});
     }).catch(function (e) { bl.innerHTML = errBox(e.message); });

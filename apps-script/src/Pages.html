@@ -185,8 +185,8 @@ Pages.dashboard = function (main) {
 /* ───────── Master Produk (direktori) ───────── */
 Pages.products = function (main, arg) {
   arg = arg || {};
-  var autoOpen = false;
-  var f = { search: '', brandId: '', categoryId: '', status: 'ACTIVE', completeness: '', page: 1, sort: 'updatedAt', dir: 'desc' };
+  var autoOpen = false, listActive=true;
+  var f = ListViewState.restore('products',{ search: '', brandId: '', categoryId: '', status: 'ACTIVE', completeness: '', page: 1, sort: 'updatedAt', dir: 'desc', brandName:'',categoryName:'' });
   main.innerHTML = pageHead('Katalog', 'Produk', (can('export.run') ? '<button class="btn" id="ex">' + icon('download') + 'Ekspor</button>' : '') + (can('product.write') ? '<button class="btn pri" id="np">' + icon('plus') + 'Tambah produk</button>' : '')) +
     '<div class="filters"><div class="search has-cam">' + icon('search') + '<input class="in" id="fq" placeholder="Cari / scan GTIN, Kode SKU, Kode Produk, nama…" spellcheck="false">' + camBtn('Scan barcode pakai kamera HP') + '</div><div id="fb" style="width:190px"></div><div id="fc" style="width:190px"></div>' +
     '<select class="in" id="fs"><option value="ACTIVE">Aktif</option><option value="DRAFT">Draft</option><option value="INACTIVE">Nonaktif</option><option value="DISCONTINUED">Discontinued</option><option value="ARCHIVED">Diarsipkan</option><option value="all">Semua status</option></select>' +
@@ -194,7 +194,9 @@ Pages.products = function (main, arg) {
   masterTabs(main, 'products');
   // Cari SKU: ketik / scanner USB / kamera HP → pencarian (GTIN, barcode internal, Kode SKU, Kode Produk, nama)
   var fq = $('#fq', main);
-  if (arg.search) { fq.value = arg.search; f.search = arg.search; f.status = 'all'; $('#fs', main).value = 'all'; autoOpen = true; }
+  fq.value=f.search;$('#fs',main).value=f.status;$('#fk',main).value=f.completeness;
+  App.onLeave=function(){ListViewState.capture('products',f,fq);listActive=false;};
+  if (arg.search) { f.page=1;fq.value = arg.search; f.search = arg.search; f.status = 'all'; $('#fs', main).value = 'all'; autoOpen = true; }
   if (arg.completeness) { f.completeness = arg.completeness; $('#fk', main).value = arg.completeness; }
   if (arg.status) { f.status = arg.status; $('#fs', main).value = arg.status; }
   if (arg.focus && !isPhone()) setTimeout(function () { fq.focus(); }, 30);
@@ -268,10 +270,10 @@ Pages.products = function (main, arg) {
   // Daftar dari cache browser tampil seketika; data terbaru diambil di belakang lalu menggantikan bila berubah.
   var seq = 0;
   var load = function () {
-    var box = $('#pl', main), my = ++seq, key = JSON.stringify(f), hit = ProductCache.get(key), generation=FastReadCache.generation;
+    if(!listActive)return;ListViewState.save('products',f);var box = $('#pl', main), my = ++seq, key = JSON.stringify(f), hit = ProductCache.get(key), generation=FastReadCache.generation;
     if (hit) render(hit); else box.innerHTML = loadingBox();
     fastRead('product.list', f, function (d) {
-      if (my !== seq || generation!==FastReadCache.generation || !$('#pl', main)) return;
+      if (!listActive || my !== seq || generation!==FastReadCache.generation || !$('#pl', main)) return;
       var same = hit && JSON.stringify(hit) === JSON.stringify(d);
       if (!same) render(d);
       hit=d;
@@ -280,8 +282,8 @@ Pages.products = function (main, arg) {
   $('#fq', main).oninput = debounce(function (e) { f.search = e.target.value; f.page = 1; load(); }, 300);
   $('#fs', main).onchange = function (e) { f.status = e.target.value; f.page = 1; load(); };
   $('#fk', main).onchange = function (e) { f.completeness = e.target.value; f.page = 1; load(); };
-  refCombo($('#fb', main), 'brand', null, function (it) { f.brandId = it ? it.id : ''; f.page = 1; load(); }, 'Semua brand', true);
-  refCombo($('#fc', main), 'category', null, function (it) { f.categoryId = it ? it.id : ''; f.page = 1; load(); }, 'Semua kategori', true);
+  refCombo($('#fb', main), 'brand', f.brandId?{id:f.brandId,name:f.brandName}:null, function (it) { f.brandId = it ? it.id : '';f.brandName=it?it.name:''; f.page = 1; load(); }, 'Semua brand', true);
+  refCombo($('#fc', main), 'category', f.categoryId?{id:f.categoryId,name:f.categoryName,path:f.categoryName}:null, function (it) { f.categoryId = it ? it.id : '';f.categoryName=it?(it.path||it.name):''; f.page = 1; load(); }, 'Semua kategori', true);
   load();
 };
 /** Laci detail (expandable row): varian, barcode, SKU, kemasan — dimuat saat dibuka. */

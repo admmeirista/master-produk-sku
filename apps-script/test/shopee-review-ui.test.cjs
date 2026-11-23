@@ -76,7 +76,7 @@ test('popup menampilkan urutan kolom pembanding dan menyetujui sekali tanpa cekl
   context.shopeeReviewDialog(row,()=>{});
   assert.doesNotMatch(modals[0].html,/checkbox|svAck/);
   assert.match(modals[0].html,/Shopee Saat Ini/);assert.match(modals[0].html,/Master Sistem/);assert.match(modals[0].html,/Hasil Ekspor Shopee/);assert.doesNotMatch(modals[0].html,/svNote|Catatan pemeriksaan|svExportPreview/);
-  const labels=[...elements['#svTarget'].innerHTML.matchAll(/<th scope="row">(.*?)<\/th>/g)].map(m=>m[1]);assert.deepEqual(labels,['Nama Produk','Variasi','SKU Induk / Parent','SKU','GTIN']);
+  const labels=[...elements['#svTarget'].innerHTML.matchAll(/<th scope="row">(.*?)<\/th>/g)].map(m=>m[1]);assert.deepEqual(labels,['Nama Produk','Variasi','SKU Induk / Parent','SKU','GTIN','Komposisi SKU Barang']);
   context.$('#svType').value='multipack';context.$('#svQty').value='3';
   elements['#svApprove'].onclick();elements['#svApprove'].onclick();elements['#svReview'].onclick();
   assert.equal(calls.length,1);assert.equal(calls[0][0],'shopee.review');assert.equal('acknowledged' in calls[0][1],false);

@@ -40,7 +40,7 @@ function shopeeOpenReview(r, done) {
     var preview=typeof ShopeePlacement!=='undefined'?ShopeePlacement.preview(r.listingShape,shown):{ready:false,reason:'Template asli belum tersedia.'};
     $('#svTarget',m).innerHTML=shopeeComparisonRows(r,shown,preview);
     $('#svCompareHint',m).textContent=preview.ready?'':preview.reason||'Pilih SKU master untuk melengkapi hasil ekspor.';
-    $('#svComposition',m).innerHTML=shown&&shown.kind!=='single'?'<details><summary>Komposisi master</summary>'+shopeeBom(shown.components)+'</details>':'';
+    $('#svComposition',m).innerHTML='';
 
   }
   function selection() { return {saleType:type,components:lines.map(function(c){return {sku:c.sku,quantity:Number(c.quantity)};}),preferredSku:r.targetSku || r.target && r.target.sku || ''}; }

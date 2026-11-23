@@ -32,7 +32,7 @@ function bundleView_(b, ctx) {
     .map((c) => {
       const v = ctx.variants[c.VariantID] || {};
       const p = ctx.products[v.ProductID] || {};
-      return { id: c.ComponentID, variantId: c.VariantID, productId: v.ProductID, sku: v.SKU, name: cleanText((p.ProductName || '') + (v.IsDefault ? '' : ' ' + (v.VariantName || ''))), quantity: c.Quantity, selectable: c.Selectable, skuStatus: v.Status === STATUS.ACTIVE && p.Status === STATUS.ACTIVE ? STATUS.ACTIVE : v.Status !== STATUS.ACTIVE ? v.Status : p.Status, baseUnit: p.BaseUnit };
+      return { id: c.ComponentID, variantId: c.VariantID, productId: v.ProductID, parentSku:p.ProductCode||'', sku: v.SKU, name: cleanText((p.ProductName || '') + (v.IsDefault ? '' : ' ' + (v.VariantName || ''))), quantity: c.Quantity, selectable: c.Selectable, skuStatus: v.Status === STATUS.ACTIVE && p.Status === STATUS.ACTIVE ? STATUS.ACTIVE : v.Status !== STATUS.ACTIVE ? v.Status : p.Status, baseUnit: p.BaseUnit };
     });
   const bc = db_('VARIANT_BARCODES').find((x) => x.BundleID === b.BundleID && x.Status === 'ACTIVE');
   return { id: b.BundleID, sku: b.BundleSKU, type: b.BundleType, typeLabel: BUNDLE_TYPES[b.BundleType], name: b.BundleName, stockMode: b.StockMode, stockable: b.Stockable === 'STOCKABLE', pickQuantity: b.PickQuantity, status: b.Status, description: b.Description || '', version: b.Version, barcode: bc ? bc.Code : '', barcodeType: bc ? bc.BarcodeType : '', components: comps, createdAt: b.CreatedAt, updatedAt: b.UpdatedAt };
