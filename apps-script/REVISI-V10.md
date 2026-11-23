@@ -151,3 +151,10 @@ Pemeriksaan browser dengan kode sumber yang panjang: lebar gulir sama dengan leb
 - Katalog ringan menghindari hashing seluruh master; signature lengkap hanya dihitung untuk usulan yang ditampilkan. Workspace cache dan schema browser dinaikkan ke versi 5; filter lokal tetap tidak memanggil ulang analisis.
 - 184 tes lolos, termasuk brand/ukuran/qty/variasi, judul gabungan, shade, paket belum ada, kandidat ganda, tidak menimpa keputusan pengguna, serta usulan belum dapat diekspor sebelum disetujui. Uji benchmark memakai seed 12 November + master snapshot 18 November, bukan audit produksi terbaru.
 - Pembacaan database langsung tanggal 23 November masih menerima 403 izin file. Hasil produksi dihitung di server saat workspace dibuka; jumlah hasil terkini belum dapat dibaca langsung oleh agen.
+
+### 23 November 2026 — Persetujuan kandidat kuat secara eksplisit
+- Tambahkan tindakan Setujui kecocokan kuat untuk menjalankan persetujuan massal atas instruksi pengguna; tidak berjalan otomatis saat daftar dibuka atau file baru diimpor.
+- Rencana dibatasi cakupan penjualan/batch saat ini. Kriteria: skor >=97, kandidat unik, master aktif sudah ada, satuan/MP dengan komposisi jelas, barcode sumber tidak bertentangan, template cocok, preview ekspor siap, dan parent variasi konsisten. Paket belum dibuat, BD/campuran, draf/keputusan pengguna, dan kandidat ambigu dilewati.
+- Simpan per 20 kandidat dalam transaksi. Setiap kandidat dihitung ulang dan dicek versi serta signature master di server. Request key mencegah penyimpanan berulang; setiap persetujuan dicatat dengan skor dan alasan di audit.
+- UI menampilkan progres/jumlah persetujuan yang dikonfirmasi server dan memuat ulang daftar; sisanya tetap mengikuti tampilan biasa. Tidak ada kebijakan persetujuan otomatis untuk unggahan berikutnya.
+- 187 tes lolos, mencakup kriteria, perubahan versi/master, barcode konflik, draf/abaikan, parent berbeda, izin peran dan pengulangan permintaan.
