@@ -34,7 +34,7 @@ function shopeeOpenReview(r, done, navigation) {
     '<div id="svBarcode"></div><div id="svError"></div></section></div>' +
     '<div class="row shopee-review-actions" style="margin-top:16px">'+(navigation?'<div class="sh-review-navigation"><button class="btn" id="svPrevious"'+(!navigation.canPrevious?' disabled':'')+'>Sebelumnya</button><span class="sh-review-position">'+navigation.position+' / '+navigation.total+'</span><button class="btn" id="svNext"'+(!navigation.canNext?' disabled':'')+'>Berikutnya</button></div>':'')+'<div id="svSaveStatus" class="shopee-save-status" role="status" aria-live="polite"></div>' + (w?'<button class="btn pri" id="svApprove" disabled>Setujui pasangan SKU</button><button class="btn pri" id="svApproveNext" disabled>Setujui & berikutnya</button><button class="btn pri hidden" id="svCreate" disabled>Buat paket baru & setujui</button><button class="btn" id="svReview">Simpan untuk diverifikasi</button>':'') + '<button class="btn" data-close>Tutup</button></div>', {wide:true,className:'sh-review-modal'});
   if(navigation){
-    function move(direction){if(saving||!m.isConnected)return;var draft=Object.assign({},r,{saleType:type,expectedComponents:lines.map(function(c){return {sku:c.sku,quantity:Number(c.quantity),name:c.name};}),target:target,targetSku:target&&target.sku||'',pendingBarcode:barcodeForm.get(),reviewBrandId:brandId,reviewBrandManual:brandManual,match:shopeeSelectionKey(type,lines)===initialSelectionKey?r.match:null});navigation.move(direction,draft,function(){m.close();});}
+    function move(direction){if(saving||!m.isConnected)return;var draft=Object.assign({},r,{saleType:type,expectedComponents:lines.map(function(c){return {sku:c.sku,quantity:Number(c.quantity),name:c.name};}),target:target,targetSku:target&&target.sku||'',pendingBarcode:type==='single'?null:barcodeForm.get(),reviewBrandId:brandId,reviewBrandManual:brandManual,match:shopeeSelectionKey(type,lines)===initialSelectionKey?r.match:null});navigation.move(direction,draft,function(){m.close();});}
     $('#svPrevious',m).onclick=function(){move(-1);};$('#svNext',m).onclick=function(){move(1);};
   }
   $('#svType',m).value = type;
@@ -43,6 +43,7 @@ function shopeeOpenReview(r, done, navigation) {
   function drawTarget() {
     $('#svHeaderConfidence',m).innerHTML=shopeeSelectionKey(type,lines)===initialSelectionKey?shopeeMatchScore(r):'<span class="muted" title="Pilihan berubah; skor usulan awal tidak berlaku untuk pilihan ini.">—</span>';
     var shown=target||(typeof shopeeSelectionPreview!=='undefined'?shopeeSelectionPreview(type,lines,pickerRows):null);
+    if(type==='single')barcodeForm.set(shown&&shown.kind==='single'?shown:{},true);
     var preview=typeof ShopeePlacement!=='undefined'?ShopeePlacement.preview(r.listingShape,shown):{ready:false,reason:'Template asli belum tersedia.'};
     $('#svTarget',m).innerHTML=shopeeComparisonRows(r,shown,preview);
     $('#svCompareHint',m).textContent=preview.ready?'':preview.reason||'Pilih SKU master untuk melengkapi hasil ekspor.';
@@ -62,7 +63,7 @@ function shopeeOpenReview(r, done, navigation) {
     $('#svReview',m).disabled = saving;
   }
   function accept(result,key) {
-    resolved = result; resolved.key = key; target = result.target; barcodeForm.set(r.pendingBarcode||target||{},type==='single');r.pendingBarcode=null; drawTarget();
+    resolved = result; resolved.key = key; target = result.target; barcodeForm.set(type==='single'?(target||{}):(r.pendingBarcode||target||{}),type==='single');r.pendingBarcode=null; drawTarget();
     $('#svResolution',m).textContent = result.blocked || (target ? 'Menggunakan SKU yang sudah ada: '+target.sku+' · Total '+result.quantity+' unit per pembelian.' : 'Paket belum ada. '+(can('product.write')?'Buat dan setujui langsung; paket akan tersimpan di Paket Penjualan.':'Akun ini belum memiliki izin membuat paket.'));
     buttons();
   }
@@ -95,7 +96,7 @@ function shopeeOpenReview(r, done, navigation) {
   if(target && target.active && shopeeSelectionValid(type,lines) && shopeeSelectionKey(type,lines)===shopeeSelectionKey(target.kind,target.components)) {
     resolved={target:target,key:shopeeSelectionKey(type,lines),signature:null};buttons();
   } else changed();
-  if(r.pendingBarcode&&resolved){barcodeForm.set(r.pendingBarcode,type==='single');r.pendingBarcode=null;}
+  if(type!=='single'&&r.pendingBarcode&&resolved){barcodeForm.set(r.pendingBarcode,type==='single');r.pendingBarcode=null;}
   function save(action,create,btn,advance) {
     if(saving)return;
     if(action==='approve' && (!resolved || resolved.key!==shopeeSelectionKey(type,lines) || resolved.blocked))return;

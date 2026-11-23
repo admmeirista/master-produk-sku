@@ -12,7 +12,7 @@ function shopeeAutoBrand(rows,listing,lines){
 function shopeeSelectionPreview(type,lines,rows){
   var chosen=lines.map(function(c){var r=rows.find(function(r){return r.sku===c.sku;});return r?{row:r,quantity:Number(c.quantity)||1}:null;}).filter(Boolean);
   if(!chosen.length)return null;
-  if(type==='single'){var r=chosen[0].row;return {preview:true,kind:'single',name:r.displayName,productName:r.productName||r.displayName,variationName:r.variationName,parentSku:r.parentSku,sku:r.sku,gtin:r.gtin,components:[]};}
+  if(type==='single'){var r=chosen[0].row;return {preview:true,kind:'single',name:r.displayName,productName:r.productName||r.displayName,variationName:r.variationName,parentSku:r.parentSku,sku:r.sku,gtin:r.gtin,internalBarcode:r.internalBarcode,components:[]};}
   var names=chosen.map(function(c){return c.quantity+' × '+c.row.displayName;}),parents=Array.from(new Set(chosen.map(function(c){return c.row.parentSku;}).filter(Boolean)));
   return {preview:true,kind:type,name:names.join(' + '),productName:names.join(' + '),variationName:Array.from(new Set(chosen.map(function(c){return c.row.variationName;}).filter(Boolean))).join(' + '),parentSku:parents.length===1?parents[0]:parents.length>1?'Beberapa parent':'',sku:'Belum ditentukan ('+(type==='multipack'?'MP':'BD')+')',gtin:'',components:chosen.map(function(c){return {sku:c.row.sku,name:c.row.displayName,quantity:c.quantity,gtin:c.row.gtin};})};
 }

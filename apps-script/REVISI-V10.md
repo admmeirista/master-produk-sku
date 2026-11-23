@@ -171,3 +171,8 @@ Pemeriksaan browser dengan kode sumber yang panjang: lebar gulir sama dengan leb
 - Aktivitas antrean dan hasil persetujuan massal dipindahkan ke kontrol Penyimpanan berukuran tetap pada toolbar atas. Detail dibuka pengguna, berposisi absolut sehingga tidak mendorong card/tabel. Error tetap ditandai dan Coba lagi/Perbaiki tetap tersedia.
 - Toast otomatis keberhasilan/kegagalan antrean dan hasil batch dihapus; feedback menggunakan status baris dan indikator Penyimpanan. Tidak ada perubahan aturan penyimpanan/persetujuan.
 - 191 tes lolos, termasuk skor header, invalidasi skor setelah pilihan berubah, antrean/error/retry, navigasi, dan konfirmasi penyimpanan tanpa toast otomatis.
+
+### 23 November 2026 — GTIN barang pada pemetaan satuan
+- Penjualan satuan menampilkan GTIN barang dari master secara read-only; form Barcode paket/GTIN paket hanya digunakan untuk MP dan BD. Barcode internal barang ditampilkan terpisah, tidak dianggap sebagai GTIN.
+- Pergantian SKU memperbarui barcode dari katalog lokal seketika lalu dikonfirmasi hasil resolusi server. Draf barcode paket tidak diterapkan ke satuan; payload persetujuan satuan tetap tidak mengubah barcode master.
+- 193 tes lolos, termasuk pergantian SKU dengan GTIN berbeda, draf paket lama, barang tanpa GTIN dengan barcode internal, dan pemulihan form paket.

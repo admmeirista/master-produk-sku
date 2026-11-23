@@ -118,3 +118,24 @@ test('pemanggil dengan ID saja langsung melihat jendela memuat selama API belum 
   assert.equal(modals.length, 1);assert.match(modals[0].html, /Memuat detail produk/);
   assert.equal(calls.length, 1);assert.equal(calls[0][0], 'shopee.get');
 });
+
+test('satuan menampilkan GTIN master, mengabaikan barcode draf paket, dan segera mengikuti pergantian SKU',async()=>{
+ const {context:c,elements}=ui(true),pickers=[],requests=[];let resolve;
+ const rows=[{sku:'PRD000004-001',displayName:'White Glow 180 ml',gtin:'8999225911258',internalBarcode:''},{sku:'PRD000003-001',displayName:'Gluta Hya 180 ml',gtin:'8999225911265',internalBarcode:''}];
+ c.SkuPicker={load:()=>Promise.resolve(rows)};c.skuCombo=(host,kinds,changed)=>pickers.push(changed);
+ c.api=(action,p)=>{requests.push([action,p]);return new Promise(r=>resolve=r);};
+ const target={...rows[0],kind:'single',active:true,components:[{sku:rows[0].sku,quantity:1}]};
+ c.shopeeOpenReview({id:'barcode-single',version:1,saleType:'single',target,expectedComponents:target.components,pendingBarcode:{mode:'gtin',code:'8992796011501'}},()=>{});
+ await new Promise(setImmediate);
+ assert.match(elements['#svBarcode'].innerHTML,/GTIN barang/);assert.match(elements['#svBarcode'].innerHTML,/8999225911258/);assert.doesNotMatch(elements['#svBarcode'].innerHTML,/Barcode paket|GTIN paket|<select|8992796011501/);
+ pickers.at(-1)(rows[1]);assert.match(elements['#svBarcode'].innerHTML,/8999225911265/);assert.doesNotMatch(elements['#svBarcode'].innerHTML,/8999225911258/);
+ const next={...rows[1],kind:'single',active:true,components:[{sku:rows[1].sku,quantity:1}]};resolve({target:next,quantity:1});await new Promise(setImmediate);
+ elements['#svApprove'].onclick();const saved=requests.find(([action])=>action==='shopee.review')[1];assert.equal(saved.sku,rows[1].sku);assert.equal('barcode' in saved,false,'mapping satuan tidak mengubah barcode master');
+});
+
+test('barcode internal satuan tidak ditulis sebagai GTIN; kembali ke paket memulihkan form paket',()=>{
+ const {context:c,elements}=ui(true),host={innerHTML:''};const form=c.packageBarcode(host,{},true);
+ form.set({internalBarcode:'2000000000008'},true);assert.match(host.innerHTML,/GTIN belum tersedia di master/);assert.match(host.innerHTML,/Barcode internal barang/);assert.match(host.innerHTML,/2000000000008/);assert.doesNotMatch(host.innerHTML,/MasterGtin" value="200/);
+ form.set({},true);assert.doesNotMatch(host.innerHTML,/2000000000008|Barcode internal barang/);
+ form.set({gtin:'8992796011501'},false);assert.match(host.innerHTML,/GTIN paket/);assert.match(host.innerHTML,/<select/);assert.equal(form.get().code,'8992796011501');
+});
