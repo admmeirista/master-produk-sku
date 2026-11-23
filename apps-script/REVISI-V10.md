@@ -158,3 +158,10 @@ Pemeriksaan browser dengan kode sumber yang panjang: lebar gulir sama dengan leb
 - Simpan per 20 kandidat dalam transaksi. Setiap kandidat dihitung ulang dan dicek versi serta signature master di server. Request key mencegah penyimpanan berulang; setiap persetujuan dicatat dengan skor dan alasan di audit.
 - UI menampilkan progres/jumlah persetujuan yang dikonfirmasi server dan memuat ulang daftar; sisanya tetap mengikuti tampilan biasa. Tidak ada kebijakan persetujuan otomatis untuk unggahan berikutnya.
 - 187 tes lolos, mencakup kriteria, perubahan versi/master, barcode konflik, draf/abaikan, parent berbeda, izin peran dan pengulangan permintaan.
+
+### 23 November 2026 — Status dan navigasi popup pemetaan
+- Header popup menampilkan status pemetaan tersimpan di pojok kanan atas dengan warna status yang sama seperti daftar.
+- Tombol Sebelumnya/Berikutnya dan posisi produk tampil di footer, mengikuti filter/urutan saat pemeriksaan dimulai dan dapat melintasi halaman tabel tanpa permintaan server baru.
+- Navigasi tidak menyetujui atau menyimpan ke database. Pilihan SKU/qty/jenis/brand/barcode disimpan sementara dalam sesi pemeriksaan untuk dipulihkan ketika bolak-balik. Draf versi lama tidak menimpa data baru; item dalam antrean penyimpanan dilewati.
+- Setujui & berikutnya tetap menyimpan melalui antrean yang ada. Tombol batas awal/akhir dinonaktifkan dan popup lama ditutup sebelum popup berikutnya dibuka.
+- 189 tes suite lolos; 15 tes navigasi/review lulus kembali setelah guard popup lama ditambahkan. Mencakup status, draft, 35 baris lintas pagination, akhir/awal, dan tidak ada API tambahan saat navigasi.

@@ -1,5 +1,18 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const flush=()=>new Promise(setImmediate);
+test('sebelumnya/berikutnya melewati pagination tanpa API baru dan memulihkan pilihan sementara',async()=>{
+ const nodes={},opened=[],rows=Array.from({length:35},(_,i)=>({id:'n'+i,name:'Produk '+i,status:i%2?'suggested':'approved',target:{active:true},version:1}));let buttons=[],navigation,requests=0,closed=0;
+ const node=s=>nodes[s]||=({innerHTML:'',value:'',isConnected:true,classList:{toggle(){}}});
+ const c={Pages:{},SHOPEE_SELECTED:{},App:{me:{user:{id:'navigation'}}},Store:{get:()=>null,set(){}},can:()=>true,fmtNum:String,esc:v=>String(v||''),icon:()=>'',pageHead:()=>'',loadingBox:()=>'',pager:()=>'',emptyBox:()=>'',errBox:String,debounce:f=>f,toast:()=>{},FastReadCache:{put(){},key:()=>''},$:s=>node(s),$$:(s,host)=>s==='[data-review]'?(buttons=[...host.innerHTML.matchAll(/data-review="([^"]+)"/g)].map(m=>({getAttribute:()=>m[1]}))):[],fastRead:(a,p,render)=>{requests++;render({rows,summary:{all:35,verify:17,approved:18}});return Promise.resolve();},api:()=>Promise.resolve([])};
+ for(const name of ['ListViewState','Shopee','ShopeeWorkflow','ShopeeSelection','ShopeeBatch','ShopeeWorkspace'])vm.runInNewContext(fs.readFileSync('apps-script/src/'+name+'.html','utf8').replace(/^<script>\s*/,'').replace(/<\/script>\s*$/,''),c);
+ c.shopeeReviewDialog=(r,done,nav)=>{opened.push(r);navigation=nav;};c.Pages.mapping({isConnected:true},{});await flush();buttons[0].onclick();assert.equal(navigation.canPrevious,false);assert.equal(navigation.total,35);
+ navigation.move(1,{...opened.at(-1),saleType:'multipack',expectedComponents:[{sku:'PRD000011-001',quantity:3}]},()=>closed++);await flush();
+ for(let i=2;i<=30;i++){navigation.move(1,opened.at(-1),()=>closed++);await flush();}
+ assert.equal(opened.at(-1).id,'n30');assert.equal(navigation.position,31);assert.equal(c.App.shopeeState.page,2);
+ for(let i=29;i>=0;i--){navigation.move(-1,opened.at(-1),()=>closed++);await flush();}
+ assert.equal(opened.at(-1).id,'n0');assert.equal(opened.at(-1).expectedComponents[0].quantity,3);assert.equal(navigation.canPrevious,false);assert.equal(requests,1);assert.equal(closed,60);
+ for(let i=1;i<=34;i++){navigation.move(1,opened.at(-1),()=>closed++);await flush();}assert.equal(navigation.canNext,false);assert.equal(navigation.position,35);
+});
 for(const pending of [false,true])for(const status of ['', 'verify'])test('Setujui & berikutnya melintasi halaman tanpa melewatkan baris; filter '+(status||'semua')+(pending?' dengan antrean latar belakang':''),async()=>{
  let fastRequests=0,listRequests=0;
  const nodes={},opened=[],notices=[],rows=Array.from({length:31},(_,i)=>({id:'r'+i,name:'Produk '+i,status:'suggested',target:{active:true},version:1}));

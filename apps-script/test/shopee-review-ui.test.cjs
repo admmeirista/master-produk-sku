@@ -21,6 +21,13 @@ function ui(write = false) {
   return { context, modals, calls, elements };
 }
 
+test('status di header dan navigasi terpisah dari persetujuan; pilihan ikut dibawa saat pindah',()=>{
+ const {context:c,modals,elements,calls}=ui(false),moves=[],row={id:'nav',status:'approved',version:1,name:'Viva',saleType:'multipack',expectedComponents:[{sku:'PRD000011-001',quantity:10}]};
+ c.shopeeReviewDialog(row,()=>{}, {position:1,total:35,canPrevious:false,canNext:true,move:(direction,draft,close)=>{moves.push({direction,draft});close();}});
+ assert.match(modals[0].html,/sh-review-current-status[\s\S]*shopee-status-approved/);assert.match(modals[0].html,/id="svPrevious" disabled/);assert.match(modals[0].html,/1 \/ 35/);assert.match(modals[0].html,/id="svNext"/);
+ elements['#svNext'].onclick();assert.equal(moves.length,1);assert.equal(moves[0].direction,1);assert.equal(moves[0].draft.expectedComponents[0].quantity,10);assert.equal(moves[0].draft.status,'approved');assert.equal(calls.length,0);assert.equal(modals[0].isConnected,false);
+});
+
 test('Simpan untuk diverifikasi langsung menutup popup, menyimpan pilihan di antrean, dan menampilkan kegagalan tanpa menganggap berhasil',async()=>{
  const {context:c,elements,modals}=ui(true);let reject,requests=[],done=[];c.api=(action,p)=>{requests.push([action,p]);return new Promise((a,b)=>reject=b);};
  c.shopeeOpenReview({id:'draft',version:1,name:'Produk',saleType:'bundle',expectedComponents:[{sku:'PRD000001-001',quantity:2}]},(...args)=>done.push(args));

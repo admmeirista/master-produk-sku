@@ -26,16 +26,16 @@ function shopeeComparisonRows(row,target,preview){
 }
 function shopeeBom(cs) { return (cs || []).map(function (c) { return '<div><b>' + esc(c.quantity) + ' × <span class="sku">' + esc(c.sku) + '</span></b><small class="shopee-sub">' + esc(c.name || '') + (c.gtin ? ' · GTIN ' + esc(c.gtin) : '') + '</small></div>'; }).join(''); }
 
-function shopeeReviewDialog(row, done) {
+function shopeeReviewDialog(row, done, navigation) {
   // Daftar sudah membawa detail SKU, GTIN, komposisi dan version/signature.
   // Buka sinkron tanpa round trip; server tetap memvalidasi ulang saat menyimpan.
-  if (row && typeof row === 'object') return shopeeOpenReview(row, done);
+  if (row && typeof row === 'object') return shopeeOpenReview(row, done, navigation);
   var shell = modal('<h3>Periksa pasangan SKU Shopee</h3><div id="svLoading">' + loadingBox('Memuat detail produk…') + '</div><div class="row"><button class="btn" data-close>Tutup</button></div>');
   var closed = false, close = shell.close;
   shell.close = function () { closed = true; close(); };
   api('shopee.get', { id: row }, { silent: true }).then(function (r) {
     if (closed || !shell.isConnected) return;
-    shell.close(); shopeeOpenReview(r, done);
+    shell.close(); shopeeOpenReview(r, done, navigation);
   }).catch(function (e) { if (!closed && shell.isConnected) $('#svLoading', shell).innerHTML = errBox(e.message); });
   return shell;
 }
