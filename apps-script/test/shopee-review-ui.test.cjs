@@ -27,6 +27,16 @@ test('status di header dan navigasi terpisah dari persetujuan; pilihan ikut diba
  assert.match(modals[0].html,/sh-review-current-status[\s\S]*shopee-status-approved/);assert.match(modals[0].html,/id="svPrevious" disabled/);assert.match(modals[0].html,/1 \/ 35/);assert.match(modals[0].html,/id="svNext"/);
  elements['#svNext'].onclick();assert.equal(moves.length,1);assert.equal(moves[0].direction,1);assert.equal(moves[0].draft.expectedComponents[0].quantity,10);assert.equal(moves[0].draft.status,'approved');assert.equal(calls.length,0);assert.equal(modals[0].isConnected,false);
 });
+test('persentase tampil bersama status; skor lama disembunyikan setelah pilihan diubah',()=>{
+ const {context:c,modals,elements}=ui(true),target={sku:'MP000033',kind:'multipack',active:true,parentSku:'PRD000011',components:[{sku:'PRD000011-001',quantity:10}]};
+ c.shopeeOpenReview({id:'score',version:1,status:'suggested',name:'Viva',saleType:'multipack',expectedComponents:target.components,target,match:{score:99,candidateSku:target.sku,reason:'Brand, ukuran, qty sesuai'}},()=>{});
+ assert.match(modals[0].html,/sh-review-current-status[\s\S]*sh-review-current-confidence[\s\S]*99%/);assert.doesNotMatch(modals[0].html,/sh-review-match-info/);assert.match(elements['#svHeaderConfidence'].innerHTML,/99%/);
+ elements['#svType'].value='single';elements['#svType'].onchange();assert.doesNotMatch(elements['#svHeaderConfidence'].innerHTML,/99%/);assert.match(elements['#svHeaderConfidence'].innerHTML,/Pilihan berubah/);
+});
+test('konfirmasi penyimpanan tidak memunculkan toast otomatis',async()=>{
+ const {context:c}=ui(true),notices=[];c.toast=(...args)=>notices.push(args);c.api=()=>Promise.resolve({id:'saved',status:'approved'});
+ c.ShopeeReviewJobs.enqueue({id:'saved',name:'Viva'},{id:'saved'},{});await new Promise(setImmediate);assert.equal(c.ShopeeReviewJobs.jobs[0].state,'saved');assert.equal(notices.length,0);
+});
 
 test('Simpan untuk diverifikasi langsung menutup popup, menyimpan pilihan di antrean, dan menampilkan kegagalan tanpa menganggap berhasil',async()=>{
  const {context:c,elements,modals}=ui(true);let reject,requests=[],done=[];c.api=(action,p)=>{requests.push([action,p]);return new Promise((a,b)=>reject=b);};

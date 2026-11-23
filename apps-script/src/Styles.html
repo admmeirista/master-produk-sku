@@ -1611,4 +1611,14 @@ body[data-page="mapping"] .shopee-action-cell .btn{font-size:10px;height:29px;pa
 @media(max-width:999px){.shopee-confidence-cell{text-align:left!important}.shopee-confidence-cell:before{content:"Kecocokan: ";color:var(--muted);font-size:11px}}
 .sh-review-header{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 18px;align-items:start}.sh-review-title{min-width:0}.sh-review-current-status{justify-self:end;padding-top:2px}.sh-review-header .sh-review-match-info{grid-column:1/-1}.sh-review-navigation{display:flex;align-items:center;gap:8px;margin-right:auto}.sh-review-position{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
 @media(max-width:700px){.sh-review-header{gap:6px 10px}.sh-review-current-status .badge{font-size:10px}.sh-review-navigation{width:100%;margin-right:0}.sh-review-navigation .btn{flex:1}}
+
+.sh-review-current-status{display:flex;flex-direction:column;align-items:flex-end;gap:7px}.sh-review-current-confidence{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--muted)}.sh-review-current-confidence .shopee-match-score{font-size:14px}
+
+.shopee-review-activity{position:relative;flex:0 0 112px;width:112px;height:34px;display:flex;align-items:center}
+.shopee-review-activity>summary{font-size:10px;color:var(--muted);cursor:pointer;white-space:nowrap;line-height:34px}
+.shopee-review-activity>summary.shopee-save-has-errors{color:var(--err);font-weight:600}
+.shopee-review-activity>.shopee-activity-panel{position:absolute;right:0;top:calc(100% + 6px);z-index:20;width:min(420px,calc(100vw - 48px));max-height:320px;overflow:auto;overscroll-behavior:contain;margin:0;box-shadow:var(--shadow)}
+.shopee-review-activity:not([open])>.shopee-activity-panel{display:none}
+body[data-page="mapping"] #slReviewJobs{max-height:none;overflow:visible}.shopee-save-idle{font-size:11px;color:var(--muted)}.shopee-save-queue{margin-bottom:0}.shopee-activity-panel #slStrongStatus:empty{display:none}
+@media(max-width:700px){.shopee-review-activity{flex-basis:100px;width:100px}.sh-review-current-confidence{font-size:10px;gap:5px}}
 </style>

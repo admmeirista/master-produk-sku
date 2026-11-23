@@ -165,3 +165,9 @@ Pemeriksaan browser dengan kode sumber yang panjang: lebar gulir sama dengan leb
 - Navigasi tidak menyetujui atau menyimpan ke database. Pilihan SKU/qty/jenis/brand/barcode disimpan sementara dalam sesi pemeriksaan untuk dipulihkan ketika bolak-balik. Draf versi lama tidak menimpa data baru; item dalam antrean penyimpanan dilewati.
 - Setujui & berikutnya tetap menyimpan melalui antrean yang ada. Tombol batas awal/akhir dinonaktifkan dan popup lama ditutup sebelum popup berikutnya dibuka.
 - 189 tes suite lolos; 15 tes navigasi/review lulus kembali setelah guard popup lama ditambahkan. Mencakup status, draft, 35 baris lintas pagination, akhir/awal, dan tidak ada API tambahan saat navigasi.
+
+### 23 November 2026 — Skor di header dan penyimpanan tanpa pergeseran tabel
+- Persentase kecocokan ditampilkan bersama status di pojok kanan atas popup. Alasan tetap tersedia melalui tooltip skor, tanpa baris penjelasan tambahan di header. Skor lama tidak ditampilkan untuk pilihan SKU/qty yang sudah diubah, termasuk draft navigasi.
+- Aktivitas antrean dan hasil persetujuan massal dipindahkan ke kontrol Penyimpanan berukuran tetap pada toolbar atas. Detail dibuka pengguna, berposisi absolut sehingga tidak mendorong card/tabel. Error tetap ditandai dan Coba lagi/Perbaiki tetap tersedia.
+- Toast otomatis keberhasilan/kegagalan antrean dan hasil batch dihapus; feedback menggunakan status baris dan indikator Penyimpanan. Tidak ada perubahan aturan penyimpanan/persetujuan.
+- 191 tes lolos, termasuk skor header, invalidasi skor setelah pilihan berubah, antrean/error/retry, navigasi, dan konfirmasi penyimpanan tanpa toast otomatis.
