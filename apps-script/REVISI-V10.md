@@ -130,3 +130,9 @@ Pemeriksaan browser dengan kode sumber yang panjang: lebar gulir sama dengan leb
 - Pembukaan tanpa sesi sekarang menampilkan sambutan logo yang tidak berpindah otomatis. Tombol Masuk ke halaman login aktif setelah 3,5 detik dan membuka form hanya lewat klik pengguna.
 - Timer sambutan dibersihkan ketika ditutup; klik ganda/tombol lama tidak mengganggu login berikutnya. Sesi tersimpan mengikuti alur pemuatan yang sudah ada.
 - 12 pengujian auth, gerbang tombol, pembatalan timer, dan parse frontend/backend lolos.
+
+### 23 November 2026 — Perbandingan sumber, master, dan ekspor
+- Popup memakai satu tabel tiga kolom data: Shopee Saat Ini, Master Sistem, Hasil Ekspor Shopee. Lima baris sejajar mencakup nama, variasi, SKU Induk/Parent, SKU, GTIN; kolom hasil selalu mengikuti aturan ekspor yang sama dan mempertahankan nama/variasi Shopee.
+- Form pemetaan di bawah tabel, filter jenis/brand berdampingan, komposisi master dapat dibuka bila perlu. Header nama produk dan tombol tindakan tetap terlihat saat konten digulir.
+- Field Catatan Pemeriksaan dan kartu preview terpisah dihapus. Catatan lama tetap dipertahankan pada penyimpanan berikutnya.
+- 168 tes suite lolos; satu regresi tambahan tabel Viva Air Mawar juga lolos bersama 16 tes pemetaan/UI. Pemeriksaan meliputi MP tanpa variasi di SKU Induk, SKU kosong, GTIN paket, dan perubahan pilihan master.

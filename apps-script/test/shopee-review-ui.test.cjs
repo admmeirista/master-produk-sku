@@ -24,7 +24,7 @@ function ui(write = false) {
 test('Simpan untuk diverifikasi langsung menutup popup, menyimpan pilihan di antrean, dan menampilkan kegagalan tanpa menganggap berhasil',async()=>{
  const {context:c,elements,modals}=ui(true);let reject,requests=[],done=[];c.api=(action,p)=>{requests.push([action,p]);return new Promise((a,b)=>reject=b);};
  c.shopeeOpenReview({id:'draft',version:1,name:'Produk',saleType:'bundle',expectedComponents:[{sku:'PRD000001-001',quantity:2}]},(...args)=>done.push(args));
- c.$('#svNote').value='';elements['#svReview'].onclick();elements['#svReview'].onclick();assert.equal(requests.length,1);assert.equal(requests[0][1].draft.components[0].quantity,2);assert.equal(requests[0][1].note,'');assert.equal(modals[0].isConnected,false);assert.equal(done[0][2],'pending');
+ elements['#svReview'].onclick();elements['#svReview'].onclick();assert.equal(requests.length,1);assert.equal(requests[0][1].draft.components[0].quantity,2);assert.equal(requests[0][1].note,'');assert.equal(modals[0].isConnected,false);assert.equal(done[0][2],'pending');
  reject(new Error('Jaringan terputus'));await new Promise(setImmediate);assert.equal(c.ShopeeReviewJobs.get('draft').state,'error');assert.match(c.ShopeeReviewJobs.get('draft').error.message,/Jaringan/);assert.equal(done.length,1);
 });
 
@@ -66,7 +66,7 @@ test('Periksa membuka detail tabel secara sinkron tanpa menunggu atau memanggil 
   const row = { id: 'listing-1', name: 'Gatsby Clay 30 gr', variationName: '3 pcs', productId: '123', variationId: '456', expectedComponents: [{sku:'PRD000168-003',quantity:3}], target: {kind:'multipack',sku:'MP000243',name:'Gatsby paket 3 pcs',active:true,components:[{sku:'PRD000168-003',quantity:3}]}, saleType: 'multipack', quantity: 3, version: 4 };
   const result = context.shopeeReviewDialog(row, () => {});
   assert.equal(modals.length, 1);assert.equal(result, modals[0]);assert.equal(calls.length, 0);
-  assert.match(modals[0].html, /Gatsby Clay 30 gr/);assert.match(elements['#svTarget'].innerHTML, /MP000243/);
+  assert.match(elements['#svTarget'].innerHTML, /Gatsby Clay 30 gr/);assert.match(elements['#svTarget'].innerHTML, /MP000243/);
   assert.equal(row.version, 4, 'snapshot version tetap dipakai untuk pemeriksaan konflik di server');
 });
 
@@ -75,11 +75,9 @@ test('popup menampilkan urutan kolom pembanding dan menyetujui sekali tanpa cekl
   const row={id:'1',name:'Nama Shopee',variationName:'3 pcs',productId:'123',variationId:'456',parentSku:'PRD000168',sellerSku:'kode-lama',gtin:'899',expectedComponents:[{sku:'PRD000168-003',quantity:3}],target:{kind:'multipack',sku:'MP000243',productName:'Nama master',variationName:'30 gr',parentSku:'PRD000168',active:true,components:[{sku:'PRD000168-003',quantity:3}]},saleType:'multipack',quantity:3,version:1};
   context.shopeeReviewDialog(row,()=>{});
   assert.doesNotMatch(modals[0].html,/checkbox|svAck/);
-  const sourceLabels=[...modals[0].html.matchAll(/<dt>(.*?)<\/dt>/g)].map(m=>m[1]);
-  assert.deepEqual(sourceLabels,['Nama Produk','Variasi','SKU Induk','SKU','GTIN']);
-  const targetLabels=[...elements['#svTarget'].innerHTML.matchAll(/<dt>(.*?)<\/dt>/g)].map(m=>m[1]);
-  assert.deepEqual(targetLabels,['Nama Produk','Variasi','SKU Parent','SKU','GTIN']);
-  context.$('#svType').value='multipack';context.$('#svQty').value='3';context.$('#svNote').value='';
+  assert.match(modals[0].html,/Shopee Saat Ini/);assert.match(modals[0].html,/Master Sistem/);assert.match(modals[0].html,/Hasil Ekspor Shopee/);assert.doesNotMatch(modals[0].html,/svNote|Catatan pemeriksaan|svExportPreview/);
+  const labels=[...elements['#svTarget'].innerHTML.matchAll(/<th scope="row">(.*?)<\/th>/g)].map(m=>m[1]);assert.deepEqual(labels,['Nama Produk','Variasi','SKU Induk / Parent','SKU','GTIN']);
+  context.$('#svType').value='multipack';context.$('#svQty').value='3';
   elements['#svApprove'].onclick();elements['#svApprove'].onclick();elements['#svReview'].onclick();
   assert.equal(calls.length,1);assert.equal(calls[0][0],'shopee.review');assert.equal('acknowledged' in calls[0][1],false);
   assert.equal(elements['#svReview'].disabled,true);assert.equal(modals[0].isConnected,false,'popup langsung ditutup, hasil masih menunggu konfirmasi server');assert.equal(context.ShopeeReviewJobs.get(row.id).state,'saving');
