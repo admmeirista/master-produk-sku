@@ -139,3 +139,15 @@ test('barcode internal satuan tidak ditulis sebagai GTIN; kembali ke paket memul
  form.set({},true);assert.doesNotMatch(host.innerHTML,/2000000000008|Barcode internal barang/);
  form.set({gtin:'8992796011501'},false);assert.match(host.innerHTML,/GTIN paket/);assert.match(host.innerHTML,/<select/);assert.equal(form.get().code,'8992796011501');
 });
+
+test('paket belum ada: tombol menjelaskan pembuatan MP dan mengirim createPackage sebelum lanjut',async()=>{
+ const {context:c,elements,modals}=ui(true),requests=[],done=[];c.api=(action,p)=>{requests.push([action,p]);return action==='shopee.packageResolve'?Promise.resolve({target:null,signature:'bom-3',quantity:3}):new Promise(()=>{});};
+ c.shopeeOpenReview({id:'new-mp',version:1,saleType:'multipack',expectedComponents:[{sku:'PRD000011-001',quantity:3}]},(...a)=>done.push(a));await new Promise(setImmediate);
+ assert.match(elements['#svApproveNext'].textContent,/Buat paket, setujui/);assert.match(elements['#svActionHint'].textContent,/Paket Penjualan/);elements['#svApproveNext'].onclick();const payload=requests.find(([a])=>a==='shopee.review')[1];assert.equal(payload.createPackage,true);assert.equal(payload.selection.saleType,'multipack');assert.equal(done[0][1],true);assert.equal(modals[0].isConnected,false);
+});
+
+test('mobile berganti sumber perbandingan tanpa API atau mengubah pilihan SKU',()=>{
+ const {context:c,elements,calls}=ui(false),attrs={},buttons=['source','master','export'].map(view=>({tagName:'BUTTON',getAttribute:()=>view,setAttribute:(k,v)=>attrs[view+':'+k]=v}));
+ c.$$=selector=>selector==='[data-compare-view]'||selector==='.sh-review-mobile-tabs button'?buttons:[];elements['.sh-review-context']={setAttribute:(k,v)=>attrs[k]=v};
+ c.shopeeOpenReview({id:'mobile',saleType:'single',expectedComponents:[{sku:'PRD000011-001',quantity:1}]},()=>{});buttons[2].onclick();assert.equal(attrs['data-compare-view'],'export');assert.equal(attrs['export:aria-pressed'],'true');assert.equal(attrs['source:aria-pressed'],'false');assert.equal(calls.length,0);
+});

@@ -58,3 +58,21 @@ test('workspace memakai master terbaru; usulan tidak tersimpan sebagai persetuju
  assert.equal(c.db_('SHOPEE_LISTINGS').byId(row.id).ReviewStatus,'unmapped');assert.equal(ok(call('shopee.exportSelected',{ids:[row.id]})).rejected.length,1);
  const approved=ok(call('shopee.review',{id:row.id,version:row.version,action:'approve',sku:row.targetSku,targetSignature:row.target.signature,saleType:row.saleType,quantity:row.quantity,components:row.expectedComponents}));assert.equal(approved.status,'approved');
 });
+
+test('GTIN unik memetakan satuan meski nama brand/variasi memakai alias dan SPF/bahan mengandung plus',()=>{
+ const c=engine(),cat=catalog();cat['PRD000011-001'].gtin='8992796011501';const idx=c.shopeeMatchIndex_(cat);
+ for(const row of [{name:'Air mawar',variationName:'Kecil',gtin:'8992796011501'},{name:'Viva Air Mawar SPF 50 PA++++ Niacinamide + Ceramide + Vitamin E',gtin:'08992796011501'}]){const m=c.shopeeMatchListing_(row,idx);assert.equal(m.proposed,true);assert.equal(m.method,'gtin');assert.equal(m.candidateSku,'PRD000011-001');assert.equal(m.score,99);}
+});
+
+test('GTIN tidak menimpa jenis paket, GTIN ganda/ukuran/variasi konflik atau barcode internal',()=>{
+ const c=engine(),cat=catalog();cat['PRD000011-001'].gtin='8992796011501';let idx=c.shopeeMatchIndex_(cat);
+ for(const name of ['10 PCS Viva Air Mawar 100 ml','2 Produk Viva Air Mawar + Pixy','Viva Air Mawar Boleh Campur'])assert.notEqual(c.shopeeMatchListing_({name,gtin:'8992796011501'},idx).method,'gtin');
+ assert.equal(c.shopeeMatchListing_({name:'Viva Air Mawar 200 ml',gtin:'8992796011501'},idx).proposed,false);
+ cat['PRD000075-001'].gtin='8992796011501';idx=c.shopeeMatchIndex_(cat);assert.equal(c.shopeeMatchListing_({name:'Viva Air Mawar',gtin:'8992796011501'},idx).proposed,false);
+ delete cat['PRD000075-001'].gtin;delete cat['PRD000011-001'].gtin;cat['PRD000011-001'].internalBarcode='2000000000008';idx=c.shopeeMatchIndex_(cat);assert.equal(c.shopeeMatchListing_({name:'Viva',gtin:'2000000000008'},idx).proposed,false);
+});
+
+test('GTIN salah checksum hanya diusulkan untuk verifikasi, keputusan manual/disetujui tetap utuh',()=>{
+ const c=engine(),cat=catalog();cat['PRD000011-001'].gtin='8992796011502';const idx=c.shopeeMatchIndex_(cat);assert.equal(c.shopeeMatchListing_({name:'Air mawar',gtin:'8992796011502'},idx).score,94);
+ c.shopeeCatalog_=()=>cat;const rows=[{id:'new',name:'Air mawar',gtin:'8992796011502',status:'unmapped'},{id:'manual',name:'Air mawar',gtin:'8992796011502',status:'needs_review',reviewRequested:true,reviewedAt:'today'},{id:'approved',name:'Air mawar',gtin:'8992796011502',status:'approved'}];c.shopeeAnalyzeViews_(rows);assert.equal(rows[0].targetSku,'PRD000011-001');assert.equal(rows[1].targetSku,undefined);assert.equal(rows[2].targetSku,undefined);
+});

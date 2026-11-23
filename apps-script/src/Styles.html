@@ -1621,4 +1621,81 @@ body[data-page="mapping"] .shopee-action-cell .btn{font-size:10px;height:29px;pa
 .shopee-review-activity:not([open])>.shopee-activity-panel{display:none}
 body[data-page="mapping"] #slReviewJobs{max-height:none;overflow:visible}.shopee-save-idle{font-size:11px;color:var(--muted)}.shopee-save-queue{margin-bottom:0}.shopee-activity-panel #slStrongStatus:empty{display:none}
 @media(max-width:700px){.shopee-review-activity{flex-basis:100px;width:100px}.sh-review-current-confidence{font-size:10px;gap:5px}}
+
+/* Pemeriksaan SKU: desktop membandingkan kolom, mobile membaca satu sumber per tab. */
+.sh-review-mobile-tabs{display:none}
+.sh-review-header{position:relative;padding-right:64px}.sh-review-current-status{grid-column:2;grid-row:1}
+.sh-review-close{position:absolute;right:12px;top:10px;width:40px;height:40px;border:0;border-radius:10px;background:transparent;color:var(--muted);font-size:26px;cursor:pointer}.sh-review-close:hover{background:var(--bg)}
+.sh-review-modal .shopee-review-actions{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.sh-review-submit{min-width:0}.sh-review-action-hint{font-size:11px;line-height:1.45;color:var(--muted);margin:0 0 6px;max-width:340px}.sh-review-action-hint:empty,#svSaveStatus:empty{display:none}
+.sh-review-more{position:relative;flex:none}.sh-review-more>summary{list-style:none;cursor:pointer}.sh-review-more>summary::-webkit-details-marker{display:none}
+.sh-review-more-menu{position:absolute;right:0;bottom:calc(100% + 8px);z-index:8;width:min(280px,calc(100vw - 32px));padding:8px;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow)}
+.sh-review-more-menu .btn{width:100%;justify-content:flex-start;margin:3px 0;white-space:normal;text-align:left}
+.sh-review-more:not([open])>.sh-review-more-menu{display:none}
+@media(max-width:760px){
+ body[data-page="mapping"] .main{padding:12px 12px calc(24px + env(safe-area-inset-bottom));overflow-x:clip}
+ body[data-page="mapping"] .ph .act{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+ body[data-page="mapping"] .ph .act>.btn{min-width:0;min-height:44px;padding:8px;font-size:12px;white-space:normal}
+ body[data-page="mapping"] .ph .act>.shopee-review-activity{width:100%;flex-basis:auto;height:44px;align-self:center}
+ body[data-page="mapping"] .shopee-batch-toolbar{gap:8px;align-items:center;flex-wrap:wrap}
+ body[data-page="mapping"] #slBatch{flex:1;min-width:0;max-width:calc(100% - 80px)}
+ body[data-page="mapping"] .shopee-selection-actions{width:100%;display:flex;gap:8px}
+ body[data-page="mapping"] .shopee-selection-actions .btn{flex:1;min-height:44px;font-size:12px;white-space:normal}
+ body[data-page="mapping"] .shopee-status-cards{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+ body[data-page="mapping"] .shopee-stat{min-height:76px;padding:10px}.shopee-stat strong{font-variant-numeric:tabular-nums}
+ body[data-page="mapping"] .shopee-filters{display:grid;grid-template-columns:1fr;gap:8px}
+ body[data-page="mapping"] .shopee-filters .search{min-width:0;width:100%}
+ body[data-page="mapping"] .shopee-filters .in{font-size:16px;min-height:44px}
+ body[data-page="mapping"] #slSelectionInfo{max-width:none;margin:0;font-size:12px}
+ body[data-page="mapping"] .shopee-simple{overflow:visible;border:0;background:transparent;box-shadow:none}
+ body[data-page="mapping"] .shopee-simple table{min-width:0!important;table-layout:auto}
+ body[data-page="mapping"] .shopee-simple tbody{display:grid;gap:12px}
+ body[data-page="mapping"] .shopee-simple tr{grid-template-columns:28px minmax(0,1fr) 100px;padding:10px;border:1px solid var(--line);border-radius:14px;background:var(--card);overflow:hidden;gap:0}
+ body[data-page="mapping"] .shopee-simple td{min-width:0;max-width:none;font-size:12px;padding:8px;overflow-wrap:anywhere}
+ body[data-page="mapping"] .shopee-simple td.shopee-product{padding:8px;border-radius:8px;border-left:3px solid #ee4d2d!important;font-size:14px;line-height:1.5}
+ body[data-page="mapping"] .shopee-mobile-meta{font-size:12px;line-height:1.65}
+ body[data-page="mapping"] .shopee-simple .sh-master{border-radius:8px;margin-top:8px;padding:10px;font-size:13px}
+ body[data-page="mapping"] .shopee-simple .shopee-sub{font-size:12px}
+ body[data-page="mapping"] .shopee-simple td:nth-child(7){grid-column:3;grid-row:3;text-align:right!important;align-self:center;font-size:12px}
+ body[data-page="mapping"] .shopee-simple td:nth-child(7):before{content:none}
+ body[data-page="mapping"] .shopee-simple .shopee-status-cell{grid-column:2;grid-row:3;align-self:center}
+ body[data-page="mapping"] .shopee-simple .badge{font-size:11px;padding:5px 8px}
+ body[data-page="mapping"] .shopee-simple td:nth-child(8){grid-column:2/4;grid-row:4;background:transparent;border-top:1px solid var(--line)!important;margin-top:4px;padding-top:10px}
+ body[data-page="mapping"] .shopee-simple .shopee-export-preview{font-size:12px}
+ body[data-page="mapping"] .shopee-simple .shopee-action-cell{grid-column:2/4;grid-row:5;padding:8px 0 0}
+ body[data-page="mapping"] .shopee-action-cell .btn{width:100%;max-width:none;min-height:44px;font-size:13px;justify-content:center}
+ body[data-page="mapping"] .shopee-selection input{width:20px;height:20px;margin-top:6px}
+ body[data-page="mapping"] .shopee-simple .shopee-selection{padding:8px 0}
+ body[data-page="mapping"] #slRows>.pager{flex-wrap:wrap;gap:8px;font-size:12px}
+ .modal-bg:has(.sh-review-modal){padding:0}
+ .modal.sh-review-modal{width:100%!important;max-width:100vw;height:100dvh;max-height:100dvh;border-radius:0}
+ .sh-review-header{padding:12px 50px 12px 14px;gap:6px 8px}.sh-review-header h3{font-size:16px;line-height:1.4}.sh-review-header p{font-size:12px;line-height:1.5;-webkit-line-clamp:2}
+ .sh-review-current-status .badge{font-size:10px;padding:5px 7px}.sh-review-current-confidence{gap:4px;font-size:10px}.sh-review-current-confidence .shopee-match-score{font-size:12px}
+ .sh-review-modal .sh-review-workspace{overflow-y:auto;overscroll-behavior:contain;scroll-padding-bottom:16px}
+ .sh-review-modal .sh-review-context{padding:0 14px 0}
+ .sh-review-mobile-tabs{position:sticky;top:0;z-index:4;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;padding:10px 0;background:var(--card)}
+ .sh-review-mobile-tabs button{min-height:44px;padding:7px 4px;border:1px solid var(--line);border-radius:9px;background:var(--card);color:var(--muted);font:inherit;font-size:12px;cursor:pointer}
+ .sh-review-mobile-tabs button[aria-pressed="true"]{background:#ee4d2d;border-color:#ee4d2d;color:#fff;font-weight:600}
+ .sh-review-mobile-tabs button[data-compare-view="master"][aria-pressed="true"]{background:var(--ink);border-color:var(--ink)}
+ .sh-review-compare-table{font-size:13px!important;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+ .sh-review-compare-table thead,.sh-review-compare-table colgroup{display:none!important}
+ .sh-review-compare-table tr{display:grid;grid-template-columns:minmax(90px,.8fr) minmax(0,1.4fr)}
+ .sh-review-compare-table tbody th{grid-column:1;grid-row:1;background:var(--bg);padding:10px;font-size:11px;line-height:1.6}
+ .sh-review-compare-table td{display:none;grid-column:2;grid-row:1;padding:10px;font-size:13px;line-height:1.6}
+ .sh-review-context[data-compare-view="source"] td:nth-child(2),.sh-review-context[data-compare-view="master"] td:nth-child(3),.sh-review-context[data-compare-view="export"] td:nth-child(4){display:block}
+ .sh-review-modal .sh-review-form{padding:18px 14px 24px;margin-top:16px}.sh-review-form .in{min-height:46px;font-size:16px}.sh-review-form .package-line{grid-template-columns:minmax(0,1fr) 64px 32px;gap:6px}.sh-review-form .package-line .in{height:46px}
+ .sh-review-form .f{font-size:13px}.sh-review-form .hint{font-size:12px;line-height:1.6}.sh-review-form .sect{font-size:14px}.sh-review-form .cb-list{max-height:min(260px,38dvh)}
+ .sh-review-modal .shopee-review-actions{display:grid;grid-template-columns:minmax(0,1fr) auto;padding:10px 12px calc(10px + env(safe-area-inset-bottom));gap:8px;overflow:visible;box-shadow:0 -4px 16px #3029230d}
+ .sh-review-submit{grid-column:1/-1;grid-row:1}.sh-review-submit>.btn{width:100%;min-height:46px;justify-content:center;font-size:13px!important;white-space:normal;line-height:1.5}
+ .sh-review-action-hint{max-width:none;min-height:30px;font-size:11px;margin-bottom:6px}
+ .sh-review-navigation{grid-column:1;grid-row:2;width:auto;min-width:0;margin:0;gap:6px}.sh-review-navigation .btn{min-width:0;min-height:44px;font-size:11px!important;padding:6px!important}.sh-review-position{font-size:10px}
+ .sh-review-more{grid-column:2;grid-row:2}.sh-review-more>summary{min-height:44px;font-size:11px;padding:8px}.sh-review-more-menu .btn{min-height:44px;font-size:13px!important}
+}
+
+.shopee-select-touch{display:grid;place-items:center;min-height:44px;cursor:pointer}
+.shopee-mapping-tools{position:relative}.shopee-mapping-tools>summary{list-style:none;cursor:pointer}.shopee-mapping-tools>summary::-webkit-details-marker{display:none}
+.shopee-mapping-tools-menu{position:absolute;right:0;top:calc(100% + 6px);z-index:25;width:230px;padding:8px;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow)}
+.shopee-mapping-tools-menu .btn{width:100%;justify-content:flex-start;font-size:12px;min-height:44px;margin:3px 0}
+.shopee-mapping-tools:not([open])>.shopee-mapping-tools-menu{display:none}
+@media(max-width:760px){body[data-page="mapping"] .ph .act>.shopee-mapping-tools>summary{width:100%;min-height:44px;justify-content:center;font-size:12px}.shopee-mapping-tools-menu{left:0;right:auto}body[data-page="mapping"] .shopee-simple tr{grid-template-columns:36px minmax(0,1fr) 100px}body[data-page="mapping"] .shopee-select-touch{min-height:44px;width:36px}body[data-page="mapping"] .shopee-selection input{margin:0}}
 </style>

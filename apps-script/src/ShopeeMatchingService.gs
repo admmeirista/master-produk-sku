@@ -15,17 +15,39 @@ function shopeeMatchSale_(row){
   const bundle=/\b\d+\s*produk\b|\bbundl\w*\b/i.test(s);
   return {type:bundle?'bundle':qty.length===1&&qty[0]>1?'multipack':'single',quantity:qty.length===1?qty[0]:1,unclear:mixed||qty.length>1||qty.some(n=>n<1||n>1000)||(!qty.length&&/\b(paket|box|dus|lusin|kotak)\b/i.test(s)),mixed};
 }
+/** GTIN exact: hanya kode GTIN master, bukan barcode internal atau angka dari nama/SKU lama. */
+function shopeeMatchGtinKey_(value){const s=String(value||'').trim().replace(/^'/,'').replace(/\s/g,'');return /^(?:\d{8}|\d{12,14})$/.test(s)?s.padStart(14,'0'):'';}
+function shopeeMatchGtinValid_(key){if(!key)return false;let sum=0;for(let i=0;i<13;i++)sum+=Number(key[i])*(i%2===0?3:1);return (10-sum%10)%10===Number(key[13]);}
+function shopeeMatchGtin_(row,index){
+  const key=shopeeMatchGtinKey_(row.gtin);if(!key)return null;
+  // SPF/PA dan daftar bahan dengan tanda plus tidak mengubah satu barang menjadi paket.
+  const clean=value=>String(value||'').replace(/\b(?:spf\s*\d+\s*(?:pa)?|pa)\s*\++/gi,' ').replace(/\b(?:niacinamide|ceramide|hyaluronic acid|vitamin\s*[a-e])(?:\s*\+\s*(?:niacinamide|ceramide|hyaluronic acid|vitamin\s*[a-e]))+/gi,' ');
+  const sale=shopeeMatchSale_({name:clean(row.name),variationName:clean(row.variationName)});
+  if(sale.type!=='single'||sale.quantity!==1||sale.unclear)return null;
+  const found=(index.byGtin||{})[key]||[];
+  if(found.length!==1||found[0].target.kind!=='single')return {score:found.length?59:0,proposed:false,method:'gtin',reason:found.length?'GTIN terdaftar pada beberapa SKU atau bukan SKU satuan.':'GTIN Shopee belum ditemukan pada SKU aktif master.'};
+  const doc=found[0],t=doc.target,text=' '+shopeeMatchText_(row.name+' '+(row.variationName||''))+' ',brands=Object.keys(index.brands).filter(id=>text.includes(' '+shopeeMatchText_(index.brands[id])+' '));
+  const units=shopeeMatchUnits_(row.variationName),sizes=units.length?units:shopeeMatchUnits_(row.name),reasons=['GTIN Shopee sama persis dan unik di master'],conflicts=[];
+  if(brands.length&&doc.brands.length&&!brands.some(id=>doc.brands.includes(id)))conflicts.push('Brand berbeda');
+  if(sizes.length&&doc.units.length&&!doc.units.every(u=>sizes.includes(u)))conflicts.push('Ukuran berbeda');
+  // Alias variasi boleh berbeda (Romantic/Rose); konflik terhadap varian lain yang eksplisit tetap manual.
+  const vt=shopeeMatchTokens_(row.variationName,[]),own=doc.variants.filter(w=>vt.includes(w)).length;
+  if(vt.length&&index.docs.some(d=>d.target.kind==='single'&&d.target.sku!==t.sku&&d.target.parentSku===t.parentSku&&d.variants.length&&d.variants.every(w=>vt.includes(w))&&d.variants.length>own))conflicts.push('Variasi mengarah ke SKU master lain');
+  const valid=shopeeMatchGtinValid_(key);if(!valid)reasons.push('Digit pemeriksa GTIN perlu diverifikasi');
+  return {score:conflicts.length?59:valid?99:94,proposed:!conflicts.length,method:'gtin',gtin:key,candidateSku:t.sku,candidateName:t.name,reason:reasons.concat(conflicts).join(' · '),brand:doc.brands.map(id=>index.brands[id]).join(' + ')};
+}
 function shopeeMatchIndex_(catalog){
-  const brands={},docs=[],groups={},bySku={};
+  const brands={},docs=[],groups={},bySku={},byGtin={};
   Object.keys(catalog).forEach(s=>{const t=catalog[s];if(t.brandId&&t.brandName)brands[t.brandId]=t.brandName;});
   Object.keys(catalog).forEach(s=>{
     const t=catalog[s];if(!t.active||t.bundleType==='REQUEST_MIX')return;
     const cs=(t.components||[]),members=cs.map(c=>catalog[c.sku]).filter(Boolean),ids=Array.from(new Set((t.brandId?[t.brandId]:members.map(m=>m.brandId)).filter(Boolean))),names=ids.map(id=>brands[id]).filter(Boolean);
     const text=[t.name,t.productName].concat(cs.map(c=>c.name)).join(' '),doc={target:t,brands:ids,tokens:shopeeMatchTokens_(text,names),units:shopeeMatchUnits_(cs.map(c=>c.name).join(' ')||text),variants:shopeeMatchTokens_(t.variationName,names),quantity:cs.reduce((n,c)=>n+Number(c.quantity),0)};
-    docs.push(doc);bySku[t.sku]=doc;ids.forEach(id=>{(groups[id]=groups[id]||[]).push(doc);});
-  });return {brands,docs,groups,bySku};
+    docs.push(doc);bySku[t.sku]=doc;const gtin=shopeeMatchGtinKey_(t.gtin);if(gtin)(byGtin[gtin]=byGtin[gtin]||[]).push(doc);ids.forEach(id=>{(groups[id]=groups[id]||[]).push(doc);});
+  });return {brands,docs,groups,bySku,byGtin};
 }
 function shopeeMatchListing_(row,index,existing){
+  const exact=shopeeMatchGtin_(row,index);if(exact){if(existing&&exact.candidateSku!==existing.sku)return Object.assign({},exact,{proposed:false,score:Math.min(exact.score,59),reason:exact.reason+' · Target tersimpan berbeda; periksa kembali.'});return exact;}
   const text=String(row.name||'')+' '+String(row.variationName||''),normal=' '+shopeeMatchText_(text)+' ',brandIds=Object.keys(index.brands).filter(id=>{
     const words=shopeeMatchText_(index.brands[id]).split(/\s+/);return new RegExp('(?:^|\\s)'+words.join('\\s*')+'(?=\\s|$)').test(normal);
   });
@@ -68,8 +90,11 @@ function shopeeAnalyzeViews_(views){
   const catalog=shopeeCatalog_(undefined,true),index=shopeeMatchIndex_(catalog),pending=[];let analyzed=0,proposed=0;
   views.forEach(r=>{
     if(r.status==='ignored')return;
-    const unavailable=!(r.target&&r.target.active)&&!r.reviewRequested;
-    r.match=shopeeMatchListing_(r,index,unavailable?null:r.target);
+    const unavailable=!(r.target&&r.target.active)&&!r.reviewRequested&&!r.reviewedAt&&r.status!=='approved';
+    const editable=!['approved','ignored'].includes(r.status)&&!r.reviewedAt&&!r.reviewRequested;
+    const exact=editable?shopeeMatchGtin_(r,index):null;
+    r.match=exact||shopeeMatchListing_(r,index,unavailable?null:r.target);
+    if(exact&&exact.proposed){analyzed++;pending.push(r);return;}
     if(!unavailable)return;analyzed++;
     if(!r.match||!r.match.proposed)return;
     if(r.match.needsPackage){r.previousTargetSku=r.targetSku;r.target=null;r.targetSku='';r.status='needs_review';r.reviewRequested=true;r.saleType='multipack';r.quantity=r.match.quantity;r.expectedComponents=[{sku:r.match.componentSku,quantity:r.match.quantity}];proposed++;return;}

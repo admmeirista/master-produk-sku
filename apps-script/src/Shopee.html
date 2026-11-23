@@ -4,13 +4,13 @@ var SHOPEE_KIND = { single: 'Satuan', multipack: 'Paket produk sama (MP)', bundl
 function shopeeDisplayStatus(r) { return r.status === 'approved' ? 'approved' : (r.reviewRequested || r.target && r.target.active) ? 'verify' : 'unavailable'; }
 function shopeeBadge(st) { return '<span class="badge shopee-status-' + st + '">' + esc(SHOPEE_STATUS[st] || st) + '</span>'; }
 function shopeeMatchScore(row){var m=row.match;if(!m||typeof m.score!=='number'||(row.target&&m.candidateSku!==row.target.sku))return '<span class="muted">—</span>';return '<span class="shopee-match-score" title="'+esc('Skor kecocokan, bukan probabilitas. '+(m.candidateSku?m.candidateSku+' · ':'')+(m.reason||''))+'">'+m.score+'%</span>';}
-async function shopeeRunStrongApproval(batchId,progress){
+async function shopeeRunStrongApproval(batchId,progress,gtinOnly){
   progress('Memeriksa kandidat kuat dari master terbaru…');
-  var plan=await api('shopee.strongPlan',{batchId:batchId||''},{silent:true,quiet:true}),approved=0,skipped=0;
+  var plan=await api('shopee.strongPlan',{batchId:batchId||'',gtinOnly:!!gtinOnly},{silent:true,quiet:true}),approved=0,skipped=0;
   for(var offset=0;offset<plan.items.length;offset+=20){
     var items=plan.items.slice(offset,offset+20);
     progress('Menyetujui '+(offset+1)+'–'+Math.min(offset+20,plan.items.length)+' dari '+plan.items.length+' kandidat · '+approved+' sudah tersimpan.');
-    var result=await api('shopee.approveStrong',{batchId:batchId||'',items:items,requestKey:uid()},{silent:true,quiet:true});approved+=result.approved.length;skipped+=result.skipped.length;
+    var result=await api('shopee.approveStrong',{batchId:batchId||'',gtinOnly:!!gtinOnly,items:items,requestKey:uid()},{silent:true,quiet:true});approved+=result.approved.length;skipped+=result.skipped.length;
   }
   return {approved:approved,skipped:skipped,candidates:plan.items.length,remaining:plan.pending-approved};
 }

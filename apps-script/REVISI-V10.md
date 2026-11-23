@@ -176,3 +176,10 @@ Pemeriksaan browser dengan kode sumber yang panjang: lebar gulir sama dengan leb
 - Penjualan satuan menampilkan GTIN barang dari master secara read-only; form Barcode paket/GTIN paket hanya digunakan untuk MP dan BD. Barcode internal barang ditampilkan terpisah, tidak dianggap sebagai GTIN.
 - Pergantian SKU memperbarui barcode dari katalog lokal seketika lalu dikonfirmasi hasil resolusi server. Draf barcode paket tidak diterapkan ke satuan; payload persetujuan satuan tetap tidak mengubah barcode master.
 - 193 tes lolos, termasuk pergantian SKU dengan GTIN berbeda, draf paket lama, barang tanpa GTIN dengan barcode internal, dan pemulihan form paket.
+
+### 24 November 2026 — Pemetaan GTIN dan tampilan mobile Shopee
+- Pencocokan memprioritaskan GTIN unik pada SKU satuan aktif, dengan pemeriksaan checksum, brand/ukuran/variasi, serta perlindungan paket dan keputusan manual. SPF/PA dan tanda plus pada daftar bahan tidak dianggap komposisi paket dalam pencocokan GTIN. Aksi Petakan GTIN satuan memakai validasi/otorisasi/transaksi persetujuan yang sama; tidak dijalankan otomatis saat membaca daftar.
+- Mobile memakai kartu daftar dan tampilan pembanding Shopee/Master Sistem/Hasil Ekspor bergantian; desktop tetap membandingkan tiga kolom. Header status/skor, tombol tutup, footer persetujuan dan navigasi tetap mudah dijangkau. Form dan kolom qty menggunakan ukuran sentuh serta font input mobile.
+- Impor/ekspor menjadi aksi utama; GTIN, persetujuan massal dan muat ulang ada di Alat lainnya. Persetujuan tanpa pindah dan simpan draf ada di Opsi lain. Keterangan membedakan SKU yang tersedia dengan pembuatan paket baru ke Paket Penjualan.
+- 199 tes suite lolos; 21 tes review/navigasi lolos ulang setelah perubahan toolbar. Pratinjau lokal diuji di 320, 390 dan 1366 px: lebar dokumen sesuai viewport, footer pemeriksaan berada dalam layar.
+- Audit GTIN produksi sebelumnya hanya membaca data; kandidat belum dianggap tersimpan/disetujui hanya karena perubahan antarmuka ini.

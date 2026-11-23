@@ -36,3 +36,12 @@ test('variasi satu listing dengan parent berbeda tetap manual dan akun tanpa izi
  ok(call('user.create',{email:'photo@strong.test',fullName:'Foto',role:'photo_staff',password:'Password#2026'}));const token=ok(c.api(null,'auth.login',{email:'photo@strong.test',password:'Password#2026'})).token;
  assert.equal(c.api(token,'shopee.strongPlan',{}).error.code,'FORBIDDEN');assert.equal(c.api(token,'shopee.approveStrong',{items:[]}).error.code,'FORBIDDEN');
 });
+
+test('mode GTIN hanya menyetujui satuan GTIN unik dari master terbaru, menyimpan mapping dan siap ekspor',()=>{
+ const {c,call,ok}=fixture();const rows=[{productId:'3001',name:'Air mawar label lama SPF 50 PA++++ Niacinamide + Ceramide',gtin:'8992796011501'},{productId:'3002',name:'Viva Air Mawar 100 ml',gtin:''},{productId:'3003',name:'Viva Air Mawar 200 ml',gtin:'8992796011501'}];
+ const batch=ok(call('shopee.batchCreate',{store:'Toko',fileName:'gtin.xlsx',base64:Buffer.from('PK-gtin').toString('base64'),rows:rows.map(r=>({...r,variationName:''}))}));const imported=ok(call('shopee.import',{batchId:batch.id,offset:0})).rows;
+ const plan=ok(call('shopee.strongPlan',{batchId:batch.id,gtinOnly:true}));assert.equal(plan.items.length,1);assert.equal(plan.items[0].id,imported[0].id);assert.equal(plan.items[0].sku,'PRD000011-001');
+ const saved=ok(call('shopee.approveStrong',{batchId:batch.id,gtinOnly:true,items:plan.items,requestKey:'gtin-batch'}));assert.equal(saved.approved.length,1);const row=c.db_('SHOPEE_LISTINGS').byId(imported[0].id);assert.equal(row.ReviewStatus,'approved');assert.equal(row.SaleType,'single');assert.equal(row.TargetSku,'PRD000011-001');assert.match(row.ReviewNote,/GTIN Shopee sama persis/);
+ assert.equal(c.db_('EXTERNAL_SKU_MAPPINGS').rows().filter(x=>x.IsActive&&x.InternalSku==='PRD000011-001').length,1);
+ assert.equal(ok(call('shopee.strongPlan',{batchId:batch.id,gtinOnly:true})).items.length,0);
+});

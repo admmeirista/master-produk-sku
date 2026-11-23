@@ -1,6 +1,6 @@
 /** Satu snapshot per versi/batch; filter/pagination berikutnya tidak membangun katalog lagi. */
 function shopeeWorkspace_(f){
-  f=f||{};const profile=shopeeSalesProfile_(),key='sw5:'+dataVersion_()+':'+(profile?profile.id:'all')+':'+shopeeSignature_({batchId:f.batchId||'',store:f.store||''});
+  f=f||{};const profile=shopeeSalesProfile_(),key='sw6:'+dataVersion_()+':'+(profile?profile.id:'all')+':'+shopeeSignature_({batchId:f.batchId||'',store:f.store||''});
   const hit=cacheGetBig_(key);if(hit)return hit;
   const universe=db_('SHOPEE_LISTINGS').rows(),stores=new Set();let batchKeys=null;
   if(f.batchId){const batch=shopeeBatchRecord_(f.batchId);batchKeys=new Set(shopeeBatchManifest_(batch).rows.map(r=>shopeeKey_(batch.StoreAccount,r.productId,r.variationId)));}
