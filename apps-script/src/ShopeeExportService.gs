@@ -18,6 +18,7 @@ function shopeeExportPrepare_(p){
   if(selection.rejected.length)throw new AppError(selection.rejected.length+' variasi tidak lagi disetujui, diabaikan, atau master berubah. Muat ulang daftar dan periksa pilihan.');
   const audit=shopeeApprovedPlacementAudit_(),selected=new Set(selection.rows.map(r=>r.id)),blocked=audit.issues.filter(r=>selected.has(r.id));
   if(blocked.length)throw new AppError('Periksa pemetaan sebelum ekspor: '+blocked.map(r=>r.productId+' / '+r.variationName+': '+r.reason).join('; '));
+  const audited={};audit.rows.forEach(r=>audited[r.id]=r);selection.rows.forEach(r=>{if(audited[r.id]){r.listingShape=audited[r.id].listingShape;r.exportPreview=audited[r.id].exportPreview;}});
   if(p.localReference)return {rows:selection.rows,template:null};
   const batches=db_('SHOPEE_BATCHES').rows().filter(r=>r.Status==='ready').sort((a,b)=>(a.BatchID===p.batchId?-1:b.BatchID===p.batchId?1:String(b.CreatedAt).localeCompare(String(a.CreatedAt))));
   for(const batch of batches){
@@ -25,7 +26,7 @@ function shopeeExportPrepare_(p){
     const source=shopeeBatchManifest_(batch),index={};source.rows.forEach(r=>index[JSON.stringify([String(r.productId),String(r.variationId||'')])]=r);
     if(!selection.rows.every(r=>{const s=index[JSON.stringify([r.productId,r.variationId])];return s&&shopeeSourceMatches_(s,r);}))continue;
     const shapes=ShopeePlacement.inspect(source.rows);
-    selection.rows.forEach(r=>{r.listingShape=shapes[r.productId];r.exportPreview=ShopeePlacement.preview(r.listingShape,r.target);if(!r.exportPreview.ready)throw new AppError('Bentuk variasi listing '+r.productId+' belum pasti. '+r.exportPreview.reason);});
+    selection.rows.forEach(r=>{r.listingShape=ShopeePlacement.withParents(shapes[r.productId],r.listingShape&&r.listingShape.masterParentSkus);r.exportPreview=ShopeePlacement.preview(r.listingShape,r.target);if(!r.exportPreview.ready)throw new AppError('Bentuk variasi listing '+r.productId+' belum pasti. '+r.exportPreview.reason);});
     const template=batch.BatchID===p.loadedTemplateId?shopeeBatchView_(batch):shopeeBatchGet_({id:batch.BatchID});
     return {rows:selection.rows,template};
   }

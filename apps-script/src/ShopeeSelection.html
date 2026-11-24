@@ -33,7 +33,7 @@ function shopeeSelectedPlan(file,rows){
     if(r.status!=='approved'||!r.target||!r.target.active)throw new Error('Pilihan memuat variasi yang belum disetujui atau master tidak aktif.');
     if(!original||clean(r.store).toLowerCase()!==clean(file.store).toLowerCase()){missing.push(r.name+' / '+(r.variationName||r.variationId));return;}
     if(clean(original.name)!==clean(r.name)||clean(original.variationName)!==clean(r.variationName)||String(original.sellerSku||'').trim()!==String(r.sellerSku||'').trim()||String(original.gtin||'').trim()!==String(r.gtin||'').trim()||String(original.parentSku||'').trim()!==String(r.parentSku||'').trim())throw new Error('Isi template acuan berbeda dari snapshot listing '+r.productId+'/'+r.variationId+'. Pilih template asli terbaru melalui tombol Pilih template asli.');
-    selectedRows.push(original.sourceRow);results.push({productId:r.productId,variationId:r.variationId,eligible:true,sku:r.target.sku,parentSku:r.target.parentSku,gtin:r.target.gtin});
+    selectedRows.push(original.sourceRow);results.push({productId:r.productId,variationId:r.variationId,eligible:true,sku:r.target.sku,parentSku:r.target.parentSku,gtin:r.target.gtin,listingShape:r.listingShape});
   });
   if(missing.length)throw new Error(missing.length+' variasi pilihan tidak ada di template/toko acuan. Pilih template asli yang sesuai atau ubah pilihan SKU.');
   if(!selectedRows.length)throw new Error('Tidak ada variasi yang dapat diekspor.');

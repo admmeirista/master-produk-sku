@@ -48,7 +48,7 @@ function shopeeOpenReview(r, done, navigation) {
     if(type==='single')barcodeForm.set(shown&&shown.kind==='single'?shown:{},true);
     var preview=typeof ShopeePlacement!=='undefined'?ShopeePlacement.preview(r.listingShape,shown):{ready:false,reason:'Template asli belum tersedia.'};
     $('#svTarget',m).innerHTML=shopeeComparisonRows(r,shown,preview);
-    $('#svCompareHint',m).textContent=preview.ready?'':preview.reason||'Pilih SKU master untuk melengkapi hasil ekspor.';
+    $('#svCompareHint',m).textContent=preview.ready&&preview.parentPolicy!=='preserve_original'?'':preview.reason||'Pilih SKU master untuk melengkapi hasil ekspor.';
     $('#svComposition',m).innerHTML='';
 
   }

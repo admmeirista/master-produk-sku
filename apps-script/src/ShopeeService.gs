@@ -165,13 +165,13 @@ function shopeeSuggest_(v, sale, catalog) {
 function shopeeExport_(p) {
   if (!Array.isArray(p.rows) || !p.rows.length || p.rows.length > 200) throw new AppError('Kirim 1–200 baris untuk pemeriksaan unduhan.');
   const catalog = shopeeCatalog_(), store = p.store || 'Meirista', index = {};
-  db_('SHOPEE_LISTINGS').rows().forEach((r) => { index[shopeeKey_(r.StoreAccount, r.ExternalProductId, r.ExternalVariationId)] = r; });
+  const exportParents={};db_('SHOPEE_LISTINGS').rows().forEach((r) => { index[shopeeKey_(r.StoreAccount, r.ExternalProductId, r.ExternalVariationId)] = r;const t=catalog[r.TargetSku],key=shopeeKey_(r.StoreAccount,r.ExternalProductId,'');if(r.ReviewStatus==='approved'&&t&&t.parentSku)(exportParents[key]=exportParents[key]||new Set()).add(t.parentSku); });
   return p.rows.map((x) => {
     const r = index[shopeeKey_(store, x.productId, x.variationId)];
     const same = r && r.ListingName === cleanText(x.name) && (r.VariationName || '') === cleanText(x.variationName) && (r.ExternalSku || '') === String(x.sellerSku || '').trim() && (r.ExternalGTIN || '') === String(x.gtin || '').trim() && (r.ExternalParentSku || '') === String(x.parentSku || '').trim();
     if (!same) return { productId: x.productId, variationId: x.variationId, eligible: false, reason: 'Data listing berbeda dari file. Unggah ulang dan periksa kembali.' };
     const status = shopeeStatus_(r, catalog), t = catalog[r.TargetSku];
-    return { productId: x.productId, variationId: x.variationId, eligible: status === 'approved', reason: status === 'approved' ? '' : SHOPEE_REVIEW_STATES.includes(status) ? 'Belum disetujui' : 'Master berubah; periksa kembali', sku: status === 'approved' ? t.sku : '', parentSku: status === 'approved' ? t.parentSku : '', gtin: status === 'approved' ? t.gtin : '' };
+    return { productId: x.productId, variationId: x.variationId, eligible: status === 'approved', reason: status === 'approved' ? '' : SHOPEE_REVIEW_STATES.includes(status) ? 'Belum disetujui' : 'Master berubah; periksa kembali', sku: status === 'approved' ? t.sku : '', parentSku: status === 'approved' ? t.parentSku : '', gtin: status === 'approved' ? t.gtin : '',listingShape:{masterParentSkus:Array.from(exportParents[shopeeKey_(store,x.productId,'')]||[])} };
   });
 }
 function shopeeExportSelected_(p,maxIds) {

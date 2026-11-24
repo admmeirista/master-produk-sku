@@ -23,7 +23,7 @@ Pages.mapping = function (main, arg) {
     $$('[data-save-retry]',box).forEach(function(b){b.onclick=function(){ShopeeReviewJobs.retry(jobs[Number(b.getAttribute('data-save-retry'))]);};});
     $$('[data-save-edit]',box).forEach(function(b){b.onclick=function(){var job=jobs[Number(b.getAttribute('data-save-edit'))];if(job.error&&job.error.code==='NETWORK')return toast('Klik Coba lagi dahulu untuk memastikan hasil permintaan sebelumnya.','warn');var draft=job.resume;api('shopee.get',{id:job.row.id},{silent:true}).then(function(fresh){draft=Object.assign({},fresh,draft,{version:fresh.version,target:null});if(!ShopeeReviewJobs.discard(job))return;shopeeReviewDialog(draft,function(){load();});}).catch(function(e){toast(e.message,'err');});};});
   }
-  if(typeof ShopeeReviewJobs!=='undefined')ShopeeReviewJobs.onChange=function(job){if(!currentView())return;snapshotRevision++;refreshSequence++;if(snapshot){if(job.state==='saved')ShopeeWorkspace.update(snapshot,job.updated);ShopeeReviewJobs.decorate(snapshot);if(job.state==='saved')FastReadCache.put(FastReadCache.key('shopee.workspace',{batchId:f.batchId,viewSchema:6}),snapshot);}load();};
+  if(typeof ShopeeReviewJobs!=='undefined')ShopeeReviewJobs.onChange=function(job){if(!currentView())return;snapshotRevision++;refreshSequence++;if(snapshot){if(job.state==='saved')ShopeeWorkspace.update(snapshot,job.updated);ShopeeReviewJobs.decorate(snapshot);if(job.state==='saved')FastReadCache.put(FastReadCache.key('shopee.workspace',{batchId:f.batchId,viewSchema:7}),snapshot);}load();};
   function load(cached,openId,force) {
     if(!currentView())return;if(typeof ShopeeReviewJobs!=='undefined')ShopeeReviewJobs.decorate(snapshot);renderJobs();ListViewState.save('mapping',f);App.shopeeState=Object.assign({},f);
     var mine = ++sequence, box = $('#slRows', main);
@@ -66,7 +66,7 @@ Pages.mapping = function (main, arg) {
           if(phase!=='pending')ShopeeWorkspace.update(snapshot,updated);
           if(typeof ShopeeReviewJobs!=='undefined')ShopeeReviewJobs.decorate(snapshot);
           if(updated.status!=='approved'||phase==='pending')delete SHOPEE_SELECTED[updated.id];
-          if(phase!=='pending')FastReadCache.put(FastReadCache.key('shopee.workspace',{batchId:f.batchId,viewSchema:6}),snapshot);
+          if(phase!=='pending')FastReadCache.put(FastReadCache.key('shopee.workspace',{batchId:f.batchId,viewSchema:7}),snapshot);
           load();
           if(advance){
             var all=ShopeeWorkspace.page(snapshot,Object.assign({},f,{page:1,pageSize:snapshot.rows.length})).rows;
@@ -79,7 +79,7 @@ Pages.mapping = function (main, arg) {
       if(openId){var nextRow=d.rows.find(function(r){return r.id===openId;});openId=null;if(nextRow)openReview(nextRow);}
     }
     if(request)request.then(render).catch(function(e){if(mine===sequence)box.innerHTML=errBox(e.message);});
-    else {var params={batchId:f.batchId,viewSchema:6};var accept=function(data){if(mine!==sequence||!currentView())return;snapshot=data;if(typeof ShopeeReviewJobs!=='undefined')ShopeeReviewJobs.decorate(snapshot);render(ShopeeWorkspace.page(data,f));renderJobs();};var fetch=force?api('shopee.workspace',params).then(function(data){if(mine!==sequence||!currentView())return;FastReadCache.put(FastReadCache.key('shopee.workspace',params),data);accept(data);}):fastRead('shopee.workspace',params,accept);fetch.catch(function(e){if(mine===sequence&&$('#slRows',main))box.innerHTML=errBox(e.message);});}
+    else {var params={batchId:f.batchId,viewSchema:7};var accept=function(data){if(mine!==sequence||!currentView())return;snapshot=data;if(typeof ShopeeReviewJobs!=='undefined')ShopeeReviewJobs.decorate(snapshot);render(ShopeeWorkspace.page(data,f));renderJobs();};var fetch=force?api('shopee.workspace',params).then(function(data){if(mine!==sequence||!currentView())return;FastReadCache.put(FastReadCache.key('shopee.workspace',params),data);accept(data);}):fastRead('shopee.workspace',params,accept);fetch.catch(function(e){if(mine===sequence&&$('#slRows',main))box.innerHTML=errBox(e.message);});}
   }
   if($('#slImport',main))$('#slImport',main).onclick=function(){shopeeImportDialog(function(){App.go('mapping',{batchId:SHOPEE_BATCH_ID});});};
   async function approveStrong(button,gtinOnly){
@@ -103,7 +103,7 @@ Pages.mapping = function (main, arg) {
   api('shopee.batchList',{}, {silent:true}).then(function(batches){if(!currentView()||!$('#slBatch',main))return;batchesLoaded=batches;var saved=arg&&Object.prototype.hasOwnProperty.call(arg,'batchId')?arg.batchId:Store.get(shopeeBatchPreference());var previousBatch=f.batchId;f.batchId=batches.some(function(b){return b.id===saved;})?saved:'';$('#slBatch',main).innerHTML='<option value="">Semua unggahan</option>'+batches.map(function(b){return '<option value="'+esc(b.id)+'">'+esc(b.store+' · '+b.name)+' · '+b.imported+'/'+b.total+'</option>';}).join('');$('#slBatch',main).value=f.batchId;shopeeBatchRemember(f.batchId);batchAction();if(previousBatch!==f.batchId){refreshSequence++;snapshot=null;load();}}).catch(function(e){if(currentView()&&$('#slRows',main))$('#slRows',main).innerHTML=errBox(e.message);});
   $('#slBatch',main).onchange=function(){refreshSequence++;snapshot=null;f.batchId=this.value;shopeeBatchRemember(f.batchId);SHOPEE_WORKFILE=null;SHOPEE_SELECTED=Object.create(null);f.page=1;$('#slOpenBatch',main).disabled=!f.batchId;load();};
   $('#slOpenBatch',main).onclick=function(){if(f.batchId)shopeeResumeBatch(f.batchId,function(){refreshSequence++;snapshot=null;load();});};
-  App.refreshData=function(){var currentBatch=f.batchId,revision=snapshotRevision,request=++refreshSequence;return api('shopee.workspace',{batchId:currentBatch,viewSchema:6},{silent:true,quiet:true}).then(function(data){if(!currentView()||f.batchId!==currentBatch||revision!==snapshotRevision||request!==refreshSequence)return;snapshot=data;FastReadCache.put(FastReadCache.key('shopee.workspace',{batchId:currentBatch,viewSchema:6}),data);var valid=new Set(ShopeeWorkspace.approvedIds(data));Object.keys(SHOPEE_SELECTED).forEach(function(id){if(!valid.has(id))delete SHOPEE_SELECTED[id];});load();});};
+  App.refreshData=function(){var currentBatch=f.batchId,revision=snapshotRevision,request=++refreshSequence;return api('shopee.workspace',{batchId:currentBatch,viewSchema:7},{silent:true,quiet:true}).then(function(data){if(!currentView()||f.batchId!==currentBatch||revision!==snapshotRevision||request!==refreshSequence)return;snapshot=data;FastReadCache.put(FastReadCache.key('shopee.workspace',{batchId:currentBatch,viewSchema:7}),data);var valid=new Set(ShopeeWorkspace.approvedIds(data));Object.keys(SHOPEE_SELECTED).forEach(function(id){if(!valid.has(id))delete SHOPEE_SELECTED[id];});load();});};
   load();
 };
 
@@ -140,6 +140,7 @@ function shopeeExportChanges(file, results) {
   header = file.aoa.slice(0, 20).find(function (r) { return r.some(function (v) { return String(v).trim().toLowerCase() === 'kode produk'; }) && r.some(function (v) { return String(v).trim().toLowerCase() === 'nama produk'; }); });
   var cols=header.map(function(v){return String(v||'').trim().toLowerCase();}),index={},changes=[],previews=[],shapes=ShopeePlacement.inspect(file.rows);
   results.forEach(function(r){index[JSON.stringify([String(r.productId),String(r.variationId||'')])]=r;});
+  var parents={};results.filter(function(r){return r.eligible;}).forEach(function(r){var id=String(r.productId);parents[id]=(parents[id]||[]).concat(r.listingShape&&r.listingShape.masterParentSkus||[],r.parentSku?[r.parentSku]:[]);});Object.keys(parents).forEach(function(id){shapes[id]=ShopeePlacement.withParents(shapes[id],parents[id]);});
   function put(row,name,value){var col=cols.indexOf(name);if(col>=0)changes.push({row:row.sourceRow,col:col,value:String(value||'')});}
   var eligible=0;
   file.rows.forEach(function(r){

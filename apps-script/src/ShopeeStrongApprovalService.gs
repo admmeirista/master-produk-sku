@@ -19,7 +19,7 @@ function shopeeStrongCandidates_(p,selectedIds){
   const parents={};function parent(store,pid,t){if(!t||!t.parentSku)return;const k=shopeeKey_(store,pid,'');(parents[k]=parents[k]||new Set()).add(t.parentSku);}
   all.filter(r=>r.ReviewStatus==='approved').forEach(r=>parent(r.StoreAccount,r.ExternalProductId,catalog[r.TargetSku]));
   views.forEach(v=>{if(v.listingShape.kind==='variants')parent(v.store,v.productId,v.target);});
-  const ready=views.filter(v=>{const group=parents[shopeeKey_(v.store,v.productId,'')];if(v.listingShape.kind==='variants'&&group&&group.size>1)return false;return ShopeePlacement.preview(v.listingShape,v.target).ready;});
+  const ready=views.filter(v=>{const group=parents[shopeeKey_(v.store,v.productId,'')];v.listingShape=ShopeePlacement.withParents(v.listingShape,Array.from(group||[]));return ShopeePlacement.preview(v.listingShape,v.target).ready;});
   const targets=ready.length?shopeeCatalog_(Array.from(new Set(ready.map(v=>v.target.sku)))):{};
   return {total:scoped.length,pending:pending.length,threshold:97,items:ready.map(v=>({id:v.id,version:v.version,sku:v.target.sku,targetSignature:targets[v.target.sku].signature,score:v.match.score,name:v.name,variationName:v.variationName,saleType:v.saleType,quantity:v.quantity,components:v.expectedComponents,reason:v.match.reason}))};
 }

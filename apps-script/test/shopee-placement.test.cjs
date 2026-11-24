@@ -60,8 +60,8 @@ test('workspace dan ekspor server mengambil bentuk listing dari template privat 
  ok(call('shopee.import',{batchId:followup.id,offset:0}));const after=ok(call('shopee.get',{id:imported[2].id}));assert.equal(after.status,'approved','tarikan baru dengan kode pada SKU Induk mempertahankan persetujuan');assert.equal(after.skuMatches,true);assert.equal(after.effectiveSku,target.sku);
  c.withLock_(()=>{c.db_('MASTER_PRODUCTS').insert({ProductID:'p2',ProductCode:'PRD000002',ProductName:'Lain',Status:'ACTIVE'});c.db_('PRODUCT_VARIANTS').insert({VariantID:'v2',ProductID:'p2',SKU:'PRD000002-001',ProductSKUName:'Lain',Status:'ACTIVE'});});
  const other=ok(call('shopee.target',{sku:'PRD000002-001'}));ok(call('shopee.review',{id:imported[1].id,version:imported[1].version,action:'approve',sku:other.sku,targetSignature:other.signature,saleType:'single',quantity:1,components:[{sku:other.sku,quantity:1}]}));
- const audit=ok(call('shopee.workspace')).placementAudit;assert.equal(audit.total,3);assert.equal(audit.issues.length,2,'audit mencakup saudara yang tidak masuk filter sales');
- assert.equal(call('shopee.exportPrepare',{ids:[imported[0].id]}).ok,false,'konflik parent terhalang meski hanya satu variasi dipilih');
+ const audit=ok(call('shopee.workspace')).placementAudit;assert.equal(audit.total,3);assert.equal(audit.issues.length,0,'listing gabungan mempertahankan induk asli, termasuk saudara di luar filter sales');
+ const mixed=ok(call('shopee.exportPrepare',{ids:[imported[0].id]}));assert.equal(mixed.rows[0].exportPreview.parentSku,'');assert.equal(mixed.rows[0].exportPreview.sku,'PRD000001-001');assert.equal(mixed.rows[0].exportPreview.parentPolicy,'preserve_original');
 
 });
 
@@ -79,4 +79,32 @@ test('tabel perbandingan menjaga nama Shopee dan menampilkan MP di induk tanpa v
  const {DOMParser}=require('@xmldom/xmldom'),doc=new DOMParser().parseFromString('<table><tbody>'+html+'</tbody></table>','text/xml'),rows=[...doc.getElementsByTagName('tr')].map(tr=>[...tr.childNodes].filter(n=>n.nodeType===1).map(n=>n.textContent));
  assert.equal(rows.length,6);assert.ok(rows.every(r=>r.length===4));assert.deepEqual(rows[0],['Nama Produk',r.name,target.name,r.name]);assert.deepEqual(rows[2],['SKU Induk / Parent','LAMA','Parent ProdukPRD000011','MP000033']);assert.deepEqual(rows[3],['SKU','LAMA','SKU PaketMP000033','Kosong (tanpa variasi)']);assert.deepEqual(rows[4],['GTIN','lama','—','—']);
  target.sku='MP000034';assert.match(c.shopeeComparisonRows(r,target,c.ShopeePlacement.preview(shape,target)),/MP000034/);
+});
+
+test('listing gabungan mempertahankan induk asli yang konsisten, kosong maupun berisi; tidak memilih parent sembarang',()=>{
+ const c=browser();for(const original of ['','GRUP-PURBASARI']){
+  const rows=[source('41064813055','1','WHITE GLOW',original),source('41064813055','2','GLUTA HYA',original)],shape=c.ShopeePlacement.withParents(c.ShopeePlacement.inspect(rows)['41064813055'],['PRD000004','PRD000003']);
+  for(const sku of ['PRD000004-001','PRD000003-001']){const preview=c.ShopeePlacement.preview(shape,{sku,parentSku:sku.split('-')[0],active:true});assert.equal(preview.ready,true);assert.equal(preview.parentSku,original);assert.equal(preview.sku,sku);assert.equal(preview.parentPolicy,'preserve_original');assert.equal(preview.generatedParent,false);}
+  assert.equal(c.ShopeePlacement.preview({...shape,originalParentConflict:true},{sku:'PRD000004-001',parentSku:'PRD000004'}).ready,false);
+  assert.equal(c.ShopeePlacement.preview({...shape,originalParentKnown:false},{sku:'PRD000004-001',parentSku:'PRD000004'}).ready,false);
+ }
+ const shape={kind:'variants',masterParentSkus:['PRD000004','PRD000003'],siblingParentSkus:['PRD000003'],parentConflict:true,originalParentKnown:true,originalParentSku:''};assert.equal(c.ShopeePlacement.preview(shape,{sku:'PRD000003-001',parentSku:'PRD000003'}).parentSku,'PRD000003','preview ikut SKU baru, bukan parent pilihan sebelumnya');
+});
+
+test('15 variasi Purbasari/Lavojoy lintas parent dapat diekspor; subset memakai saudara disetujui di luar pilihan',()=>{
+ const {ctx:c}=createGas(),admin=c.setup().admin,ok=r=>{assert.equal(r.ok,true,JSON.stringify(r.error));return r.data;},token=ok(c.api(null,'auth.login',{email:admin.email,password:admin.password})).token,call=(a,p={})=>c.api(token,a,p);
+ const groups=[['41064813055',['CYBRIGHT WHITENING','SKIN FIRMING','WHITE GLOW','CERAMIDE BARRIER','GLUTA HYA','PYTO CELL-C']],['29384126515',['Solve It Now','Keep It Chill','00 Silk White','Orange Blossom','01 Cream Beige','Black Opium','02 Warm Sand','SPF 50PA++++ (biru)','Summertrain']]],rows=[];let n=0;
+ c.withLock_(()=>{for(const[id,variations]of groups)for(const variation of variations){n++;const parent='PRD'+String(n).padStart(6,'0');c.db_('MASTER_PRODUCTS').insert({ProductID:'p'+n,ProductCode:parent,ProductName:variation,Status:'ACTIVE'});c.db_('PRODUCT_VARIANTS').insert({VariantID:'v'+n,ProductID:'p'+n,SKU:parent+'-001',ProductSKUName:variation,Status:'ACTIVE'});rows.push({...source(id,String(n),variation,''),sourceRow:n+6});}});
+ const batch=ok(call('shopee.batchCreate',{store:'Toko',fileName:'mixed.xlsx',base64:Buffer.from('PK-original').toString('base64'),rows})),imported=ok(call('shopee.import',{batchId:batch.id,offset:0})).rows;
+ imported.forEach((r,i)=>{const target=ok(call('shopee.target',{sku:'PRD'+String(i+1).padStart(6,'0')+'-001'}));ok(call('shopee.review',{id:r.id,version:r.version,action:'approve',sku:target.sku,targetSignature:target.signature,saleType:'single',quantity:1,components:[{sku:target.sku,quantity:1}]}));});
+ const all=ok(call('shopee.exportPrepare',{ids:imported.map(r=>r.id),batchId:batch.id}));assert.equal(all.rows.length,15);assert.ok(all.rows.every(r=>r.exportPreview.ready&&r.exportPreview.parentSku===''&&r.exportPreview.sku===r.targetSku));
+ const selected=ok(call('shopee.exportPrepare',{ids:[imported[0].id],localReference:true}));assert.equal(selected.rows[0].listingShape.masterParentSkus.length,6);assert.equal(selected.rows[0].exportPreview.parentSku,'');
+ const get=ok(call('shopee.get',{id:imported[0].id}));assert.equal(c.ShopeePlacement.preview(get.listingShape,get.target).parentSku,'');assert.equal(ok(call('shopee.workspace')).placementAudit.issues.length,0);
+ const b=browser(),file={store:'Toko',rows,aoa:[header]},plan=b.shopeeSelectedPlan(file,selected.rows);assert.equal(plan.changes.find(x=>x.col===4).value,'');assert.equal(plan.changes.find(x=>x.col===5).value,'PRD000001-001');
+});
+
+test('patch Excel listing gabungan menjaga induk asli dan SKU tiap variasi pada ekspor subset',async()=>{
+ const c=browser(),XLSX=require('xlsx'),JSZip=require('jszip'),{DOMParser,XMLSerializer}=require('@xmldom/xmldom');Object.assign(c,{XLSX,JSZip,DOMParser,XMLSerializer});
+ const aoa=[['Template Shopee'],header,['41064813055','Purbasari','11','WHITE GLOW','','lama-a','','100','2'],['41064813055','Purbasari','12','GLUTA HYA','','lama-b','','200','3']];const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),'Produk');const file=c.shopeeReadTemplate(XLSX.write(wb,{type:'buffer',bookType:'xlsx'}),'asli.xlsx');file.store='Toko';
+ const raw=file.rows[0],r={...raw,store:'Toko',status:'approved',target:{sku:'PRD000004-001',parentSku:'PRD000004',active:true,gtin:'8999225911258'},listingShape:{masterParentSkus:['PRD000004','PRD000003']}};const plan=c.shopeeSelectedPlan(file,[r]),blob=await c.shopeePatchWorkbook(file,plan.changes,plan.selectedRows),out=c.shopeeReadTemplate(Buffer.from(await blob.arrayBuffer()),'hasil.xlsx');assert.equal(out.rows.length,1);assert.equal(out.rows[0].parentSku,'');assert.equal(out.rows[0].sellerSku,'PRD000004-001');assert.equal(out.rows[0].gtin,'8999225911258');for(const field of ['productId','variationId','name','variationName','price','stock'])assert.equal(out.rows[0][field],raw[field]);
 });
