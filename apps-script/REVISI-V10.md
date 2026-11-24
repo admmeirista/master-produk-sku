@@ -183,3 +183,9 @@ Pemeriksaan browser dengan kode sumber yang panjang: lebar gulir sama dengan leb
 - Impor/ekspor menjadi aksi utama; GTIN, persetujuan massal dan muat ulang ada di Alat lainnya. Persetujuan tanpa pindah dan simpan draf ada di Opsi lain. Keterangan membedakan SKU yang tersedia dengan pembuatan paket baru ke Paket Penjualan.
 - 199 tes suite lolos; 21 tes review/navigasi lolos ulang setelah perubahan toolbar. Pratinjau lokal diuji di 320, 390 dan 1366 px: lebar dokumen sesuai viewport, footer pemeriksaan berada dalam layar.
 - Audit GTIN produksi sebelumnya hanya membaca data; kandidat belum dianggap tersimpan/disetujui hanya karena perubahan antarmuka ini.
+
+### 24 November 2026 — Daftar Shopee menjadi area kerja utama
+- Toolbar unggahan, pemilihan lintas halaman, cakupan penjualan, hasil matching dan audit dikumpulkan dalam panel Filter & pilihan. Panel dibuka di atas daftar tanpa mendorong tabel. Aksi header dipersingkat dan ringkasan status menjadi empat filter kompak.
+- Desktop memakai lebar area kerja penuh, header kolom tetap, font tabel lebih terbaca dan sisa tinggi layar untuk daftar. Mobile menggunakan kartu ringkas berisi nama/variasi/penjualan, SKU sistem, skor, status dan Periksa; detail ekspor tidak diulang di kartu, tetap ada dalam pemeriksaan.
+- Popup mobile menempatkan SKU dan qty lebih dulu, dengan tombol Pemetaan SKU/Bandingkan untuk berpindah bagian tanpa API atau penyimpanan. Status, skor, navigasi dan persetujuan tetap berada di area yang sama.
+- 200 tes lolos. Rendering lokal pada 320/390/1366 px tidak meluber ke samping; tabel desktop setinggi 698 px pada viewport 900 px, daftar mobile mulai sekitar 250 px dari atas. Perubahan hanya tata letak, tanpa persetujuan atau mutasi data master.

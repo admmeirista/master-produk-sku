@@ -1698,4 +1698,98 @@ body[data-page="mapping"] #slReviewJobs{max-height:none;overflow:visible}.shopee
 .shopee-mapping-tools-menu .btn{width:100%;justify-content:flex-start;font-size:12px;min-height:44px;margin:3px 0}
 .shopee-mapping-tools:not([open])>.shopee-mapping-tools-menu{display:none}
 @media(max-width:760px){body[data-page="mapping"] .ph .act>.shopee-mapping-tools>summary{width:100%;min-height:44px;justify-content:center;font-size:12px}.shopee-mapping-tools-menu{left:0;right:auto}body[data-page="mapping"] .shopee-simple tr{grid-template-columns:36px minmax(0,1fr) 100px}body[data-page="mapping"] .shopee-select-touch{min-height:44px;width:36px}body[data-page="mapping"] .shopee-selection input{margin:0}}
+
+/* Daftar kerja Shopee: daftar mendapat ruang utama; pengaturan tidak menambah tinggi halaman. */
+.shopee-stat .sl-status-short,.sh-review-jump{display:none}
+body[data-page="mapping"] .main{max-width:none}
+.shopee-workbar{display:grid;grid-template-columns:minmax(360px,1.1fr) minmax(260px,1fr) auto;gap:12px;align-items:center;margin-bottom:10px}
+.shopee-workbar #slSummary{margin:0;gap:6px}
+body[data-page="mapping"] .shopee-workbar .shopee-stat{min-height:58px;padding:6px 10px;border-radius:9px;gap:0 6px}
+body[data-page="mapping"] .shopee-workbar .shopee-stat strong{font-size:20px}
+body[data-page="mapping"] .shopee-workbar .shopee-stat span{font-size:10px;white-space:nowrap}
+body[data-page="mapping"] .shopee-workbar .shopee-stat small{font-size:9px}
+body[data-page="mapping"] .shopee-workbar .shopee-stat i{display:none}
+body[data-page="mapping"] .shopee-workbar .shopee-filters{display:flex;flex-wrap:nowrap;gap:8px;margin:0}
+body[data-page="mapping"] .shopee-workbar .search{min-width:100px;flex:1}
+body[data-page="mapping"] .shopee-workbar #slStatus{width:150px;max-width:150px;flex:none;font-size:12px}
+.shopee-list-settings{position:relative;align-self:center}
+.shopee-list-settings>summary{list-style:none;cursor:pointer;min-height:42px;font-size:12px}
+.shopee-list-settings>summary::-webkit-details-marker{display:none}
+.shopee-list-settings-panel{position:absolute;right:0;top:calc(100% + 8px);z-index:35;width:min(420px,calc(100vw - 24px));max-height:65dvh;overflow:auto;padding:16px;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow)}
+.shopee-list-settings:not([open])>.shopee-list-settings-panel{display:none}
+.shopee-list-settings-panel .shopee-batch-toolbar{display:grid;grid-template-columns:1fr;gap:8px;margin:0 0 12px}
+.shopee-list-settings-panel #slBatch{width:100%;max-width:none!important;min-height:44px}
+.shopee-list-settings-panel .shopee-selection-actions{display:grid;grid-template-columns:1fr;gap:8px;margin-bottom:12px}
+.shopee-list-settings-panel .btn{min-height:44px;white-space:normal}
+.shopee-selection-note{font-size:12px;color:var(--acc-ink);margin:0 0 8px}.shopee-selection-note:empty{display:none}
+@media(min-width:1000px){
+ body[data-page="mapping"] .main{height:100dvh;padding:14px 18px 12px;display:flex;flex-direction:column;overflow:hidden}
+ body[data-page="mapping"] .main> :not(#slRows){flex-shrink:0}
+ body[data-page="mapping"] .ph{margin:0 0 10px;align-items:center}
+ body[data-page="mapping"] .ph h2{font-size:22px;margin:0}
+ body[data-page="mapping"] .ph .crumbs,body[data-page="mapping"] .ph .eyebrow{font-size:10px;margin-bottom:2px}
+ body[data-page="mapping"] #slRows{flex:1;min-height:0;display:flex;flex-direction:column}
+ body[data-page="mapping"] #slRows>.tablewrap{height:auto;min-height:0;max-height:none;flex:1;overflow:auto}
+ body[data-page="mapping"] .shopee-simple th{font-size:11px;padding:12px 8px;position:sticky;top:0;z-index:2}
+ body[data-page="mapping"] .shopee-simple td{font-size:12px;padding:12px 8px;line-height:1.55}
+ body[data-page="mapping"] .shopee-simple .sku{font-size:11px}
+ body[data-page="mapping"] .shopee-simple .shopee-sub,body[data-page="mapping"] .shopee-simple .shopee-export-preview{font-size:11px}
+ body[data-page="mapping"] .shopee-simple .badge{font-size:10px}
+ body[data-page="mapping"] .shopee-action-cell .btn{font-size:12px;min-height:36px;height:36px}
+ body[data-page="mapping"] .shopee-simple .shopee-product>b{font-size:13px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+ body[data-page="mapping"] #slRows>.pager{margin-top:6px;padding-top:4px}
+ .sl-col-select{width:3%}.sl-col-product{width:24%}.sl-col-variation{width:6%}.sl-col-source{width:7%}.sl-col-sales{width:7%}.sl-col-master{width:17%}.sl-col-confidence{width:5%}.sl-col-preview{width:14%}.sl-col-status{width:10%}.sl-col-action{width:7%}
+}
+@media(min-width:1000px) and (max-width:1250px){.shopee-workbar{grid-template-columns:minmax(340px,1fr) minmax(180px,.8fr) auto}body[data-page="mapping"] .shopee-workbar #slStatus{display:none}}
+@media(max-width:999px){
+ body[data-page="mapping"] .main{padding:12px 12px calc(20px + env(safe-area-inset-bottom));height:auto;overflow:visible}
+ body[data-page="mapping"] .ph{margin-bottom:10px;gap:8px}
+ body[data-page="mapping"] .ph .act{display:grid;grid-template-columns:.6fr 1fr 1fr .9fr;width:100%;gap:6px;align-items:center}
+ body[data-page="mapping"] .ph .act>.btn,body[data-page="mapping"] .ph .act>.shopee-mapping-tools>summary{min-height:42px;height:42px;padding:6px;font-size:11px;white-space:nowrap;width:100%;justify-content:center}
+ body[data-page="mapping"] .ph .act .ic{display:none}
+ body[data-page="mapping"] .ph .act>.shopee-review-activity{width:100%;min-width:0;height:42px}
+ body[data-page="mapping"] .shopee-review-activity>summary{font-size:10px;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+ body[data-page="mapping"] .shopee-review-activity>.shopee-activity-panel{position:fixed;top:115px;right:12px;width:calc(100vw - 24px)}
+ .shopee-workbar{grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-bottom:10px}
+ .shopee-workbar #slSummary{grid-column:1/-1;grid-row:1;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px}
+ body[data-page="mapping"] .shopee-workbar .shopee-stat{min-width:0;min-height:66px;padding:6px 4px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;text-align:center}
+ body[data-page="mapping"] .shopee-workbar .sl-status-label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+ body[data-page="mapping"] .shopee-workbar .sl-status-short{display:block;font-size:10px;line-height:1.4}
+ body[data-page="mapping"] .shopee-workbar .shopee-stat strong{font-size:19px;line-height:1.35;margin:0}
+ body[data-page="mapping"] .shopee-workbar .shopee-stat small{font-size:9px;line-height:1.3}
+ body[data-page="mapping"] .shopee-workbar .shopee-filters{grid-column:1;grid-row:2;display:block;width:100%;min-width:0}
+ body[data-page="mapping"] .shopee-workbar .search{width:100%;min-width:0}
+ body[data-page="mapping"] .shopee-workbar #slStatus{display:none}
+ body[data-page="mapping"] .shopee-workbar .in{font-size:16px;min-height:44px}
+ .shopee-list-settings{grid-column:2;grid-row:2}.shopee-list-settings>summary{padding:8px 10px;min-height:44px;font-size:11px}
+ body[data-page="mapping"] #slRows>.tablewrap{height:auto;max-height:none;min-height:0;overflow:visible}
+ body[data-page="mapping"] .shopee-simple tbody{gap:8px}
+ body[data-page="mapping"] .shopee-simple tr{display:grid;grid-template-columns:28px minmax(0,1fr) 85px;gap:0 4px;padding:9px;background:var(--card);border:1px solid var(--line);border-left:3px solid #ee4d2d;border-radius:12px}
+ body[data-page="mapping"] .shopee-simple td{padding:5px;min-width:0}
+ body[data-page="mapping"] .shopee-simple td.shopee-product{grid-column:2/4;grid-row:1;background:transparent;border:0!important;padding:3px 4px;font-size:13px;line-height:1.5}
+ body[data-page="mapping"] .shopee-product>b{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:13px;line-height:1.55}
+ body[data-page="mapping"] .shopee-mobile-meta{display:flex;flex-wrap:wrap;gap:0 10px;font-size:11px;line-height:1.6;margin-top:3px}
+ body[data-page="mapping"] .shopee-simple .sh-master{grid-column:2;grid-row:2;border:0!important;background:transparent;margin:3px 0 0;padding:4px}
+ body[data-page="mapping"] .shopee-simple .sh-master:before{content:'SKU sistem';font-size:10px;margin:0}
+ body[data-page="mapping"] .shopee-simple .sh-master>.sku{font-size:12px}
+ body[data-page="mapping"] .shopee-simple .sh-master .shopee-sub{font-size:11px;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden;margin-top:2px}
+ body[data-page="mapping"] .shopee-simple td:nth-child(7){grid-column:3;grid-row:2;align-self:center;font-size:12px;padding:4px;text-align:right!important}
+ body[data-page="mapping"] .shopee-simple td:nth-child(7):before{content:'Cocok';display:block;font-size:9px;color:var(--muted)}
+ body[data-page="mapping"] .shopee-simple td:nth-child(8){display:none}
+ body[data-page="mapping"] .shopee-simple .shopee-status-cell{grid-column:2;grid-row:3;padding:5px 4px;align-self:center}
+ body[data-page="mapping"] .shopee-simple .badge{font-size:10px;padding:4px 6px}
+ body[data-page="mapping"] .shopee-simple .shopee-action-cell{grid-column:3;grid-row:3;padding:2px 0 0}
+ body[data-page="mapping"] .shopee-action-cell .btn{min-height:42px;height:42px;font-size:12px;padding:6px 10px}
+ body[data-page="mapping"] .shopee-simple .shopee-selection{grid-column:1;grid-row:1;padding:0}
+ body[data-page="mapping"] .shopee-select-touch{width:28px;min-height:44px}
+ body[data-page="mapping"] #slRows>.pager{display:flex;flex-wrap:wrap;justify-content:space-between;padding:10px 0 4px}
+}
+@media(max-width:760px){
+ .sh-review-jump{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:6px 14px;border-bottom:1px solid var(--line);flex:none;background:var(--card)}
+ .sh-review-jump button{min-height:38px;border:0;border-radius:8px;background:var(--acc-soft);font-size:12px;color:var(--acc-ink);cursor:pointer}
+ .sh-review-modal .sh-review-workspace{display:flex;flex-direction:column;scroll-padding-top:8px}
+ .sh-review-modal .sh-review-form{order:1;flex:none;margin:0;padding:14px;border-top:0}
+ .sh-review-modal .sh-review-context{order:2;flex:none;padding:0 14px 18px;border-top:1px solid var(--line)}
+ .sh-review-form h4{font-size:14px;margin-bottom:12px}.sh-review-form .sect{margin-top:12px}
+}
 </style>

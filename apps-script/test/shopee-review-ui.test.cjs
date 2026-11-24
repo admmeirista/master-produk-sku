@@ -151,3 +151,8 @@ test('mobile berganti sumber perbandingan tanpa API atau mengubah pilihan SKU',(
  c.$$=selector=>selector==='[data-compare-view]'||selector==='.sh-review-mobile-tabs button'?buttons:[];elements['.sh-review-context']={setAttribute:(k,v)=>attrs[k]=v};
  c.shopeeOpenReview({id:'mobile',saleType:'single',expectedComponents:[{sku:'PRD000011-001',quantity:1}]},()=>{});buttons[2].onclick();assert.equal(attrs['data-compare-view'],'export');assert.equal(attrs['export:aria-pressed'],'true');assert.equal(attrs['source:aria-pressed'],'false');assert.equal(calls.length,0);
 });
+
+test('pindah bagian mobile hanya menggulir formulir/perbandingan tanpa menyimpan atau mengambil data',()=>{
+ const {context:c,elements,calls}=ui(false),scrolled=[],buttons=['form','context'].map(part=>({getAttribute:()=>part}));c.$$=selector=>selector==='[data-review-jump]'?buttons:[];
+ for(const part of ['form','context'])elements['.sh-review-'+part]={scrollIntoView:opts=>scrolled.push([part,opts.block])};c.shopeeOpenReview({id:'jump',saleType:'single',expectedComponents:[{sku:'PRD000011-001',quantity:1}]},()=>{});buttons[1].onclick();buttons[0].onclick();assert.deepEqual(scrolled,[['context','start'],['form','start']]);assert.equal(calls.length,0);
+});
