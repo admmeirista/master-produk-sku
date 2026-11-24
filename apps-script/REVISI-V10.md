@@ -195,3 +195,8 @@ Pemeriksaan browser dengan kode sumber yang panjang: lebar gulir sama dengan leb
 - Audit, pemeriksaan, pratinjau, persetujuan kuat dan ekspor menggunakan aturan murni yang sama. Metadata seluruh saudara disetujui diteruskan sampai patch Excel agar ekspor subset atau filter penjualan tidak mengubah kebijakan induk. Preview perubahan SKU mempertimbangkan parent saudara, bukan parent pilihan sebelumnya.
 - Template yang tidak diketahui/bertentangan, target tidak aktif, master berubah atau belum disetujui tetap ditahan. Tidak mengubah parent/master/status persetujuan produksi. Cache bentuk template dan workspace dinaikkan versinya.
 - 203 tes lolos: kasus 15 variasi dua listing, ekspor satu variasi bersama saudara di luar filter, induk kosong/berisi, konflik sumber, Excel asli dan identitas/nama/harga/stok tetap terjaga.
+
+### 24 November 2026 — Pilih semua SKU disetujui lintas halaman
+- Checkbox Pilih semua halaman ditampilkan langsung di atas daftar. Checkbox kepala tabel memakai cakupan yang sama: seluruh variasi Disetujui pada snapshot unggahan/profil penjualan aktif, termasuk halaman lain dan baris tersembunyi pencarian. Baris belum disetujui atau masih di antrean penyimpanan dikecualikan.
+- Kedua checkbox sinkron, mendukung keadaan sebagian terpilih, jumlah terpilih dan pembatalan seluruh pilihan. Tidak ada API tambahan saat memilih, mencari atau mengganti halaman.
+- 204 tes lolos, termasuk 90 baris/3 halaman dengan pencarian yang hanya menampilkan satu produk belum disetujui. Pemeriksaan ekspor produksi dilakukan dari sumber Drive terbaru dan patch template asli; laporan/data produksi hanya disimpan lokal.

@@ -1,5 +1,7 @@
 <script>
 var SHOPEE_SELECTED=Object.create(null);
+function shopeeSelectAllApproved(data,checked){SHOPEE_SELECTED=Object.create(null);if(checked)ShopeeWorkspace.approvedIds(data).forEach(function(id){SHOPEE_SELECTED[id]=true;});}
+function shopeeAllSelectionState(data){var ids=data?ShopeeWorkspace.approvedIds(data):[],selected=ids.filter(function(id){return !!SHOPEE_SELECTED[id];}).length;return {total:ids.length,selected:selected,checked:!!ids.length&&selected===ids.length,indeterminate:selected>0&&selected<ids.length};}
 function shopeeIOImportCard(){return can('mapping.write')?'<div class="panel shopee-io-card"><h3>Template mass update Shopee</h3><p>Unggah file .xlsx asli untuk memperbarui daftar produk dan variasi Shopee. Pemeriksaan pasangan SKU dilakukan di Pemetaan SKU Shopee.</p><button class="btn pri" id="ioShopeeImport">'+icon('upload')+'Unggah template Shopee</button><div id="ioShopeeBatches"></div></div>':'';}
 function shopeeBindIOImport(main){shopeeBatchHistory(main);if($('#ioShopeeImport',main))$('#ioShopeeImport',main).onclick=function(){shopeeImportDialog(function(){App.go('mapping',{batchId:SHOPEE_BATCH_ID});});};}
 function shopeeStatusCards(summary,current){
