@@ -1797,4 +1797,23 @@ body[data-page="mapping"] .shopee-workbar #slStatus{width:150px;max-width:150px;
 .shopee-all-label{display:flex;align-items:center;gap:8px;min-height:38px;cursor:pointer}.shopee-all-label input{width:18px;height:18px;accent-color:var(--acc)}
 .shopee-selection-bar .shopee-selection-note{margin:0;font-size:11px}
 @media(max-width:999px){.shopee-selection-bar{gap:0 8px;margin-bottom:6px}.shopee-all-label{min-height:44px;font-size:12px}.shopee-all-label input{width:21px;height:21px}}
+
+/* Navigasi dan aksi tetap terlihat, tanpa menu yang menutupi formulir. */
+.sh-review-modal .shopee-review-actions{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 20px}
+.sh-review-modal .sh-review-submit{display:grid;grid-template-columns:auto auto;gap:8px 12px;align-items:center;min-width:0}
+.sh-review-modal .sh-review-action-hint{grid-column:1/-1;grid-row:1;max-width:none;min-height:0;margin:0;font-size:11px}
+.sh-review-modal #svApproveNext{grid-column:2;grid-row:2;width:auto;min-height:42px;white-space:normal;max-width:300px}
+.sh-review-secondary{grid-column:1;grid-row:2;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.sh-review-modal .sh-review-navigation{display:flex;align-items:center;gap:8px;flex:none;width:auto;margin:0}
+.sh-review-modal .shopee-review-actions #svSaveStatus:empty{display:none}
+@media(max-width:1000px){
+.sh-review-modal .shopee-review-actions{flex-direction:column;align-items:stretch;gap:8px;padding:10px 12px calc(10px + env(safe-area-inset-bottom))}
+.sh-review-modal .sh-review-submit{display:flex;flex-direction:column;align-items:stretch;gap:7px;order:1}
+.sh-review-modal .sh-review-action-hint{display:none}
+.sh-review-modal #svApproveNext{order:1;width:100%;max-width:none;min-height:44px;font-size:12px!important}
+.sh-review-secondary{order:2;display:flex;flex-wrap:nowrap;gap:7px}
+.sh-review-secondary .btn{flex:1;min-width:0;min-height:40px;white-space:normal;font-size:11px!important}
+.sh-review-modal .sh-review-navigation{order:2;justify-content:space-between;width:100%}
+.sh-review-modal .sh-review-navigation .btn{flex:none;min-height:38px}
+}
 </style>

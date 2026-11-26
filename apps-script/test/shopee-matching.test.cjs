@@ -1,10 +1,18 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('fs'),vm=require('vm');
-function engine(){const c={};vm.runInNewContext(fs.readFileSync('apps-script/src/ShopeeMatchingService.gs','utf8'),c);return c;}
+function engine(){const c={};vm.runInNewContext(fs.readFileSync('apps-script/src/ShopeeRoundtripService.gs','utf8')+'\n'+fs.readFileSync('apps-script/src/ShopeeMatchingService.gs','utf8'),c);return c;}
 function catalog(){
  const single=(sku,name,brandId,brandName,variationName)=>({sku,name,productName:name,kind:'single',brandId,brandName,variationName,parentSku:'PRD000011',active:true,components:[{sku,name,quantity:1}]}),v=single('PRD000011-001','Viva Air Mawar 100 ml','v','Viva','100 ml'),w=single('PRD000075-001','Pixy Stick Deodorant Woody 34 gr','p','Pixy','Woody 34 gr'),b=single('PRD000075-002','Pixy Stick Deodorant Bouquet 34 gr','p','Pixy','Bouquet 34 gr');
  const pack=(sku,unit,n)=>({sku,name:'Paket '+n+' PCS '+unit.name,kind:'multipack',active:true,variationName:unit.variationName,parentSku:unit.parentSku,components:[{sku:unit.sku,name:unit.name,quantity:n}]});
  return Object.fromEntries([v,w,b,pack('MP000033',v,10),pack('MP000208',w,12),pack('MP000210',b,12)].map(t=>[t.sku,t]));
 }
+test('kode ekspor MP didahulukan atas nama paket duplikat; parent PRD bukan SKU jual MP',()=>{
+ const c=engine(),cat=catalog();cat.MP000034={...cat.MP000033,sku:'MP000034'};
+ const index=c.shopeeMatchIndex_(cat),row={name:'10 PCS Viva Air Mawar 100 ml Paket Usaha',parentSku:'MP000033',sellerSku:'',listingShape:{kind:'single'}};
+ const m=c.shopeeMatchListing_(row,index);assert.equal(m.method,'system_sku');assert.equal(m.candidateSku,'MP000033');assert.equal(m.proposed,true);
+ assert.equal(c.shopeeMatchListing_({...row,parentSku:'PRD000011'},index).proposed,false);
+ assert.equal(c.shopeeMatchListing_({...row,parentSku:'MP999999'},index).proposed,false);
+ assert.equal(c.shopeeMatchListing_({...row,name:'3 PCS Viva Air Mawar 100 ml'},index).proposed,false);
+});
 test('brand lalu nama/ukuran/qty memberi usulan MP yang sesuai; kata paket usaha tidak menghalangi',()=>{
  const c=engine(),cat=catalog(),m=c.shopeeMatchListing_({name:'[ 10 PCS ] VIVA AIR MAWAR 100 ml [ KECIL ] /Penyegar/ Paket Usaha 10 PCS Air Mawar Viva/ Relaksasi/ Tonik'},c.shopeeMatchIndex_(cat));
  assert.equal(m.proposed,true);assert.equal(m.candidateSku,'MP000033');assert.ok(m.score>=82&&m.score<100);assert.match(m.reason,/Ukuran sesuai/);

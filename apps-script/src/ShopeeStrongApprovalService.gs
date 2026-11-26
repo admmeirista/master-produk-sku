@@ -4,9 +4,12 @@ function shopeeStrongCandidates_(p,selectedIds){
   let scoped=shopeeSalesScope_(all,all).rows.filter(r=>!p.store||r.StoreAccount===p.store);
   if(p.batchId){const b=shopeeBatchRecord_(p.batchId),keys=new Set(shopeeBatchManifest_(b).rows.map(r=>shopeeKey_(b.StoreAccount,r.productId,r.variationId)));scoped=scoped.filter(r=>keys.has(shopeeKey_(r.StoreAccount,r.ExternalProductId,r.ExternalVariationId)));}
   const pending=scoped.filter(r=>!['approved','ignored'].includes(r.ReviewStatus)),views=[];
+  const sourceViews=pending.filter(r=>!selectedIds||selectedIds.has(r.ListingID)).map(r=>shopeeView_(r,catalog));shopeeAttachShapes_(sourceViews,p.batchId);
+  const byId=indexBy_(sourceViews,'id'),history=p.roundtripOnly?shopeeRoundtripHistory_():{};
   pending.forEach(r=>{
     if((selectedIds&&!selectedIds.has(r.ListingID))||r.ReviewedAt)return; // Draf/keputusan pengguna tetap diperiksa manual.
-    const v=shopeeView_(r,catalog),match=shopeeMatchListing_(v,index);
+    const v=byId[r.ListingID];if(p.roundtripOnly&&!shopeeRoundtripEligible_(r,v,index,history))return;
+    const match=shopeeMatchListing_(v,index);
     if(!match||!match.proposed||match.score<97||match.needsPackage||(p.gtinOnly&&match.method!=='gtin'))return;
     const t=catalog[match.candidateSku];if(!t||!t.active||!['single','multipack'].includes(t.kind)||t.components.length!==1)return;
     if(v.target&&v.target.active&&v.target.sku!==t.sku)return;

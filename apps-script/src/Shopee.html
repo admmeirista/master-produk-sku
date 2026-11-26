@@ -4,13 +4,13 @@ var SHOPEE_KIND = { single: 'Satuan', multipack: 'Paket produk sama (MP)', bundl
 function shopeeDisplayStatus(r) { return r.status === 'approved' ? 'approved' : (r.reviewRequested || r.target && r.target.active) ? 'verify' : 'unavailable'; }
 function shopeeBadge(st) { return '<span class="badge shopee-status-' + st + '">' + esc(SHOPEE_STATUS[st] || st) + '</span>'; }
 function shopeeMatchScore(row){var m=row.match;if(!m||typeof m.score!=='number'||(row.target&&m.candidateSku!==row.target.sku))return '<span class="muted">—</span>';return '<span class="shopee-match-score" title="'+esc('Skor kecocokan, bukan probabilitas. '+(m.candidateSku?m.candidateSku+' · ':'')+(m.reason||''))+'">'+m.score+'%</span>';}
-async function shopeeRunStrongApproval(batchId,progress,gtinOnly){
+async function shopeeRunStrongApproval(batchId,progress,gtinOnly,roundtripOnly){
   progress('Memeriksa kandidat kuat dari master terbaru…');
-  var plan=await api('shopee.strongPlan',{batchId:batchId||'',gtinOnly:!!gtinOnly},{silent:true,quiet:true}),approved=0,skipped=0;
+  var plan=await api('shopee.strongPlan',{batchId:batchId||'',gtinOnly:!!gtinOnly,roundtripOnly:!!roundtripOnly},{silent:true,quiet:true}),approved=0,skipped=0;
   for(var offset=0;offset<plan.items.length;offset+=20){
     var items=plan.items.slice(offset,offset+20);
     progress('Menyetujui '+(offset+1)+'–'+Math.min(offset+20,plan.items.length)+' dari '+plan.items.length+' kandidat · '+approved+' sudah tersimpan.');
-    var result=await api('shopee.approveStrong',{batchId:batchId||'',gtinOnly:!!gtinOnly,items:items,requestKey:uid()},{silent:true,quiet:true});approved+=result.approved.length;skipped+=result.skipped.length;
+    var result=await api('shopee.approveStrong',{batchId:batchId||'',gtinOnly:!!gtinOnly,roundtripOnly:!!roundtripOnly,items:items,requestKey:uid()},{silent:true,quiet:true});approved+=result.approved.length;skipped+=result.skipped.length;
   }
   return {approved:approved,skipped:skipped,candidates:plan.items.length,remaining:plan.pending-approved};
 }
@@ -22,7 +22,7 @@ function shopeePlacementPreview(row,target){
 }
 function shopeeComparisonRows(row,target,preview){
   var values=[['Nama Produk',row.name,target&&(target.productName||target.name),row.name],['Variasi',row.variationName,target&&target.variationName,row.variationName],['SKU Induk / Parent',row.parentSku,target&&target.parentSku,preview.parentSku||(preview.parentPolicy==='preserve_original'?'Kosong (sesuai template)':'')],['SKU',row.sellerSku,target&&target.sku,preview.kind==='single'?'Kosong (tanpa variasi)':preview.sku],['GTIN',row.gtin,target&&target.gtin,preview.gtin]];
-  return values.map(function(v,i){return '<tr><th scope="row">'+esc(v[0])+'</th>'+v.slice(1).map(function(value,col){var changed=col===2&&i>=2&&String(value||'')!==String(v[1]||'');return '<td'+(changed?' class="sh-review-changed"':'')+'>'+(col===1&&i===2?'<small class="sh-review-cell-label">Parent Produk</small>':col===1&&i===3?'<small class="sh-review-cell-label">'+(target&&target.kind!=='single'?'SKU Paket':'SKU Barang')+'</small>':'')+esc(value||'—')+'</td>';}).join('')+'</tr>';}).join('')+'<tr><th scope="row">Komposisi SKU Barang</th><td>—</td><td>'+(target&&target.kind!=='single'?shopeeBom(target.components):'—')+'</td><td>—</td></tr>';
+  return values.map(function(v,i){return '<tr><th scope="row">'+esc(v[0])+'</th>'+v.slice(1).map(function(value,col){var changed=col===2&&i>=2&&String(value||'')!==String(v[1]||'');return '<td'+(changed?' class="sh-review-changed"':'')+'>'+(col===1&&i===2?'<small class="sh-review-cell-label">'+(target&&target.kind!=='single'?'Parent Produk (komponen)':'Parent Produk')+'</small>':col===1&&i===3?'<small class="sh-review-cell-label">'+(target&&target.kind!=='single'?'SKU Paket':'SKU Barang')+'</small>':'')+esc(value||'—')+'</td>';}).join('')+'</tr>';}).join('')+'<tr><th scope="row">Komposisi SKU Barang</th><td>—</td><td>'+(target&&target.kind!=='single'?shopeeBom(target.components):'—')+'</td><td>—</td></tr>';
 }
 function shopeeBom(cs) { return (cs || []).map(function (c) { return '<div><b>' + esc(c.quantity) + ' × <span class="sku">' + esc(c.sku) + '</span></b><small class="shopee-sub">' + esc(c.name || '') + (c.gtin ? ' · GTIN ' + esc(c.gtin) : '') + '</small></div>'; }).join(''); }
 

@@ -129,18 +129,23 @@ function shopeeImport_(user, p) {
     prepared.push({ key, values: { StoreAccount: store, ExternalProductId: pid, ExternalVariationId: vid, ListingName: cleanText(x.name).slice(0, 1500), VariationName: cleanText(x.variationName).slice(0, 500), ExternalParentSku: String(x.parentSku || '').trim().slice(0, 100), ExternalSku: String(x.sellerSku || '').trim().slice(0, 100), ExternalGTIN: String(x.gtin || '').trim().slice(0, 50), Price: price, Stock: stock, SourceFile: cleanText(p.fileName || 'Import Shopee').slice(0, 200), SourceRow: Number(x.sourceRow) || '', ImportedAt: now_(), UpdatedAt: now_() } });
   });
   const rep = { created: 0, updated: 0 };
-  const importShapes=batch?shopeeBatchShapes_(batch).shapes:{};
+  const importShapes=batch?shopeeBatchShapes_(batch).shapes:{},matchIndex=shopeeMatchIndex_(catalog);
+  const importParents={};T.rows().filter(r=>r.StoreAccount===store&&r.ReviewStatus==='approved').forEach(r=>{const t=catalog[r.TargetSku];if(t&&t.parentSku)(importParents[r.ExternalProductId]=importParents[r.ExternalProductId]||new Set()).add(t.parentSku);});
+  Object.keys(importShapes).forEach(pid=>importShapes[pid]=ShopeePlacement.withParents(importShapes[pid],Array.from(importParents[pid]||[])));
   prepared.forEach((entry) => {
     const old = index[entry.key], v = entry.values;
     if (old) {
       const singleListing=importShapes[v.ExternalProductId]&&importShapes[v.ExternalProductId].kind==='single';
       const skuChanged=singleListing?((old.ExternalParentSku||'')!==v.ExternalParentSku||(old.ExternalSku||'')!==v.ExternalSku)&&v.ExternalParentSku!==old.TargetSku:(old.ExternalSku||'')!==v.ExternalSku&&v.ExternalSku!==old.TargetSku;
-      const identityChanged = old.ListingName !== v.ListingName || (old.VariationName || '') !== v.VariationName || ((old.ExternalGTIN || '') !== v.ExternalGTIN && (!catalog[old.TargetSku] || v.ExternalGTIN !== catalog[old.TargetSku].gtin)) || skuChanged;
+      const identityChanged = (old.ListingName !== v.ListingName || (old.VariationName || '') !== v.VariationName || ((old.ExternalGTIN || '') !== v.ExternalGTIN && (!catalog[old.TargetSku] || v.ExternalGTIN !== catalog[old.TargetSku].gtin)) || skuChanged) && !shopeeImportKeepsApproval_(old,v,importShapes[v.ExternalProductId],catalog,matchIndex);
       if (identityChanged) { shopeeDisableMapping_(old); Object.assign(v, { ReviewStatus: 'needs_review', ReviewNote: 'Data Shopee berubah sejak pemeriksaan sebelumnya; periksa ulang nama, variasi, dan komposisi.', ReviewedBy: '', ReviewedAt: '', ReviewedTargetSignature: '' }); }
       else db_('EXTERNAL_SKU_MAPPINGS').filter((m) => m.System === 'shopee' && m.IsActive && shopeeKey_(m.StoreAccount, m.ExternalProductId, m.ExternalVariationId) === entry.key).forEach((m) => db_('EXTERNAL_SKU_MAPPINGS').update(m, { ExternalSku: v.ExternalSku, ExternalParentSku: v.ExternalParentSku, ListingName: v.ListingName, UpdatedAt: now_() }));
       T.update(old, Object.assign(v, { Version: Number(old.Version || 1) + 1 })); rep.updated++;
     } else {
-      const sale = shopeeInferSale_(v.ListingName, v.VariationName), target = shopeeSuggest_(v, sale, catalog);
+      let sale = shopeeInferSale_(v.ListingName, v.VariationName);
+      const codeMatch=shopeeMatchCode_({name:v.ListingName,variationName:v.VariationName,parentSku:v.ExternalParentSku,sellerSku:v.ExternalSku,gtin:v.ExternalGTIN,listingShape:importShapes[v.ExternalProductId]},matchIndex);
+      const target = codeMatch?(codeMatch.proposed?catalog[codeMatch.candidateSku]:null):shopeeSuggest_(v, sale, catalog);
+      if(target)sale={type:target.kind,quantity:target.components.reduce((n,c)=>n+c.quantity,0)};
       // Hanya usulan; kesamaan kode saja tidak pernah menyetujui sebuah paket secara otomatis.
       const suggested = !!target;
       T.insert(Object.assign(v, { ListingID: uuid_(), Version: 1, SaleType: sale.type, SaleQuantity: sale.quantity, ExpectedComponents: suggested ? target.components.map((c) => ({ sku: c.sku, quantity: c.quantity })) : [], TargetSku: suggested ? target.sku : '', ReviewStatus: suggested ? 'suggested' : 'unmapped', ReviewNote: 'Snapshot impor Shopee; periksa nama, variasi, SKU, dan isi paket sebelum disetujui.' })); rep.created++;
