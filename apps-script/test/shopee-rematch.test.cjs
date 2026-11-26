@@ -1,4 +1,12 @@
 const test=require('node:test'),assert=require('node:assert/strict'),{createGas}=require('./harness.cjs');
+test('manual rematch accepts a unique exact variant at 81 while ambiguity and conflicting size remain blocked',()=>{
+ const c=createGas().ctx;c.setup();
+ const make=(sku,variant)=>({sku,active:true,kind:'single',brandId:'g',brandName:'Gatsby',parentSku:'PRD000182',name:'Gatsby Prime Body Perfume Spray '+variant+' 100 ml',variationName:variant+' 100 ml',components:[{sku,quantity:1,name:'Gatsby Prime Body Perfume Spray '+variant+' 100 ml'}]});
+ const t=make('PRD000182-001','Dark Leather'),index=c.shopeeMatchIndex_({[t.sku]:t}),row={name:'Gatsby PRIME Body Perfume',variationName:'Dark Leather'};
+ assert.equal(c.shopeeMatchListing_(row,index).proposed,false);assert.equal(c.shopeeMatchListing_(row,index,null,false,true).proposed,true);
+ assert.equal(c.shopeeMatchListing_({...row,variationName:'Dark Leather 200 ml'},index,null,false,true).proposed,false);
+ const twin=make('PRD000182-002','Dark Leather');assert.equal(c.shopeeMatchListing_(row,c.shopeeMatchIndex_({[t.sku]:t,[twin.sku]:twin}),null,false,true).proposed,false);
+});
 function fixture(){
  const g=createGas(),c=g.ctx,admin=c.setup().admin,ok=r=>{assert.equal(r.ok,true,JSON.stringify(r.error));return r.data;},token=ok(c.api(null,'auth.login',{email:admin.email,password:admin.password})).token,call=(a,p={})=>c.api(token,a,p);
  c.withLock_(()=>{c.db_('MASTER_BRANDS').insert({BrandID:'b',BrandName:'Viva',Status:'ACTIVE'});c.db_('MASTER_PRODUCTS').insert({ProductID:'p',BrandID:'b',ProductCode:'PRD000011',ProductName:'Air Mawar',Status:'ACTIVE'});c.db_('PRODUCT_VARIANTS').insert({VariantID:'v',ProductID:'p',SKU:'PRD000011-001',ProductSKUName:'Viva Air Mawar 100 ml',VariantName:'100 ml',GTIN:'8992796011501',Status:'ACTIVE'});c.db_('BUNDLE_MASTERS').insert({BundleID:'mp',BundleSKU:'MP000033',BundleType:'MULTIPACK',BundleName:'Paket 10 PCS Viva Air Mawar 100 ml',Status:'ACTIVE'});c.db_('BUNDLE_COMPONENTS').insert({ComponentID:'mc',BundleID:'mp',VariantID:'v',Quantity:10,Status:'ACTIVE'});});

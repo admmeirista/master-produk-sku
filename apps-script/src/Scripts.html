@@ -416,12 +416,13 @@ function api(action, payload, opts) {
  * combo(el, { load: (q) => Promise<items> | items, value: item|null, label(item), sub(item), code(item),
  *             placeholder, onChange(item), disabled, empty }) */
 function combo(host, o) {
-  var cur = o.value || null, items = [], active = -1, open = false, seq = 0;
+  var cur = o.value || null, items = [], active = -1, open = false, seq = 0, blurTimer, searchDraft = o.query || '';
   host.className = 'cb-wrap';
   host.innerHTML = '<input class="in" autocomplete="off" spellcheck="false" placeholder="' + esc(o.placeholder || 'Cari…') + '"' + (o.disabled ? ' disabled' : '') + '>' +
     (o.disabled ? '' : '<button type="button" class="cb-clear hidden" tabindex="-1" title="Kosongkan">' + icon('x') + '</button>') + '<span class="cb-caret">' + icon('chevDown') + '</span><div class="cb-list hidden"></div>';
   var input = $('input', host), list = $('.cb-list', host), clear = $('.cb-clear', host);
-  var show = function () { input.value = cur ? o.label(cur) : ''; if (clear) clear.classList.toggle('hidden', !cur); };
+  var show = function () { input.value = o.preserveQuery && searchDraft ? searchDraft : cur ? o.label(cur) : ''; if (clear) clear.classList.toggle('hidden', !cur && !searchDraft); host.classList.toggle('cb-search-draft',!!(o.preserveQuery&&searchDraft)); };
+  function rememberQuery(q){searchDraft=q;if(o.onQuery)o.onQuery(q);if(clear)clear.classList.toggle('hidden',!cur&&!q);host.classList.toggle('cb-search-draft',!!(o.preserveQuery&&q));}
   // o.create = { label: function (q) → teks tombol, run: function (q) → Promise<item|null> }: tambah data baru tanpa meninggalkan form
   var typed = function () { return String(input.value || '').trim(); };
   var canCreate = function () {
@@ -447,23 +448,24 @@ function combo(host, o) {
   };
   var openList = function () { if (o.disabled) return; open = true; list.classList.remove('hidden'); query(input.value && cur && input.value === o.label(cur) ? '' : input.value); };
   var close = function () { open = false; list.classList.add('hidden'); show(); };
-  var pick = function (it) { cur = it; close(); if (o.onChange) o.onChange(it); };
+  var pick = function (it) { rememberQuery('');cur = it; close(); if (o.onChange) o.onChange(it); };
   var create = function () {
     var q = typed(); close();
     Promise.resolve(o.create.run(q)).then(function (it) { if (it) pick(it); }).catch(function () {});
   };
-  input.onfocus = function () { input.select(); openList(); };
-  input.oninput = debounce(function () { if (!open) openList(); else query(input.value); }, 120);
-  input.onblur = function () { setTimeout(close, 120); };
+  input.onfocus = function () { clearTimeout(blurTimer);if(!searchDraft)input.select(); openList(); };
+  var search = debounce(function () { if (!open) openList(); else query(input.value); }, 120);
+  input.oninput = function () { if(o.preserveQuery)rememberQuery(input.value);search(); };
+  input.onblur = function () { blurTimer=setTimeout(close, 120); };
   input.onkeydown = function (e) {
     if (e.key === 'ArrowDown') { e.preventDefault(); if (!open) openList(); active = Math.min(items.length - (canCreate() ? 0 : 1), active + 1); render(); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); active = Math.max(0, active - 1); render(); }
     else if (e.key === 'Enter') { if (open && items[active]) { e.preventDefault(); pick(items[active]); } else if (open && canCreate()) { e.preventDefault(); create(); } }
     else if (e.key === 'Escape') { input.blur(); }
   };
-  if (clear) clear.onmousedown = function (e) { e.preventDefault(); cur = null; show(); if (o.onChange) o.onChange(null); };
+  if (clear) clear.onmousedown = function (e) { e.preventDefault(); rememberQuery('');cur = null; show(); if (o.onChange) o.onChange(null); };
   show();
-  return { get: function () { return cur; }, set: function (it) { cur = it; show(); }, focus: function () { input.focus(); }, input: input };
+  return { get: function () { return cur; }, set: function (it) { rememberQuery('');cur = it; show(); }, focus: function () { input.focus(); }, input: input };
 }
 /** Saring daftar lokal untuk combo: cocokkan nama atau kode, abaikan huruf besar/kecil. */
 function filterLocal(list, q, fields) {

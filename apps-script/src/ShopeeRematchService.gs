@@ -26,8 +26,8 @@ function shopeeRematchPlan_(p,selectedIds){
   const unavailable=rows.filter(r=>!r.ReviewedAt&&!['approved','ignored'].includes(r.ReviewStatus)&&shopeeDisplayStatus_(r,catalog)==='unavailable'),views=unavailable.filter(r=>!selectedIds||selectedIds.has(r.ListingID)).map(r=>shopeeView_(r,catalog));shopeeAttachShapes_(views,p.batchId);
   const items=[];views.forEach(v=>{
     if(!['single','variants'].includes(v.listingShape.kind))return;
-    const match=shopeeMatchCode_(v,index)||shopeeMatchGtin_(v,index)||shopeeLegacyGtinMatch_(v,index)||shopeeMatchListing_(v,index);
-    if(!match||!match.proposed||match.score<82)return;
+    const match=shopeeMatchCode_(v,index)||shopeeMatchGtin_(v,index)||shopeeLegacyGtinMatch_(v,index)||shopeeMatchListing_(v,index,null,false,true);
+    if(!match||!match.proposed||match.score<80)return;
     const t=catalog[match.candidateSku];if(!t||!t.active)return;
     const components=match.needsPackage?[{sku:match.componentSku,quantity:match.quantity}]:t.components.map(c=>({sku:c.sku,quantity:c.quantity}));
     const item={id:v.id,version:v.version,sku:match.needsPackage?'':t.sku,saleType:match.needsPackage?'multipack':t.kind,quantity:components.reduce((n,c)=>n+c.quantity,0),components,score:match.score,reason:match.reason,needsPackage:!!match.needsPackage,name:v.name,variationName:v.variationName};

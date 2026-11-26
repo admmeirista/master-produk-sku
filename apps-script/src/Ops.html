@@ -5,6 +5,7 @@
 function skuCombo(host, kinds, onChange, placeholder, value, filters) {
   return combo(host, {
     value: value || null, placeholder: placeholder || 'Cari SKU, nama, atau barcode…',
+    preserveQuery:true,query:filters&&filters.query||'',onQuery:filters&&filters.onQuery,
     load: function (q) { return kinds&&kinds.length===1&&kinds[0]==='variant'?SkuPicker.search(q,filters&&filters.brandId):api('sku.search', { q: q, kinds: kinds }, { quiet: true, silent: true }); },
     label: function (it) { return it.sku + ' — ' + it.displayName; }, sub: function (it) { return (it.kind === 'bundle' ? 'Paket' : it.kind === 'pack' ? 'Kemasan' : 'SKU produk') + (it.barcode ? ' · ' + it.barcode : ''); },
     empty: 'Tidak ada SKU aktif yang cocok', onChange: onChange

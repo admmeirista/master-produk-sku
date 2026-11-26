@@ -49,7 +49,7 @@ function shopeeMatchIndex_(catalog){
     docs.push(doc);bySku[t.sku]=doc;const gtin=shopeeMatchGtinKey_(t.gtin);if(gtin)(byGtin[gtin]=byGtin[gtin]||[]).push(doc);ids.forEach(id=>{(groups[id]=groups[id]||[]).push(doc);});
   });return {brands,docs,groups,bySku,byGtin};
 }
-function shopeeMatchListing_(row,index,existing,semanticOnly){
+function shopeeMatchListing_(row,index,existing,semanticOnly,reviewOnly){
   const exact=semanticOnly?null:(shopeeMatchCode_(row,index)||shopeeMatchGtin_(row,index)||shopeeLegacyGtinMatch_(row,index));if(exact){if(existing&&exact.candidateSku!==existing.sku)return Object.assign({},exact,{proposed:false,score:Math.min(exact.score,59),reason:exact.reason+' · Target tersimpan berbeda; periksa kembali.'});return exact;}
   const text=String(row.name||'')+' '+String(row.variationName||''),normal=' '+shopeeMatchText_(text)+' ',brandIds=Object.keys(index.brands).filter(id=>{
     const words=shopeeMatchText_(index.brands[id]).split(/\s+/);return new RegExp('(?:^|\\s)'+words.join('\\s*')+'(?=\\s|$)').test(normal);
@@ -85,7 +85,9 @@ function shopeeMatchListing_(row,index,existing,semanticOnly){
   if(!ranked.length)return {score:0,proposed:false,reason:'Brand atau SKU aktif belum ditemukan di master.',brand:brands.join(' + ')};
   const best=ranked[0],ambiguous=ranked.length>1&&best.score-ranked[1].score<8;
   if(ambiguous){best.score=Math.min(best.score,74);best.reasons.push('Beberapa SKU memiliki kecocokan serupa');}
-  return {score:best.score,proposed:best.safe&&best.score>=82&&!ambiguous,candidateSku:best.doc.target.sku,candidateName:best.doc.target.name,reason:best.reasons.join(' · '),brand:brands.join(' + '),alternatives:ranked.slice(1,3).map(m=>({sku:m.doc.target.sku,name:m.doc.target.name,score:Math.min(m.score,ambiguous?74:99)}))};
+  // Usulan manual boleh memakai skor 80–81 jika semua pemeriksaan semantik tetap lolos.
+  // Ambiguitas, konflik ukuran/varian/qty dan batas persetujuan otomatis tidak dilonggarkan.
+  return {score:best.score,proposed:best.safe&&best.score>=(reviewOnly?80:82)&&!ambiguous,candidateSku:best.doc.target.sku,candidateName:best.doc.target.name,reason:best.reasons.join(' · '),brand:brands.join(' + '),alternatives:ranked.slice(1,3).map(m=>({sku:m.doc.target.sku,name:m.doc.target.name,score:Math.min(m.score,ambiguous?74:99)}))};
 }
 /** Usulan hanya pada snapshot UI; tidak mengubah keputusan/komposisi yang tersimpan. */
 function shopeeAnalyzeViews_(views){
