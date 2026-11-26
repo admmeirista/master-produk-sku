@@ -20,6 +20,14 @@ function ui(write = false) {
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/ShopeeReviewHelpers.html'), 'utf8').replace(/^<script>\s*/, '').replace(/<\/script>\s*$/, ''), context);
   return { context, modals, calls, elements };
 }
+test('setiap baris BD memiliki brand sendiri; mengganti brand hanya mengosongkan SKU baris itu',async()=>{
+ const {context:c,elements}=ui(true),pickers=[],rows=[{sku:'PRD000001-001',brandId:'p',brandName:'Purbasari',displayName:'Body Serum'},{sku:'PRD000002-001',brandId:'v',brandName:'Viva',displayName:'Air Mawar'}],lines=[{sku:rows[0].sku,quantity:1},{sku:rows[1].sku,quantity:2}],host={innerHTML:''};let changed=0;
+ c.SkuPicker={load:()=>Promise.resolve(rows)};c.skuCombo=(host,kinds,select,placeholder,value,filter)=>pickers.push({host,select,filter});
+ c.packageLines(host,{prefix:'bp',lines,type:'bundle',writable:true,brandId:'p',changed:()=>changed++,remove:()=>{}});await new Promise(setImmediate);
+ assert.match(host.innerHTML,/bpBrand0/);assert.match(host.innerHTML,/bpBrand1/);assert.equal(elements['#bpBrand0'].value,'p');assert.equal(elements['#bpBrand1'].value,'v');assert.equal(pickers.at(-1).filter.brandId,'v');
+ elements['#bpBrand0'].value='v';elements['#bpBrand0'].onchange();assert.equal(lines[0].sku,'');assert.equal(lines[1].sku,rows[1].sku);assert.equal(lines[1].quantity,2);assert.equal(changed,1);assert.equal(pickers.at(-1).filter.brandId,'v');
+ pickers.at(-1).select(rows[1]);assert.equal(lines[0].sku,rows[1].sku);assert.equal(lines[0].brandId,'v');
+});
 
 test('status di header dan navigasi terpisah dari persetujuan; pilihan ikut dibawa saat pindah',()=>{
  const {context:c,modals,elements,calls}=ui(false),moves=[],row={id:'nav',status:'approved',version:1,name:'Viva',saleType:'multipack',expectedComponents:[{sku:'PRD000011-001',quantity:10}]};

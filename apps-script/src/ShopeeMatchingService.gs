@@ -50,7 +50,7 @@ function shopeeMatchIndex_(catalog){
   });return {brands,docs,groups,bySku,byGtin};
 }
 function shopeeMatchListing_(row,index,existing,semanticOnly){
-  const exact=semanticOnly?null:(shopeeMatchCode_(row,index)||shopeeMatchGtin_(row,index));if(exact){if(existing&&exact.candidateSku!==existing.sku)return Object.assign({},exact,{proposed:false,score:Math.min(exact.score,59),reason:exact.reason+' · Target tersimpan berbeda; periksa kembali.'});return exact;}
+  const exact=semanticOnly?null:(shopeeMatchCode_(row,index)||shopeeMatchGtin_(row,index)||shopeeLegacyGtinMatch_(row,index));if(exact){if(existing&&exact.candidateSku!==existing.sku)return Object.assign({},exact,{proposed:false,score:Math.min(exact.score,59),reason:exact.reason+' · Target tersimpan berbeda; periksa kembali.'});return exact;}
   const text=String(row.name||'')+' '+String(row.variationName||''),normal=' '+shopeeMatchText_(text)+' ',brandIds=Object.keys(index.brands).filter(id=>{
     const words=shopeeMatchText_(index.brands[id]).split(/\s+/);return new RegExp('(?:^|\\s)'+words.join('\\s*')+'(?=\\s|$)').test(normal);
   });
@@ -98,7 +98,7 @@ function shopeeAnalyzeViews_(views){
     if(trusted){r.match=trusted;return;}
     const unavailable=!(r.target&&r.target.active)&&!r.reviewRequested&&!r.reviewedAt&&r.status!=='approved';
     const editable=!['approved','ignored'].includes(r.status)&&!r.reviewedAt&&!r.reviewRequested;
-    const exact=editable?(shopeeMatchCode_(r,index)||shopeeMatchGtin_(r,index)):null;
+    const exact=editable?(shopeeMatchCode_(r,index)||shopeeMatchGtin_(r,index)||shopeeLegacyGtinMatch_(r,index)):null;
     r.match=exact||shopeeMatchListing_(r,index,unavailable?null:r.target);
     if(exact&&exact.proposed){analyzed++;pending.push(r);return;}
     if(!unavailable)return;analyzed++;

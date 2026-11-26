@@ -15,6 +15,12 @@ async function shopeeRunStrongApproval(batchId,progress,gtinOnly,roundtripOnly){
   return {approved:approved,skipped:skipped,candidates:plan.items.length,remaining:plan.pending-approved};
 }
 function shopeeFields(items) { return '<dl class="shopee-fields">' + items.map(function (x) { return '<div><dt>' + esc(x[0]) + '</dt><dd>' + esc(x[1] || '—') + '</dd></div>'; }).join('') + '</dl>'; }
+async function shopeeRunRematch(batchId,progress){
+  progress('Menganalisis ulang SKU yang tidak tersedia…');
+  var plan=await api('shopee.rematchPlan',{batchId:batchId||''},{silent:true,quiet:true}),saved=[],skipped=0;
+  for(var i=0;i<plan.items.length;i+=30){progress('Menyiapkan usulan '+(i+1)+'–'+Math.min(i+30,plan.items.length)+' dari '+plan.items.length+'…');var result=await api('shopee.rematchApply',{batchId:batchId||'',items:plan.items.slice(i,i+30),requestKey:uid()},{silent:true,quiet:true});saved=saved.concat(result.saved);skipped+=result.skipped.length;}
+  var ids=new Set(saved);return {proposed:saved.length,skipped:skipped,needsPackage:plan.items.filter(function(x){return ids.has(x.id)&&x.needsPackage;}).length};
+}
 function shopeePlacementPreview(row,target){
   var shape=row.listingShape,preview=typeof ShopeePlacement!=='undefined'?ShopeePlacement.preview(shape,target):{kind:'unknown',reason:'Template asli belum tersedia.'};
   var label=preview.kind==='single'?'Tanpa variasi':preview.kind==='variants'?'Dengan variasi':'Bentuk listing belum pasti';
