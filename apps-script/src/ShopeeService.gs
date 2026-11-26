@@ -248,7 +248,7 @@ function shopeeReview_(user, p) {
     Object.assign(patch, { ReviewStatus: action, ReviewedTargetSignature: '' }); shopeeDisableMapping_(r);
   }
   const before = { targetSku: r.TargetSku, status: r.ReviewStatus };
-  T.update(r, patch); audit_(user.email, 'shopee.' + action, 'shopee_listing', r.ListingID, before, { targetSku: r.TargetSku, status: r.ReviewStatus }, { note });
+  T.update(r, patch); audit_(user.email, 'shopee.' + action, 'shopee_listing', r.ListingID, before, { targetSku: r.TargetSku, status: r.ReviewStatus, targetSignature:r.ReviewedTargetSignature||'' }, { note });
   return Object.assign(shopeeView_(r, reviewedTarget?{[reviewedTarget.sku]:reviewedTarget}:shopeeCatalog_([r.TargetSku])), { packageCreated });
 }
 function shopeeBarcodeSame_(target,input){const mode=target.gtin?'gtin':target.internalBarcode?'internal':'none';return input.mode===mode&&(mode==='none'||(mode==='internal'&&!input.code)||cleanBarcode(input.code)===(target.gtin||target.internalBarcode||''));}

@@ -1,5 +1,14 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('fs'),vm=require('vm');
 function engine(){const c={};vm.runInNewContext(fs.readFileSync('apps-script/src/ShopeeRoundtripService.gs','utf8')+'\n'+fs.readFileSync('apps-script/src/ShopeeMatchingService.gs','utf8'),c);return c;}
+test('plus pada bahan dan SPF aman untuk satuan dan MP; plus antarbarang tetap perlu diperiksa',()=>{
+ const c=engine();for(const ingredients of ['Niacinamide + Ceramide + Hyaluronic Acid','Vitamin B3 + Vitamin E','AHA + BHA + PHA']){
+ const unit=c.shopeeMatchSale_({name:'Body Serum SPF 20++ PA++++ '+ingredients});assert.equal(unit.type,'single');assert.equal(unit.unclear,false);
+ const pack=c.shopeeMatchSale_({name:'6 PCS Body Serum SPF 20++ '+ingredients});assert.equal(pack.type,'multipack');assert.equal(pack.quantity,6);assert.equal(pack.unclear,false);
+ }
+ assert.equal(c.shopeeMatchSale_({name:'Body Serum + Body Lotion'}).unclear,true);
+ assert.equal(c.shopeeMatchSale_({name:'Body Serum SPF 50++ + Body Lotion'}).unclear,true);
+ assert.equal(c.shopeeMatchSale_({name:'6 PCS Body Serum',variationName:'Random Campur'}).unclear,true);
+});
 function catalog(){
  const single=(sku,name,brandId,brandName,variationName)=>({sku,name,productName:name,kind:'single',brandId,brandName,variationName,parentSku:'PRD000011',active:true,components:[{sku,name,quantity:1}]}),v=single('PRD000011-001','Viva Air Mawar 100 ml','v','Viva','100 ml'),w=single('PRD000075-001','Pixy Stick Deodorant Woody 34 gr','p','Pixy','Woody 34 gr'),b=single('PRD000075-002','Pixy Stick Deodorant Bouquet 34 gr','p','Pixy','Bouquet 34 gr');
  const pack=(sku,unit,n)=>({sku,name:'Paket '+n+' PCS '+unit.name,kind:'multipack',active:true,variationName:unit.variationName,parentSku:unit.parentSku,components:[{sku:unit.sku,name:unit.name,quantity:n}]});

@@ -9,8 +9,12 @@ function shopeeMatchTokens_(value,brands){
   const stop=new Set('paket pack pcs pc buah produk product usaha satuan ecer eceran original ori asli promo hemat jual dijual dan dengan untuk perawatan kecil besar mini size ukuran terbaru new the a an'.split(' '));
   return Array.from(new Set(s.split(/\s+/).filter(w=>(w.length>1||/^\d+$/.test(w))&&!stop.has(w))));
 }
+function shopeeSaleText_(value){
+  const ingredient='(?:niacinamide|ceramides?|hyaluronic\\s+acid|glutathione|collagen|retinol|panthenol|peptides?|salicylic\\s+acid|alpha\\s+arbutin|aha|bha|pha|cica|vitamin\\s*[a-e](?:\\d+)?)';
+  return String(value||'').replace(/\b(?:spf\s*\d+\s*(?:pa)?|pa)\s*\++/gi,' ').replace(new RegExp('\\b'+ingredient+'(?:\\s*\\+\\s*'+ingredient+')+\\b','gi'),' ');
+}
 function shopeeMatchSale_(row){
-  const s=String(row.name||'')+' '+String(row.variationName||''),extract=v=>Array.from(new Set(Array.from(String(v||'').toLowerCase().matchAll(/\b(\d+)\s*(?:pcs?|buah|sachet|saset|pack|botol|tube|pot|biji|unit|lembar)\b/g),m=>Number(m[1])))),variantQty=/\b(satuan|ecer|eceran)\b/i.test(row.variationName||'')?[1]:extract(row.variationName),qty=variantQty.length?variantQty:extract(row.name);
+  const name=shopeeSaleText_(row.name),variation=shopeeSaleText_(row.variationName),s=name+' '+variation,extract=v=>Array.from(new Set(Array.from(String(v||'').toLowerCase().matchAll(/\b(\d+)\s*(?:pcs?|buah|sachet|saset|pack|botol|tube|pot|biji|unit|lembar)\b/g),m=>Number(m[1])))),variantQty=/\b(satuan|ecer|eceran)\b/i.test(variation)?[1]:extract(variation),qty=variantQty.length?variantQty:extract(name);
   const mixed=/\b(campur|random|mix|pilih sendiri|boleh pilih|bebas pilih|bonus|gratis|extra|buy)\b/i.test(s)||/\+/.test(s);
   const bundle=/\b\d+\s*produk\b|\bbundl\w*\b/i.test(s);
   return {type:bundle?'bundle':qty.length===1&&qty[0]>1?'multipack':'single',quantity:qty.length===1?qty[0]:1,unclear:mixed||qty.length>1||qty.some(n=>n<1||n>1000)||(!qty.length&&/\b(paket|box|dus|lusin|kotak)\b/i.test(s)),mixed};
@@ -21,8 +25,7 @@ function shopeeMatchGtinValid_(key){if(!key)return false;let sum=0;for(let i=0;i
 function shopeeMatchGtin_(row,index){
   const key=shopeeMatchGtinKey_(row.gtin);if(!key)return null;
   // SPF/PA dan daftar bahan dengan tanda plus tidak mengubah satu barang menjadi paket.
-  const clean=value=>String(value||'').replace(/\b(?:spf\s*\d+\s*(?:pa)?|pa)\s*\++/gi,' ').replace(/\b(?:niacinamide|ceramide|hyaluronic acid|vitamin\s*[a-e])(?:\s*\+\s*(?:niacinamide|ceramide|hyaluronic acid|vitamin\s*[a-e]))+/gi,' ');
-  const sale=shopeeMatchSale_({name:clean(row.name),variationName:clean(row.variationName)});
+  const sale=shopeeMatchSale_(row);
   if(sale.type!=='single'||sale.quantity!==1||sale.unclear)return null;
   const found=(index.byGtin||{})[key]||[];
   if(found.length!==1||found[0].target.kind!=='single')return {score:found.length?59:0,proposed:false,method:'gtin',reason:found.length?'GTIN terdaftar pada beberapa SKU atau bukan SKU satuan.':'GTIN Shopee belum ditemukan pada SKU aktif master.'};
@@ -88,8 +91,11 @@ function shopeeMatchListing_(row,index,existing,semanticOnly){
 function shopeeAnalyzeViews_(views){
   if(!views.length)return {analyzed:0,proposed:0};
   const catalog=shopeeCatalog_(undefined,true),index=shopeeMatchIndex_(catalog),pending=[];let analyzed=0,proposed=0;
+  const history=typeof db_==='function'&&views.some(r=>r.status==='needs_review'&&!r.reviewedAt&&String(r.note||'').startsWith('Data Shopee berubah sejak pemeriksaan sebelumnya;'))?shopeeRoundtripHistory_():{};
   views.forEach(r=>{
     if(r.status==='ignored')return;
+    const trusted=typeof db_==='function'&&r.target&&r.listingShape?shopeeHistoryMatch_(db_('SHOPEE_LISTINGS').byId(r.id)||{},r,index,history[r.id]):null;
+    if(trusted){r.match=trusted;return;}
     const unavailable=!(r.target&&r.target.active)&&!r.reviewRequested&&!r.reviewedAt&&r.status!=='approved';
     const editable=!['approved','ignored'].includes(r.status)&&!r.reviewedAt&&!r.reviewRequested;
     const exact=editable?(shopeeMatchCode_(r,index)||shopeeMatchGtin_(r,index)):null;

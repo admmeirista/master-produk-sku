@@ -19,6 +19,24 @@ test('reimport hasil ekspor yang berganti judul mempertahankan persetujuan MP da
  assert.equal(r.status,'approved');assert.equal(r.targetSku,'MP000003');assert.equal(c.db_('EXTERNAL_SKU_MAPPINGS').rows().filter(m=>m.IsActive).length,1);
  const fresh=call('shopee.get',{id:r.id}),p=c.ShopeePlacement.preview(fresh.listingShape,fresh.target);assert.equal(p.parentSku,'MP000003');assert.equal(p.sku,'');
 });
+test('riwayat persetujuan mengalahkan skor judul dan alias variasi; daftar bahan/SPF tidak menjadi bundling',()=>{
+ const {c,call,imp,source,t}=fixture(),variant={...source,variationName:'01 Cream Beige',parentSku:'PRD000003',sellerSku:t.sku};
+ let first=imp(variant).row;call('shopee.review',{id:first.id,version:first.version,action:'approve',sku:t.sku,targetSignature:t.signature,saleType:t.kind,quantity:12,components:t.components});
+ const renamed={...variant,name:'12 PCS Body Serum Tone Up SPF 20++ | Niacinamide + Ceramide + Hyaluronic Acid'},result=imp(renamed);
+ assert.equal(result.row.status,'approved');
+ const view=call('shopee.workspace',{batchId:result.batch.id}).rows[0];assert.equal(view.match.method,'approval_history');assert.equal(view.match.score,99);
+ c.withLock_(()=>c.db_('SHOPEE_LISTINGS').update(c.db_('SHOPEE_LISTINGS').byId(first.id),{ReviewStatus:'needs_review',ReviewNote:'Data Shopee berubah sejak pemeriksaan sebelumnya; periksa ulang nama, variasi, dan komposisi.',ReviewedAt:'',ReviewedTargetSignature:''}));
+ const plan=call('shopee.strongPlan',{batchId:result.batch.id,roundtripOnly:true});assert.equal(plan.items.length,1);assert.equal(plan.items[0].reason.includes('Riwayat persetujuan'),true);
+ assert.equal(call('shopee.approveStrong',{batchId:result.batch.id,roundtripOnly:true,items:plan.items}).approved.length,1);
+});
+test('perubahan master setelah persetujuan tetap ditahan meskipun kode Shopee sama',()=>{
+ const {c,call,source,imp,row}=fixture();c.withLock_(()=>{
+ const variant=c.db_('PRODUCT_VARIANTS').find(v=>v.SKU==='PRD000003-001');c.db_('PRODUCT_VARIANTS').update(variant,{GTIN:'8999225911258'});
+ });
+ const b=imp({...source,name:source.name+' SPF 20++ Niacinamide + Ceramide'}).batch;
+ assert.equal(call('shopee.strongPlan',{batchId:b.id,roundtripOnly:true}).items.length,0);
+ assert.notEqual(call('shopee.get',{id:row.id}).status,'approved');
+});
 test('kode sama tidak meloloskan jumlah, ukuran atau GTIN yang bertentangan',()=>{
  for(const change of [{name:'6 PCS Purbasari Gluta Hya Body Serum 180 ml'},{name:'12 PCS Purbasari Gluta Hya Body Serum 200 ml'},{gtin:'8999225912415'}]){
  const {imp,source}=fixture(),r=imp({...source,...change}).row;assert.equal(r.status,'needs_review');

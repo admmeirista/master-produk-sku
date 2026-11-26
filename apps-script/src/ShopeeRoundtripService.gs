@@ -17,21 +17,43 @@ function shopeeRoundtripHistory_(){
   const latest={};db_('AUDIT_LOGS').rows().filter(r=>['shopee.approve','shopee.needs_review','shopee.ignored'].includes(r.Action)).sort((a,b)=>String(a.CreatedAt).localeCompare(String(b.CreatedAt))).forEach(r=>latest[r.EntityID]=r);
   return latest;
 }
+/** Keputusan sebelumnya mengalahkan skor judul. Konflik kode/GTIN/qty/isi tetap ditahan. */
+function shopeeHistoryMatch_(record,view,index,log){
+  const doc=index.bySku[record.TargetSku],t=doc&&doc.target;
+  if(!t||shopeeValidateTarget_(record,t).length)return null;
+  const signature=t.signature||(t.kind==='single'?shopeeSignature_([t.sku,t.name,t.gtin,t.active,t.components]):'');
+  let after={};try{after=log&&typeof log.AfterJson==='object'?log.AfterJson:JSON.parse(log&&log.AfterJson||'{}');}catch(e){return null;}
+  if(record.ReviewStatus==='approved'){
+    if(record.ReviewedTargetSignature!==signature)return null;
+  }else{
+    if(record.ReviewStatus!=='needs_review'||record.ReviewedAt||!String(record.ReviewNote||'').startsWith('Data Shopee berubah sejak pemeriksaan sebelumnya;')||!log||log.Action!=='shopee.approve'||after.targetSku!==record.TargetSku)return null;
+    if(after.targetSignature&&after.targetSignature!==signature)return null;
+  }
+  const preview=ShopeePlacement.preview(view.listingShape,t);
+  if(!preview.ready||preview.parentSku!==view.parentSku||preview.sku!==view.sellerSku)return null;
+  if(view.gtin&&(!shopeeMatchGtinKey_(view.gtin)||shopeeMatchGtinKey_(view.gtin)!==shopeeMatchGtinKey_(t.gtin)))return null;
+  const sale=shopeeMatchSale_(view),qtyText=shopeeSaleText_(view.variationName||'')+' '+shopeeSaleText_(view.name||'');
+  const hasQty=/\b\d+\s*(?:pcs?|buah|sachet|saset|pack|botol|tube|pot|biji|unit|lembar)\b|\b(?:satuan|ecer|eceran)\b/i.test(qtyText);
+  if(t.kind!=='bundle'&&((hasQty&&(sale.unclear||sale.quantity!==doc.quantity))||sale.mixed||sale.type==='bundle'))return null;
+  const sizes=shopeeMatchUnits_(view.variationName).length?shopeeMatchUnits_(view.variationName):shopeeMatchUnits_(view.name);
+  if(sizes.length&&doc.units.length&&!doc.units.every(u=>sizes.includes(u)))return null;
+  return {method:'approval_history',score:99,proposed:true,candidateSku:t.sku,candidateName:t.name,reason:'Riwayat persetujuan listing dan SKU jual tetap sama; komposisi, jumlah dan GTIN sesuai master.'};
+}
 /** Hanya memulihkan persetujuan yang dibatalkan importer, bukan keputusan manual pengguna. */
 function shopeeRoundtripEligible_(record,view,index,history){
   if(record.ReviewStatus!=='needs_review'||record.ReviewedAt||!String(record.ReviewNote||'').startsWith('Data Shopee berubah sejak pemeriksaan sebelumnya;'))return false;
   const log=history[record.ListingID];let after={};try{after=log&&typeof log.AfterJson==='object'?log.AfterJson:JSON.parse(log&&log.AfterJson||'{}');}catch(e){return false;}
   if(!log||log.Action!=='shopee.approve'||after.targetSku!==record.TargetSku)return false;
-  const match=shopeeMatchCode_(view,index),target=index.bySku[record.TargetSku];
-  if(!match||!match.proposed||match.candidateSku!==record.TargetSku||!target||shopeeValidateTarget_(record,target.target).length)return false;
+  const match=shopeeHistoryMatch_(record,view,index,log);
+  if(!match)return false;
   view.match=match;return true;
 }
 function shopeeImportKeepsApproval_(old,values,shape,catalog,index){
   const target=catalog[old.TargetSku];
   if(old.ReviewStatus!=='approved'||!target||!target.active||old.ReviewedTargetSignature!==target.signature||shopeeValidateTarget_(old,target).length)return false;
   const row=shopeeView_(Object.assign({},old,values),catalog);row.listingShape=shape;
-  const match=shopeeMatchCode_(row,index);
-  if(!match||!match.proposed||match.candidateSku!==target.sku)return false;
+  const match=shopeeHistoryMatch_(old,row,index);
+  if(!match)return false;
   const preview=ShopeePlacement.preview(shape,target);
   return preview.ready&&preview.parentSku===values.ExternalParentSku&&preview.sku===values.ExternalSku&&preview.gtin===values.ExternalGTIN;
 }

@@ -9,9 +9,9 @@ function shopeeStrongCandidates_(p,selectedIds){
   pending.forEach(r=>{
     if((selectedIds&&!selectedIds.has(r.ListingID))||r.ReviewedAt)return; // Draf/keputusan pengguna tetap diperiksa manual.
     const v=byId[r.ListingID];if(p.roundtripOnly&&!shopeeRoundtripEligible_(r,v,index,history))return;
-    const match=shopeeMatchListing_(v,index);
+    const match=p.roundtripOnly?v.match:shopeeMatchListing_(v,index);
     if(!match||!match.proposed||match.score<97||match.needsPackage||(p.gtinOnly&&match.method!=='gtin'))return;
-    const t=catalog[match.candidateSku];if(!t||!t.active||!['single','multipack'].includes(t.kind)||t.components.length!==1)return;
+    const t=catalog[match.candidateSku];if(!t||!t.active||(!p.roundtripOnly&&(!['single','multipack'].includes(t.kind)||t.components.length!==1)))return;
     if(v.target&&v.target.active&&v.target.sku!==t.sku)return;
     const component=catalog[t.components[0].sku],codes=new Set([t.gtin,component&&component.gtin,component&&component.internalBarcode].filter(Boolean));
     const observed=[v.gtin].concat(Array.from((v.sellerSku+' '+v.parentSku).matchAll(/\b\d{13}\b/g),m=>m[0])).filter(Boolean);
