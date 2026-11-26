@@ -55,5 +55,5 @@ function shopeeImportKeepsApproval_(old,values,shape,catalog,index){
   const match=shopeeHistoryMatch_(old,row,index);
   if(!match)return false;
   const preview=ShopeePlacement.preview(shape,target);
-  return preview.ready&&preview.parentSku===values.ExternalParentSku&&preview.sku===values.ExternalSku&&preview.gtin===values.ExternalGTIN;
+  return preview.ready&&preview.parentSku===values.ExternalParentSku&&preview.sku===values.ExternalSku;
 }

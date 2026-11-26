@@ -37,6 +37,11 @@ test('perubahan master setelah persetujuan tetap ditahan meskipun kode Shopee sa
  assert.equal(call('shopee.strongPlan',{batchId:b.id,roundtripOnly:true}).items.length,0);
  assert.notEqual(call('shopee.get',{id:row.id}).status,'approved');
 });
+test('GTIN kosong pada template tidak mereset persetujuan satuan yang SKU-nya tetap sama',()=>{
+ const {call,imp,source}=fixture(),t=call('shopee.target',{sku:'PRD000003-001'}),single={...source,name:'Purbasari Gluta Hya Body Serum 180 ml',parentSku:t.sku,gtin:''};
+ let r=imp(single).row;call('shopee.review',{id:r.id,version:r.version,action:'approve',sku:t.sku,targetSignature:t.signature,saleType:t.kind,quantity:1,components:t.components});
+ r=imp({...single,name:single.name+' SPF 20++ Niacinamide + Ceramide'}).row;assert.equal(r.status,'approved');assert.equal(r.target.gtin,'8999225912415');
+});
 test('kode sama tidak meloloskan jumlah, ukuran atau GTIN yang bertentangan',()=>{
  for(const change of [{name:'6 PCS Purbasari Gluta Hya Body Serum 180 ml'},{name:'12 PCS Purbasari Gluta Hya Body Serum 200 ml'},{gtin:'8999225912415'}]){
  const {imp,source}=fixture(),r=imp({...source,...change}).row;assert.equal(r.status,'needs_review');
