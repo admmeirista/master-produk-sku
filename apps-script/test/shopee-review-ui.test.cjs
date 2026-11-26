@@ -10,10 +10,11 @@ function ui(write = false) {
     Pages: {}, can: () => write, esc: value => String(value ?? ''),
     debounce: fn => fn, $$: () => [], icon: () => '', skuCombo: () => {}, uid: () => 'request-1', busy: (button,promise) => promise, toast: () => {},
     $: (selector) => elements[selector] ||= { innerHTML: '', classList: {toggle(){} } },
-    modal: html => { const m = { html, isConnected: true, close() { this.isConnected = false; } }; modals.push(m); return m; },
+    modal: html => { const m = { html, isConnected: true, attrs:{},setAttribute(k,v){this.attrs[k]=v;},close() { this.isConnected = false; } }; modals.push(m); return m; },
     loadingBox: text => text, errBox: text => 'Error: ' + text,
     api: (...args) => { calls.push(args); return new Promise(() => {}); }
   };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/ShopeePlacementCore.gs'), 'utf8'), context);
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/Shopee.html'), 'utf8').replace(/^<script>\s*/, '').replace(/<\/script>\s*$/, ''), context);
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/PackageForm.html'), 'utf8').replace(/^<script>\s*/, '').replace(/<\/script>\s*$/, ''), context);
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/ShopeePackage.html'), 'utf8').replace(/^<script>\s*/, '').replace(/<\/script>\s*$/, ''), context);
@@ -27,6 +28,25 @@ test('setiap baris BD memiliki brand sendiri; mengganti brand hanya mengosongkan
  assert.match(host.innerHTML,/bpBrand0/);assert.match(host.innerHTML,/bpBrand1/);assert.equal(elements['#bpBrand0'].value,'p');assert.equal(elements['#bpBrand1'].value,'v');assert.equal(pickers.at(-1).filter.brandId,'v');
  elements['#bpBrand0'].value='v';elements['#bpBrand0'].onchange();assert.equal(lines[0].sku,'');assert.equal(lines[1].sku,rows[1].sku);assert.equal(lines[1].quantity,2);assert.equal(changed,1);assert.equal(pickers.at(-1).filter.brandId,'v');
  pickers.at(-1).select(rows[1]);assert.equal(lines[0].sku,rows[1].sku);assert.equal(lines[0].brandId,'v');
+});
+test('kartu barang memakai filter brand sendiri dan mempertahankan qty barang lainnya',async()=>{
+ const {context:c,elements}=ui(true),rows=[{sku:'PRD000003-001',brandId:'p',brandName:'Purbasari',displayName:'Body Serum',gtin:'8999225912415'},{sku:'PRD000011-001',brandId:'v',brandName:'Viva',displayName:'Air Mawar',gtin:'8992796011501'}],lines=rows.map(r=>({sku:r.sku,quantity:2})),pickers=[];let changes=0;
+ c.SkuPicker={load:()=>Promise.resolve(rows)};c.skuCombo=(host,k,select,placeholder,value,filter)=>pickers.push({select,filter});
+ c.packageLines({innerHTML:''},{prefix:'sv',reviewCards:true,lines,type:'bundle',writable:true,changed:()=>changes++,remove:()=>{}});await new Promise(setImmediate);
+ assert.equal(elements['#svBrand0'].value,'p');assert.equal(elements['#svBrand1'].value,'v');assert.equal(pickers.at(-1).filter.brandId,'v');
+ elements['#svBrand0'].value='v';elements['#svBrand0'].onchange();assert.equal(lines[0].sku,'');assert.equal(lines[1].sku,rows[1].sku);assert.equal(lines[1].quantity,2);assert.equal(changes,1);pickers.at(-1).select(rows[1]);assert.equal(lines[0].brandId,'v');assert.match(elements['#svMeta0'].innerHTML,/8992796011501/);
+ c.packageLines({innerHTML:''},{prefix:'sv',reviewCards:true,pickerRows:rows,brandId:'p',lines:[lines[0]],type:'single',writable:true,changed:()=>{},remove:()=>{}});elements['#svBrand0'].value='';elements['#svBrand0'].onchange();assert.equal(pickers.at(-1).filter.brandId,'','Semua brand tidak dikunci kembali oleh tebakan brand dari judul');
+});
+test('preview ringkas tetap memakai aturan ekspor single, variasi, parent gabungan, dan paket baru',()=>{
+ const {context:c}=ui(),target={sku:'MP000033',kind:'multipack',parentSku:'PRD000011',gtin:'',active:true},row={parentSku:'LAMA',sellerSku:'LAMA',gtin:''};
+ const single=c.shopeeReviewExportRows(row,target,c.ShopeePlacement.preview({kind:'single'},target));assert.match(single,/MP000033/);assert.match(single,/Kosong \(tanpa variasi\)/);assert.equal((single.match(/<tr>/g)||[]).length,3);
+ const shape={kind:'variants',originalParentKnown:true,originalParentSku:'GRUP-LAMA',masterParentSkus:['PRD000011','PRD000012']},mixed=c.shopeeReviewExportRows(row,target,c.ShopeePlacement.preview(shape,target));assert.match(mixed,/GRUP-LAMA/);assert.match(mixed,/MP000033/);
+ const pending=c.shopeeReviewExportRows(row,{preview:true},c.ShopeePlacement.preview({kind:'single'},{preview:true,kind:'multipack'}),'MP baru saat disetujui');assert.match(pending,/MP baru saat disetujui/);assert.doesNotMatch(pending,/undefined/);
+});
+test('mengubah barcode paket memperbarui preview tanpa mengubah GTIN master atau membuat permintaan API',()=>{
+ const {context:c,elements,calls}=ui(true),target={sku:'MP000033',kind:'multipack',active:true,parentSku:'PRD000011',gtin:'',components:[{sku:'PRD000011-001',quantity:10}]};c.shopeeOpenReview({id:'barcode-preview',version:1,saleType:'multipack',listingShape:{kind:'single'},target,expectedComponents:target.components},()=>{});
+ elements['[data-package-barcode]'].value='gtin';elements['[data-package-barcode]'].onchange();elements['#pbrequest1Code'].value='8992796011501';elements['#pbrequest1Code'].oninput();assert.match(elements['#svTarget'].innerHTML,/8992796011501/);assert.equal(target.gtin,'');assert.equal(calls.length,0);
+ elements['[data-package-barcode]'].value='internal';elements['[data-package-barcode]'].onchange();assert.doesNotMatch(elements['#svTarget'].innerHTML,/8992796011501/);
 });
 
 test('status di header dan navigasi terpisah dari persetujuan; pilihan ikut dibawa saat pindah',()=>{
@@ -72,7 +92,7 @@ test('brand otomatis dapat diganti manual dan pilihan tetap bertahan saat jenis 
  const rows=[{sku:'PRD000001-001',brandId:'p',brandName:'Purbasari',productName:'Gluta Hya',displayName:'Purbasari Gluta Hya',parentSku:'PRD000001'},{sku:'PRD000002-001',brandId:'v',brandName:'Viva'}];
  c.SkuPicker={load:()=>Promise.resolve(rows)};
  c.shopeeOpenReview({id:'x',name:'Purbasari Gluta Hya',saleType:'bundle',expectedComponents:[{sku:rows[0].sku,quantity:1}]},()=>{});await new Promise(setImmediate);
- assert.equal(elements['#svBrand'].value,'p');assert.match(elements['#svTarget'].innerHTML,/Gluta Hya/);assert.match(elements['#svTarget'].innerHTML,/Belum ditentukan/);
+ assert.equal(elements['#svBrand'].value,'p');assert.match(elements['#svMasterDetails'].innerHTML,/Gluta Hya/);assert.match(elements['#svMasterDetails'].innerHTML,/Belum ditentukan/);
  elements['#svBrand'].value='v';elements['#svBrand'].onchange();elements['#svType'].value='multipack';elements['#svType'].onchange();assert.equal(elements['#svBrand'].value,'v');
 });
 
@@ -91,7 +111,7 @@ test('Periksa membuka detail tabel secara sinkron tanpa menunggu atau memanggil 
   const row = { id: 'listing-1', name: 'Gatsby Clay 30 gr', variationName: '3 pcs', productId: '123', variationId: '456', expectedComponents: [{sku:'PRD000168-003',quantity:3}], target: {kind:'multipack',sku:'MP000243',name:'Gatsby paket 3 pcs',active:true,components:[{sku:'PRD000168-003',quantity:3}]}, saleType: 'multipack', quantity: 3, version: 4 };
   const result = context.shopeeReviewDialog(row, () => {});
   assert.equal(modals.length, 1);assert.equal(result, modals[0]);assert.equal(calls.length, 0);
-  assert.match(elements['#svTarget'].innerHTML, /Gatsby Clay 30 gr/);assert.match(elements['#svTarget'].innerHTML, /MP000243/);
+  assert.match(modals[0].html, /Gatsby Clay 30 gr/);assert.match(elements['#svMasterDetails'].innerHTML, /MP000243/);
   assert.equal(row.version, 4, 'snapshot version tetap dipakai untuk pemeriksaan konflik di server');
 });
 
@@ -100,8 +120,8 @@ test('popup menampilkan urutan kolom pembanding dan menyetujui sekali tanpa cekl
   const row={id:'1',name:'Nama Shopee',variationName:'3 pcs',productId:'123',variationId:'456',parentSku:'PRD000168',sellerSku:'kode-lama',gtin:'899',expectedComponents:[{sku:'PRD000168-003',quantity:3}],target:{kind:'multipack',sku:'MP000243',productName:'Nama master',variationName:'30 gr',parentSku:'PRD000168',active:true,components:[{sku:'PRD000168-003',quantity:3}]},saleType:'multipack',quantity:3,version:1};
   context.shopeeReviewDialog(row,()=>{});
   assert.doesNotMatch(modals[0].html,/checkbox|svAck/);
-  assert.match(modals[0].html,/Shopee Saat Ini/);assert.match(modals[0].html,/Master Sistem/);assert.match(modals[0].html,/Hasil Ekspor Shopee/);assert.doesNotMatch(modals[0].html,/svNote|Catatan pemeriksaan|svExportPreview/);
-  const labels=[...elements['#svTarget'].innerHTML.matchAll(/<th scope="row">(.*?)<\/th>/g)].map(m=>m[1]);assert.deepEqual(labels,['Nama Produk','Variasi','SKU Induk / Parent','SKU','GTIN','Komposisi SKU Barang']);
+  assert.match(modals[0].html,/Shopee saat ini/);assert.match(modals[0].html,/Master Sistem/);assert.match(modals[0].html,/Hasil ekspor Shopee/);assert.doesNotMatch(modals[0].html,/svNote|Catatan pemeriksaan|svExportPreview/);
+  const labels=[...elements['#svTarget'].innerHTML.matchAll(/<th scope="row">(.*?)<\/th>/g)].map(m=>m[1]);assert.deepEqual(labels,['SKU Induk','SKU','GTIN']);
   context.$('#svType').value='multipack';context.$('#svQty').value='3';
   elements['#svApprove'].onclick();elements['#svApprove'].onclick();elements['#svReview'].onclick();
   assert.equal(calls.length,1);assert.equal(calls[0][0],'shopee.review');assert.equal('acknowledged' in calls[0][1],false);
@@ -151,16 +171,16 @@ test('barcode internal satuan tidak ditulis sebagai GTIN; kembali ke paket memul
 test('paket belum ada: tombol menjelaskan pembuatan MP dan mengirim createPackage sebelum lanjut',async()=>{
  const {context:c,elements,modals}=ui(true),requests=[],done=[];c.api=(action,p)=>{requests.push([action,p]);return action==='shopee.packageResolve'?Promise.resolve({target:null,signature:'bom-3',quantity:3}):new Promise(()=>{});};
  c.shopeeOpenReview({id:'new-mp',version:1,saleType:'multipack',expectedComponents:[{sku:'PRD000011-001',quantity:3}]},(...a)=>done.push(a));await new Promise(setImmediate);
- assert.match(elements['#svApproveNext'].textContent,/Buat paket, setujui/);assert.match(elements['#svActionHint'].textContent,/Paket Penjualan/);elements['#svApproveNext'].onclick();const payload=requests.find(([a])=>a==='shopee.review')[1];assert.equal(payload.createPackage,true);assert.equal(payload.selection.saleType,'multipack');assert.equal(done[0][1],true);assert.equal(modals[0].isConnected,false);
+ assert.match(elements['#svApproveNext'].textContent,/Buat paket & berikutnya/);assert.match(elements['#svActionHint'].textContent,/Paket Penjualan/);elements['#svApproveNext'].onclick();const payload=requests.find(([a])=>a==='shopee.review')[1];assert.equal(payload.createPackage,true);assert.equal(payload.selection.saleType,'multipack');assert.equal(done[0][1],true);assert.equal(modals[0].isConnected,false);
 });
 
-test('mobile berganti sumber perbandingan tanpa API atau mengubah pilihan SKU',()=>{
- const {context:c,elements,calls}=ui(false),attrs={},buttons=['source','master','export'].map(view=>({tagName:'BUTTON',getAttribute:()=>view,setAttribute:(k,v)=>attrs[view+':'+k]=v}));
- c.$$=selector=>selector==='[data-compare-view]'||selector==='.sh-review-mobile-tabs button'?buttons:[];elements['.sh-review-context']={setAttribute:(k,v)=>attrs[k]=v};
- c.shopeeOpenReview({id:'mobile',saleType:'single',expectedComponents:[{sku:'PRD000011-001',quantity:1}]},()=>{});buttons[2].onclick();assert.equal(attrs['data-compare-view'],'export');assert.equal(attrs['export:aria-pressed'],'true');assert.equal(attrs['source:aria-pressed'],'false');assert.equal(calls.length,0);
+test('mobile berganti tab tanpa API atau kehilangan pilihan SKU dan qty',()=>{
+ const {context:c,calls,modals}=ui(false),attrs={},buttons=['mapping','compare'].map(view=>({getAttribute:()=>view,setAttribute:(k,v)=>attrs[view+':'+k]=v}));
+ c.$$=selector=>selector==='[data-review-panel]'?buttons:[];const row={id:'mobile',saleType:'single',expectedComponents:[{sku:'PRD000011-001',quantity:1}]};
+ c.shopeeOpenReview(row,()=>{});buttons[1].onclick();assert.equal(modals[0].attrs['data-review-panel'],'compare');assert.equal(attrs['compare:aria-pressed'],'true');buttons[0].onclick();assert.equal(modals[0].attrs['data-review-panel'],'mapping');assert.equal(row.expectedComponents[0].sku,'PRD000011-001');assert.equal(calls.length,0);
 });
 
-test('pindah bagian mobile hanya menggulir formulir/perbandingan tanpa menyimpan atau mengambil data',()=>{
- const {context:c,elements,calls}=ui(false),scrolled=[],buttons=['form','context'].map(part=>({getAttribute:()=>part}));c.$$=selector=>selector==='[data-review-jump]'?buttons:[];
- for(const part of ['form','context'])elements['.sh-review-'+part]={scrollIntoView:opts=>scrolled.push([part,opts.block])};c.shopeeOpenReview({id:'jump',saleType:'single',expectedComponents:[{sku:'PRD000011-001',quantity:1}]},()=>{});buttons[1].onclick();buttons[0].onclick();assert.deepEqual(scrolled,[['context','start'],['form','start']]);assert.equal(calls.length,0);
+test('pilihan jenis penjualan langsung menyinkronkan qty dan isi form',()=>{
+ const {context:c,elements}=ui(true),pressed={},buttons=['single','multipack','bundle'].map(type=>({getAttribute:()=>type,setAttribute:(k,v)=>pressed[type]=v}));c.$$=selector=>selector==='[data-sale-type]'?buttons:[];
+ c.shopeeOpenReview({id:'types',saleType:'multipack',expectedComponents:[{sku:'PRD000011-001',quantity:6}]},()=>{});buttons[0].onclick();assert.equal(elements['#svType'].value,'single');assert.equal(elements['#svTotal'].textContent,'1 barang');assert.equal(pressed.single,'true');buttons[2].onclick();assert.equal(elements['#svType'].value,'bundle');assert.equal(elements['#svTotal'].textContent,'2 barang');
 });
