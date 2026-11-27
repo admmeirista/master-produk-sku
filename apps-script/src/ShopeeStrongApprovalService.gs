@@ -9,7 +9,12 @@ function shopeeStrongCandidates_(p,selectedIds){
   pending.forEach(r=>{
     if((selectedIds&&!selectedIds.has(r.ListingID))||r.ReviewedAt)return; // Draf/keputusan pengguna tetap diperiksa manual.
     const v=byId[r.ListingID];if(p.roundtripOnly&&!shopeeRoundtripEligible_(r,v,index,history))return;
-    const match=p.roundtripOnly?v.match:shopeeMatchListing_(v,index);
+    let match=p.roundtripOnly?v.match:shopeeMatchListing_(v,index);
+    // Pertahankan kandidat kuat lama jika GTIN komponen baru menunjuk MP yang sama.
+    // MP baru tetap manual; pemeriksaan seluruh barcode sumber di bawah tetap wajib.
+    if(!p.roundtripOnly&&v.gtin&&match&&match.proposed&&!match.needsPackage&&match.score===95&&catalog[match.candidateSku]&&catalog[match.candidateSku].kind==='multipack'){
+      const semantic=shopeeMatchListing_(v,index,null,true);if(semantic&&semantic.proposed&&semantic.score>=97&&semantic.candidateSku===match.candidateSku)match=semantic;
+    }
     if(!match||!match.proposed||match.score<97||match.needsPackage||(p.gtinOnly&&match.method!=='gtin'))return;
     const t=catalog[match.candidateSku];if(!t||!t.active||(!p.roundtripOnly&&(!['single','multipack'].includes(t.kind)||t.components.length!==1)))return;
     if(v.target&&v.target.active&&v.target.sku!==t.sku)return;

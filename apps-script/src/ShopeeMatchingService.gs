@@ -10,7 +10,7 @@ function shopeeMatchTokens_(value,brands){
   return Array.from(new Set(s.split(/\s+/).filter(w=>(w.length>1||/^\d+$/.test(w))&&!stop.has(w))));
 }
 function shopeeSaleText_(value){
-  const ingredient='(?:niacinamide|ceramides?|hyaluronic\\s+acid|glutathione|collagen|retinol|panthenol|peptides?|salicylic\\s+acid|alpha\\s+arbutin|aha|bha|pha|cica|vitamin\\s*[a-e](?:\\d+)?)';
+  const ingredient='(?:niacinamide|ceramides?|hyaluronic\\s+acid\\d*|(?:australian\\s+)?super\\s+vc|glutathione|collagen|retinol|panthenol|peptides?|salicylic\\s+acid|alpha\\s+arbutin|aha|bha|pha|cica|vitamin\\s*[a-e](?:\\d+)?)';
   return String(value||'').replace(/\b(?:spf\s*\d+\s*(?:pa)?|pa)\s*\++/gi,' ').replace(new RegExp('\\b'+ingredient+'(?:\\s*\\+\\s*'+ingredient+')+\\b','gi'),' ');
 }
 function shopeeMatchSale_(row){

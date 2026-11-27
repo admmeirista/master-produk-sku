@@ -1,4 +1,15 @@
 const test=require('node:test'),assert=require('node:assert/strict'),{createGas}=require('./harness.cjs');
+test('GTIN satuan pada MP mengenali komposisi, tanpa mengisi barcode paket atau menerima konflik ukuran',()=>{
+ const {c}=fixture(),index=c.shopeeMatchIndex_(c.shopeeCatalog_()),row={name:'10 PCS Viva Air Mawar 100 ml',variationName:'',gtin:'8992796011501',listingShape:{kind:'single'}};
+ let m=c.shopeeLegacyGtinMatch_(row,index);assert.equal(m.candidateSku,'MP000033');assert.equal(m.quantity,10);assert.equal(m.needsPackage,false);assert.equal(c.shopeeCatalog_()['MP000033'].gtin,'');
+ m=c.shopeeLegacyGtinMatch_({...row,name:'3 PCS Viva Air Mawar 100 ml'},index);assert.equal(m.needsPackage,true);assert.equal(m.componentSku,'PRD000011-001');assert.equal(m.quantity,3);
+ assert.equal(c.shopeeLegacyGtinMatch_({...row,name:'10 PCS Viva Air Mawar 200 ml'},index).proposed,false);
+});
+test('Australian Super VC dan catatan Acid2 adalah bahan; kombinasi variasi tetap bundling',()=>{
+ const c=createGas().ctx;c.setup();const name='Lavojoy Body Serum 180 ml 3% Niacinamide + Australian Super VC + Ceramide';assert.equal(c.shopeeMatchSale_({name,variationName:'00 Silk White'}).unclear,false);
+ assert.equal(c.shopeeMatchSale_({name:'3 PCS Lavojoy Niacinamide + Ceramide + Hyaluronic Acid2',variationName:'01 Creme Beige'}).unclear,false);
+ assert.equal(c.shopeeMatchSale_({name,variationName:'01 Cream+OrangeBlsm'}).unclear,true);
+});
 test('manual rematch accepts a unique exact variant at 81 while ambiguity and conflicting size remain blocked',()=>{
  const c=createGas().ctx;c.setup();
  const make=(sku,variant)=>({sku,active:true,kind:'single',brandId:'g',brandName:'Gatsby',parentSku:'PRD000182',name:'Gatsby Prime Body Perfume Spray '+variant+' 100 ml',variationName:variant+' 100 ml',components:[{sku,quantity:1,name:'Gatsby Prime Body Perfume Spray '+variant+' 100 ml'}]});

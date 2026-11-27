@@ -1,8 +1,9 @@
 /** Barcode di SKU lama adalah bukti usulan; tidak pernah persetujuan otomatis. */
 function shopeeLegacyGtinMatch_(row,index){
-  if(row.gtin)return null;
+  // Pada MP, GTIN Shopee dapat mengenali barang komponen tanpa menjadi GTIN paket.
+  if(row.gtin&&shopeeMatchSale_(row).type!=='multipack')return null;
   const shape=row.listingShape||{},text=shape.kind==='variants'?row.sellerSku:row.parentSku+' '+row.sellerSku;
-  const codes=Array.from(new Set(Array.from(String(text||'').matchAll(/(?:^|[^0-9])(\d{13})(?=$|[^0-9])/g),m=>m[1])));
+  const codes=row.gtin?[String(row.gtin).trim()]:Array.from(new Set(Array.from(String(text||'').matchAll(/(?:^|[^0-9])(\d{13})(?=$|[^0-9])/g),m=>m[1])));
   if(!codes.length)return null;
   if(codes.length!==1)return {method:'legacy_gtin',score:0,proposed:false,reason:'SKU lama memuat beberapa GTIN berbeda; perlu diperiksa.'};
   const sale=shopeeMatchSale_(row);if(sale.unclear||!['single','multipack'].includes(sale.type))return null;
@@ -14,7 +15,7 @@ function shopeeLegacyGtinMatch_(row,index){
   if(!unit.proposed)return Object.assign({},unit,{method:'legacy_gtin',reason:'GTIN pada SKU lama perlu diperiksa · '+unit.reason});
   const t=index.bySku[unit.candidateSku].target;
   if(t.kind!=='single')return null;
-  const base={method:'legacy_gtin',score:Math.min(unit.score,95),proposed:true,reason:'GTIN pada SKU lama cocok unik dengan master · '+unit.reason};
+  const base={method:'legacy_gtin',score:Math.min(unit.score,95),proposed:true,reason:(row.gtin?'GTIN barang Shopee mengenali komponen paket':'GTIN pada SKU lama cocok unik dengan master')+' · '+unit.reason};
   if(sale.type==='single')return Object.assign({},unit,base);
   const packs=index.docs.filter(d=>d.target.kind==='multipack'&&d.target.components.length===1&&d.target.components[0].sku===t.sku&&d.quantity===sale.quantity);
   if(packs.length>1)return {method:'legacy_gtin',score:74,proposed:false,candidateSku:packs[0].target.sku,reason:'GTIN barang cocok, tetapi ada beberapa MP dengan komposisi sama.'};
