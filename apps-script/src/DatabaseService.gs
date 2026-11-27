@@ -382,7 +382,7 @@ function dataVersion_() {
     c.put('data_ver', v, 21600);
   }
   // Generasi cache baru setelah usulan Shopee diperbarui secara atomik.
-  return 'dv3:' + v;
+  return 'dv4:' + v;
 }
 
 function bumpDataVersion_() {
