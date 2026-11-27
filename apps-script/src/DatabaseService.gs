@@ -382,7 +382,7 @@ function dataVersion_() {
     c.put('data_ver', v, 21600);
   }
   // Generasi cache setelah pembaruan master dan katalog eksternal secara atomik.
-  return 'dv5:' + v;
+  return 'dv6:' + v;
 }
 
 function bumpDataVersion_() {
